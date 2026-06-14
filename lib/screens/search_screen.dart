@@ -24,6 +24,8 @@ class SearchScreen extends ConsumerWidget {
     final t = ref.watch(stringsProvider);
     final s = ref.watch(searchProvider);
     final notifier = ref.read(searchProvider.notifier);
+    final voice = ref.watch(voiceProvider);
+    final listening = voice == VoiceStatus.listening;
 
     bool passFilter(ContentItem x) {
       if (s.filter == 'tv') return x is Show;
@@ -65,7 +67,11 @@ class SearchScreen extends ConsumerWidget {
                       const SizedBox(width: 18),
                       Expanded(
                         child: Text(
-                          s.query.isEmpty ? t['searchPlaceholder']! : s.query,
+                          s.query.isNotEmpty
+                              ? s.query
+                              : (listening
+                                  ? t['voiceListening']!
+                                  : t['searchPlaceholder']!),
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                           style: TextStyle(
@@ -76,6 +82,12 @@ class SearchScreen extends ConsumerWidget {
                                 : AppColors.ink,
                           ),
                         ),
+                      ),
+                      const SizedBox(width: 14),
+                      _MicButton(
+                        status: voice,
+                        onPressed: () =>
+                            ref.read(voiceProvider.notifier).toggle(),
                       ),
                     ]),
                   ),
@@ -293,6 +305,113 @@ class _KeyTile extends StatelessWidget {
           ),
         );
       },
+    );
+  }
+}
+
+/// Voice-search trigger inside the search field. Pulses while listening and
+/// shows a muted mic-off icon when speech recognition is unavailable.
+class _MicButton extends StatelessWidget {
+  final VoiceStatus status;
+  final VoidCallback onPressed;
+  const _MicButton({required this.status, required this.onPressed});
+
+  @override
+  Widget build(BuildContext context) {
+    final listening = status == VoiceStatus.listening;
+    final unavailable = status == VoiceStatus.unavailable;
+    return Focusable(
+      onPressed: onPressed,
+      builder: (context, focused) {
+        final bg = listening
+            ? AppColors.primary
+            : (focused ? Colors.white : AppColors.bg3);
+        final fg = listening
+            ? Colors.white
+            : focused
+                ? AppColors.onFocus
+                : (unavailable ? AppColors.inkMute : AppColors.inkSoft);
+        return AnimatedScale(
+          scale: focused ? 1.06 : 1,
+          duration: const Duration(milliseconds: 130),
+          child: _Pulse(
+            active: listening,
+            child: Container(
+              width: 56,
+              height: 56,
+              alignment: Alignment.center,
+              decoration: BoxDecoration(color: bg, shape: BoxShape.circle),
+              child: Icon(unavailable ? Icons.mic_off : Icons.mic,
+                  size: 28, color: fg),
+            ),
+          ),
+        );
+      },
+    );
+  }
+}
+
+/// Expanding-ring pulse behind its [child] while [active]. Inert otherwise.
+class _Pulse extends StatefulWidget {
+  final bool active;
+  final Widget child;
+  const _Pulse({required this.active, required this.child});
+
+  @override
+  State<_Pulse> createState() => _PulseState();
+}
+
+class _PulseState extends State<_Pulse>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _c = AnimationController(
+      vsync: this, duration: const Duration(milliseconds: 900));
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.active) _c.repeat(reverse: true);
+  }
+
+  @override
+  void didUpdateWidget(_Pulse old) {
+    super.didUpdateWidget(old);
+    if (widget.active && !_c.isAnimating) {
+      _c.repeat(reverse: true);
+    } else if (!widget.active && _c.isAnimating) {
+      _c.stop();
+      _c.value = 0;
+    }
+  }
+
+  @override
+  void dispose() {
+    _c.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (!widget.active) return widget.child;
+    return AnimatedBuilder(
+      animation: _c,
+      builder: (context, child) {
+        final t = _c.value;
+        return Stack(
+          alignment: Alignment.center,
+          children: [
+            Container(
+              width: 56 + 22 * t,
+              height: 56 + 22 * t,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: AppColors.primary.withValues(alpha: 0.25 * (1 - t)),
+              ),
+            ),
+            child!,
+          ],
+        );
+      },
+      child: widget.child,
     );
   }
 }

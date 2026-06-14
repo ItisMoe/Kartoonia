@@ -48,7 +48,8 @@ class PlayerScreen extends ConsumerStatefulWidget {
   ConsumerState<PlayerScreen> createState() => _PlayerScreenState();
 }
 
-class _PlayerScreenState extends ConsumerState<PlayerScreen> {
+class _PlayerScreenState extends ConsumerState<PlayerScreen>
+    with WidgetsBindingObserver {
   VideoPlayerController? _controller;
 
   // current episode (mutable for prev/next)
@@ -92,6 +93,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
     _pageUrl = widget.args.pageUrl;
     _epLabel = widget.args.episodeLabel;
@@ -443,8 +445,33 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> {
     }
   }
 
+  /// Netflix-style: stop playback the moment the player is no longer on screen.
+  /// `video_player` (ExoPlayer) and the embed WebView both keep playing audio
+  /// when the app is backgrounded, so pause them on any non-foreground state.
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state != AppLifecycleState.resumed) {
+      _saveProgress();
+      _controller?.pause();
+      _pauseEmbed();
+    }
+  }
+
+  /// Best-effort pause of media inside the embed WebView (provider players keep
+  /// emitting audio in the background otherwise).
+  void _pauseEmbed() {
+    final c = _embedController;
+    if (c == null) return;
+    try {
+      c.runJavaScript(
+        "document.querySelectorAll('video,audio').forEach(function(e){e.pause();});",
+      );
+    } catch (_) {}
+  }
+
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _saveProgress();
     _stCancel?.cancel(); // stop any in-flight Stardima resolution
     _hideTimer?.cancel();

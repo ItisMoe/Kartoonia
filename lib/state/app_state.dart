@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../services/storage_service.dart';
 import '../services/catalog_service.dart';
 import '../services/stardima_service.dart';
+import '../services/voice_search_service.dart';
 import '../i18n/strings.dart';
 
 /// Injected in main() via ProviderScope overrides after async init.
@@ -154,3 +155,50 @@ class SearchNotifier extends Notifier<SearchState> {
 
 final searchProvider =
     NotifierProvider<SearchNotifier, SearchState>(SearchNotifier.new);
+
+// ---------------- Voice search ----------------
+/// idle: not listening. listening: actively transcribing into the search box.
+/// unavailable: no recognizer / mic permission denied (button hides itself).
+enum VoiceStatus { idle, listening, unavailable }
+
+/// Single recognizer instance for the app's lifetime.
+final voiceServiceProvider = Provider<VoiceSearchService>((ref) {
+  final svc = VoiceSearchService();
+  ref.onDispose(svc.stop);
+  return svc;
+});
+
+class VoiceNotifier extends Notifier<VoiceStatus> {
+  @override
+  VoiceStatus build() => VoiceStatus.idle;
+
+  /// Toggles a listening session. Reads the active keyboard script to pick the
+  /// recognition language and streams the transcript into [searchProvider].
+  Future<void> toggle() async {
+    final svc = ref.read(voiceServiceProvider);
+    if (state == VoiceStatus.listening) {
+      await svc.stop();
+      state = VoiceStatus.idle;
+      return;
+    }
+
+    final search = ref.read(searchProvider.notifier);
+    final kbScript = ref.read(searchProvider).kbScript;
+    state = VoiceStatus.listening;
+    try {
+      final ok = await svc.start(
+        kbScript: kbScript,
+        onText: (text, _) => search.setQuery(text),
+        onDone: () {
+          if (state == VoiceStatus.listening) state = VoiceStatus.idle;
+        },
+      );
+      if (!ok) state = VoiceStatus.unavailable;
+    } catch (_) {
+      state = VoiceStatus.unavailable;
+    }
+  }
+}
+
+final voiceProvider =
+    NotifierProvider<VoiceNotifier, VoiceStatus>(VoiceNotifier.new);

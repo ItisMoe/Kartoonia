@@ -2,10 +2,14 @@
     <uses-permission android:name="android.permission.INTERNET"/>
     <!-- Write Google TV / Android TV home-screen recommendation channels -->
     <uses-permission android:name="com.android.providers.tv.permission.WRITE_EPG_DATA"/>
+    <!-- Voice search: record audio for on-device speech recognition -->
+    <uses-permission android:name="android.permission.RECORD_AUDIO"/>
 
     <!-- Android TV / Google TV: works without touchscreen, on leanback -->
     <uses-feature android:name="android.software.leanback" android:required="false"/>
     <uses-feature android:name="android.hardware.touchscreen" android:required="false"/>
+    <!-- Mic is optional: TVs without one still install (voice button hides itself) -->
+    <uses-feature android:name="android.hardware.microphone" android:required="false"/>
 
     <application
         android:label="Kartoonia"
@@ -48,6 +52,10 @@
         <intent>
             <action android:name="android.intent.action.PROCESS_TEXT"/>
             <data android:mimeType="text/plain"/>
+        </intent>
+        <!-- Discover the system speech recognizer on Android 11+ (package visibility) -->
+        <intent>
+            <action android:name="android.speech.RecognitionService"/>
         </intent>
     </queries>
 </manifest>
