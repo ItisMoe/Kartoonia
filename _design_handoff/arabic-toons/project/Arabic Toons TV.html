@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Kartoonia — Kids TV</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@400;500;600;700&family=Nunito:wght@600;700;800;900&family=Baloo+Bhaijaan+2:wght@500;600;700&family=Cairo:wght@600;700;800;900&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="app/styles.css">
+</head>
+<body>
+  <div id="room">
+    <div id="tv" dir="ltr">
+      <div class="app">
+
+        <!-- Global top bar (hidden on player) -->
+        <div class="topbar"></div>
+
+        <!-- HOME -->
+        <section class="screen active" id="home" data-screen-label="Home">
+          <div class="rows" style="position:absolute;inset:0;overflow:visible;">
+            <div class="home-scroll"></div>
+          </div>
+        </section>
+
+        <!-- DETAIL -->
+        <section class="screen detail" id="detail" data-screen-label="Detail"></section>
+
+        <!-- BROWSE (TV Shows / Movies / My List) -->
+        <section class="screen browse" id="browse" data-screen-label="Browse"></section>
+
+        <!-- PLAYER -->
+        <section class="screen player" id="player" data-screen-label="Player"></section>
+
+        <!-- SEARCH -->
+        <section class="screen search" id="search" data-screen-label="Search"></section>
+
+        <!-- SETTINGS -->
+        <section class="screen settings" id="settings" data-screen-label="Settings"></section>
+
+      </div>
+    </div>
+
+    <!-- on-screen remote (lives outside the scaled TV) -->
+    <div class="remote">
+      <div class="remote-label">Remote</div>
+      <div class="dpad">
+        <button class="rbtn up"    data-remote="up"></button>
+        <button class="rbtn down"  data-remote="down"></button>
+        <button class="rbtn left"  data-remote="left"></button>
+        <button class="rbtn right" data-remote="right"></button>
+        <button class="rbtn ok"    data-remote="ok">OK</button>
+      </div>
+      <div class="rrow">
+        <button class="rkey" data-remote="back">← Back</button>
+        <button class="rkey" data-remote="home">Home</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="app/data.js"></script>
+  <script src="app/app.js"></script>
+
+  <script>
+    // inject remote d-pad arrow glyphs
+    document.addEventListener('DOMContentLoaded', () => {
+      const g = {up:'M6 15l6-6 6 6',down:'M6 9l6 6 6-6',left:'M15 6l-6 6 6 6',right:'M9 6l6 6-6 6'};
+      document.querySelectorAll('.rbtn[data-remote]').forEach(b=>{
+        const d=g[b.dataset.remote]; if(!d) return;
+        b.innerHTML='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="'+d+'"/></svg>';
+      });
+    });
+  </script>
+</body>
+</html>

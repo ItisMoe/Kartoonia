@@ -1,0 +1,148 @@
+import 'dart:convert';
+import 'package:shared_preferences/shared_preferences.dart';
+
+/// Persistence for watchlist, watch progress (continue watching) and prefs.
+/// Backed by SharedPreferences. Ported from the RN `storageService.ts`.
+
+class ProgressEntry {
+  final String itemId;
+  final String episodeUrl; // PAGE url (token-fetch url), the storage key
+  final int episodeNumber;
+  final double currentTime;
+  final double duration;
+  final int updatedAt;
+
+  const ProgressEntry({
+    required this.itemId,
+    required this.episodeUrl,
+    required this.episodeNumber,
+    required this.currentTime,
+    required this.duration,
+    required this.updatedAt,
+  });
+
+  double get fraction => duration > 0 ? currentTime / duration : 0;
+
+  Map<String, dynamic> toJson() => {
+        'itemId': itemId,
+        'episodeUrl': episodeUrl,
+        'episodeNumber': episodeNumber,
+        'currentTime': currentTime,
+        'duration': duration,
+        'updatedAt': updatedAt,
+      };
+
+  factory ProgressEntry.fromJson(Map<String, dynamic> j) => ProgressEntry(
+        itemId: j['itemId'] as String,
+        episodeUrl: j['episodeUrl'] as String,
+        episodeNumber: (j['episodeNumber'] as num?)?.toInt() ?? 0,
+        currentTime: (j['currentTime'] as num?)?.toDouble() ?? 0,
+        duration: (j['duration'] as num?)?.toDouble() ?? 0,
+        updatedAt: (j['updatedAt'] as num?)?.toInt() ?? 0,
+      );
+}
+
+class StorageService {
+  static const _kWatchlist = 'kt/watchlist';
+  static const _kProgress = 'kt/progress';
+  static const _kPreferredServer = 'kt/preferredServer';
+  static const _kLang = 'kt/lang';
+  static const _kPrefs = 'kt/prefs'; // motion/autoplay/subtitles
+  static const _kYtKey = 'kt/ytKey'; // user-set YouTube Data API key override
+
+  final SharedPreferences _prefs;
+  StorageService(this._prefs);
+
+  static Future<StorageService> create() async =>
+      StorageService(await SharedPreferences.getInstance());
+
+  // ---- Watchlist ----
+  List<String> getWatchlistIds() =>
+      _prefs.getStringList(_kWatchlist) ?? const [];
+
+  bool isInWatchlist(String itemId) => getWatchlistIds().contains(itemId);
+
+  Future<bool> toggleWatchlist(String itemId) async {
+    final ids = [...getWatchlistIds()];
+    final present = ids.contains(itemId);
+    if (present) {
+      ids.remove(itemId);
+    } else {
+      ids.insert(0, itemId);
+    }
+    await _prefs.setStringList(_kWatchlist, ids);
+    return !present;
+  }
+
+  // ---- Progress / continue watching ----
+  Map<String, ProgressEntry> _readProgress() {
+    final raw = _prefs.getString(_kProgress);
+    if (raw == null) return {};
+    try {
+      final map = jsonDecode(raw) as Map<String, dynamic>;
+      return map.map((k, v) =>
+          MapEntry(k, ProgressEntry.fromJson(v as Map<String, dynamic>)));
+    } catch (_) {
+      return {};
+    }
+  }
+
+  Future<void> saveProgress(ProgressEntry entry) async {
+    final map = _readProgress();
+    map[entry.episodeUrl] = entry;
+    await _prefs.setString(
+        _kProgress, jsonEncode(map.map((k, v) => MapEntry(k, v.toJson()))));
+  }
+
+  ProgressEntry? getProgress(String episodeUrl) => _readProgress()[episodeUrl];
+
+  /// All in-progress entries (<95% watched), most-recent first.
+  List<ProgressEntry> getContinueWatching() {
+    final list = _readProgress()
+        .values
+        .where((e) => e.duration > 0 && e.fraction < 0.95)
+        .toList()
+      ..sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
+    return list;
+  }
+
+  /// Best progress fraction for an item across its episodes (for cards).
+  double progressForItem(String itemId) {
+    double best = 0;
+    for (final e in _readProgress().values) {
+      if (e.itemId == itemId && e.fraction > best) best = e.fraction;
+    }
+    return best;
+  }
+
+  // ---- Preferences ----
+  int getPreferredServer() => _prefs.getInt(_kPreferredServer) ?? 1;
+  Future<void> setPreferredServer(int n) =>
+      _prefs.setInt(_kPreferredServer, n);
+
+  // First launch defaults to English; persisted once the user picks a language.
+  String getLang() => _prefs.getString(_kLang) ?? 'en';
+  Future<void> setLang(String l) => _prefs.setString(_kLang, l);
+
+  // YouTube Data API key override. Empty => use the bundled default key.
+  String getYoutubeKey() => _prefs.getString(_kYtKey) ?? '';
+  Future<void> setYoutubeKey(String k) => _prefs.setString(_kYtKey, k.trim());
+  Future<void> clearYoutubeKey() => _prefs.remove(_kYtKey);
+
+  Map<String, String> getPrefs() {
+    final raw = _prefs.getString(_kPrefs);
+    final defaults = {'motion': 'off', 'autoplay': 'on', 'subtitles': 'off'};
+    if (raw == null) return defaults;
+    try {
+      final m = (jsonDecode(raw) as Map).cast<String, dynamic>();
+      return {...defaults, ...m.map((k, v) => MapEntry(k, v.toString()))};
+    } catch (_) {
+      return defaults;
+    }
+  }
+
+  Future<void> setPref(String key, String value) async {
+    final p = getPrefs()..[key] = value;
+    await _prefs.setString(_kPrefs, jsonEncode(p));
+  }
+}

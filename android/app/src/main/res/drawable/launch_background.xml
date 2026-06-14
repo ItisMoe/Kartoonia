@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Kartoonia launch screen: dark canvas + centered brand logo. Shown by the
+     OS while the app process starts and the catalog loads, before Flutter's
+     first frame. Automatically removed when the engine draws. -->
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <item android:drawable="@color/kartoonia_bg" />
+    <item>
+        <bitmap
+            android:gravity="center"
+            android:src="@drawable/splash_logo" />
+    </item>
+</layer-list>

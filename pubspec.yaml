@@ -1,0 +1,84 @@
+name: kartoonia
+description: "Kartoonia - Arabic cartoons for Android TV"
+publish_to: 'none'
+
+version: 1.0.0+1
+
+environment:
+  sdk: ^3.12.1
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+  cupertino_icons: ^1.0.8
+
+  # State management
+  flutter_riverpod: ^2.6.1
+
+  # Video playback (ExoPlayer via the first-party plugin). httpHeaders are
+  # forwarded to ExoPlayer's data source for the manifest AND every segment, so
+  # the CDN's required Referer/UA/Origin headers are sent on each request.
+  video_player: ^2.9.2
+
+  # Networking + images
+  http: ^1.2.2
+  cached_network_image: ^3.4.1
+
+  # Approach-B fallback embeds + the trailer/theme-song YouTube player
+  webview_flutter: ^4.10.0
+  webview_flutter_android: ^4.3.0 # for autoplay (setMediaPlaybackRequiresUserGesture)
+
+  # Persistence
+  shared_preferences: ^2.3.3
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^6.0.0
+  flutter_launcher_icons: ^0.14.4
+
+# Branded launcher icon (adaptive on Android 8+). TV banner is handled
+# separately via android:banner -> @drawable/banner.
+flutter_launcher_icons:
+  android: "ic_launcher"
+  ios: false
+  image_path: "assets/icon/icon.png"
+  adaptive_icon_background: "#0F1430"
+  adaptive_icon_foreground: "assets/icon/icon_foreground.png"
+  min_sdk_android: 30
+
+flutter:
+  uses-material-design: true
+
+  assets:
+    - assets/catalog.json
+    - assets/stardima_index.json
+
+  fonts:
+    - family: Fredoka
+      fonts:
+        - asset: assets/fonts/Fredoka-Medium.ttf
+          weight: 500
+        - asset: assets/fonts/Fredoka-SemiBold.ttf
+          weight: 600
+        - asset: assets/fonts/Fredoka-Bold.ttf
+          weight: 700
+    - family: Nunito
+      fonts:
+        - asset: assets/fonts/Nunito-Bold.ttf
+          weight: 700
+        - asset: assets/fonts/Nunito-ExtraBold.ttf
+          weight: 800
+        - asset: assets/fonts/Nunito-Black.ttf
+          weight: 900
+    - family: Cairo
+      fonts:
+        - asset: assets/fonts/Cairo-SemiBold.ttf
+          weight: 600
+        - asset: assets/fonts/Cairo-Bold.ttf
+          weight: 700
+        - asset: assets/fonts/Cairo-ExtraBold.ttf
+          weight: 800
+        - asset: assets/fonts/Cairo-Black.ttf
+          weight: 900

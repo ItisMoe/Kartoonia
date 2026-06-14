@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- App canvas background, used for the launch screen + window background -->
+    <color name="kartoonia_bg">#0A0D1F</color>
+	<color name="ic_launcher_background">#0F1430</color>
+</resources>
