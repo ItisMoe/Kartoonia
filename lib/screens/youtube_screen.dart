@@ -43,14 +43,20 @@ class _YoutubeScreenState extends ConsumerState<YoutubeScreen> {
       }
       final controller = WebViewController()
         ..setJavaScriptMode(JavaScriptMode.unrestricted)
-        ..setBackgroundColor(Colors.black)
-        ..loadRequest(Uri.parse(
-            'https://www.youtube-nocookie.com/embed/$id?autoplay=1&playsinline=1&rel=0&modestbranding=1&fs=1'));
-      // allow autoplay without a user gesture (Android)
+        ..setBackgroundColor(Colors.black);
+      // allow autoplay without a user gesture (Android) — must be set BEFORE
+      // the page loads, otherwise the first playback attempt is still gated.
       if (controller.platform is AndroidWebViewController) {
         (controller.platform as AndroidWebViewController)
             .setMediaPlaybackRequiresUserGesture(false);
       }
+      // Load the player as an <iframe> inside a page whose base URL is a valid
+      // YouTube origin. Loading the /embed URL directly as the top-level
+      // document leaves the referrer empty, so YouTube refuses playback with
+      // error 150/153 ("Video unavailable"). A youtube.com base URL gives the
+      // embed a referrer it can verify, which is what lets the video play.
+      await controller.loadHtmlString(_playerHtml(id),
+          baseUrl: 'https://www.youtube.com');
       setState(() {
         _wc = controller;
         _loading = false;
@@ -65,6 +71,28 @@ class _YoutubeScreenState extends ConsumerState<YoutubeScreen> {
       }
     }
   }
+
+  /// Full-bleed HTML host for the YouTube IFrame embed. Kept minimal so the
+  /// player fills the TV screen with no scrollbars or chrome.
+  String _playerHtml(String id) => '''
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <style>
+      html, body { margin: 0; padding: 0; height: 100%; background: #000; overflow: hidden; }
+      iframe { position: fixed; top: 0; left: 0; width: 100%; height: 100%; border: 0; }
+    </style>
+  </head>
+  <body>
+    <iframe
+      src="https://www.youtube.com/embed/$id?autoplay=1&playsinline=1&rel=0&modestbranding=1&fs=1"
+      allow="autoplay; encrypted-media; fullscreen"
+      allowfullscreen>
+    </iframe>
+  </body>
+</html>
+''';
 
   @override
   void dispose() {

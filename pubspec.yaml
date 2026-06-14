@@ -25,7 +25,7 @@ dependencies:
   http: ^1.2.2
   cached_network_image: ^3.4.1
 
-  # Approach-B fallback embeds + the trailer/theme-song YouTube player
+  # The trailer/theme-song YouTube player
   webview_flutter: ^4.10.0
   webview_flutter_android: ^4.3.0 # for autoplay (setMediaPlaybackRequiresUserGesture)
 
@@ -54,7 +54,6 @@ flutter:
 
   assets:
     - assets/catalog.json
-    - assets/stardima_index.json
 
   fonts:
     - family: Fredoka

@@ -3,10 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:video_player/video_player.dart';
-import 'package:webview_flutter/webview_flutter.dart';
-import 'package:webview_flutter_android/webview_flutter_android.dart';
 import '../models/content_item.dart';
-import '../services/stardima_service.dart';
 import '../services/storage_service.dart';
 import '../services/token_service.dart';
 import '../state/app_state.dart';
@@ -14,16 +11,12 @@ import '../theme/theme.dart';
 import '../widgets/focusable.dart';
 import '../widgets/tv_scaler.dart';
 
-/// Background Stardima resolution state for the current item.
-enum StStatus { idle, loading, found, none, error }
-
 class PlayerArgs {
   final String itemId;
   final String pageUrl; // PAGE url to fetch fresh tokens from
-  final String title; // Arabic title (also the Stardima resolver input)
+  final String title; // Arabic title (shown in the player header)
   final String episodeLabel;
   final int episodeNumber;
-  final int? seasonNumber; // for the Stardima resolver
   final List<Episode>? episodes; // for prev/next (shows)
 
   const PlayerArgs({
@@ -32,7 +25,6 @@ class PlayerArgs {
     required this.title,
     required this.episodeLabel,
     required this.episodeNumber,
-    this.seasonNumber,
     this.episodes,
   });
 }
@@ -76,15 +68,6 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
   Timer? _saveTimer;
   bool _serverPanelOpen = false;
 
-  // ---- Stardima (extra servers, resolved live, on-demand) ----
-  List<StardimaServer> _stServers = const [];
-  StStatus _stStatus = StStatus.idle;
-  CancelToken? _stCancel;
-  int _stReqId = 0;
-  StardimaServer? _activeStardima; // currently-selected extra server (highlight)
-  String? _embedUrl; // Approach-B: the embed currently on the main surface
-  WebViewController? _embedController;
-
   // Focus: a scope for the whole player + a node for the play/pause button so
   // the D-pad always lands on a usable control when the controls appear.
   final FocusScopeNode _playerScope = FocusScopeNode(debugLabel: 'player');
@@ -101,43 +84,11 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
     _server = ref.read(storageProvider).getPreferredServer();
 
     _load(_server);
-    _resolveStardima();
     _flashControls();
     _saveTimer = Timer.periodic(_saveInterval, (_) => _saveProgress());
     // land focus on play/pause once the controls are mounted
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) _playFocus.requestFocus();
-    });
-  }
-
-  /// Runs ONLY here, for the one item being opened — never as a catalog sweep.
-  /// Catalog playback is already underway; this just appends extra servers.
-  void _resolveStardima() {
-    _stCancel?.cancel();
-    final cancel = CancelToken();
-    _stCancel = cancel;
-    final reqId = ++_stReqId;
-    setState(() {
-      _stServers = const [];
-      _stStatus = StStatus.loading;
-    });
-    final svc = ref.read(stardimaProvider);
-    final ep = widget.args.episodeNumber == 0 ? 1 : widget.args.episodeNumber;
-    svc
-        .resolveServers(widget.args.title,
-            season: widget.args.seasonNumber, episode: ep, cancel: cancel)
-        .timeout(const Duration(seconds: 25))
-        .then((list) {
-      if (reqId != _stReqId || !mounted || cancel.isCancelled) return;
-      setState(() {
-        _stServers = list;
-        _stStatus = list.isEmpty ? StStatus.none : StStatus.found;
-      });
-    }).catchError((Object e) {
-      if (reqId != _stReqId || !mounted || cancel.isCancelled) return;
-      // Real error logged for debugging; user playback (catalog) is unaffected.
-      debugPrint('Stardima resolve failed: $e');
-      setState(() => _stStatus = StStatus.error);
     });
   }
 
@@ -164,14 +115,12 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
 
   Future<void> _load(int server) async {
     final id = ++_reqId;
-    _clearEmbed(); // leaving any embed → tear down the WebView (one player)
     setState(() {
       _loading = true;
       _error = false;
       _restored = false;
       _ended = false;
       _server = server;
-      _activeStardima = null; // a catalog server is now active
     });
     try {
       final servers = await fetchFreshTokens(_pageUrl);
@@ -277,7 +226,6 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
       _retry = 0;
     });
     _load(_server);
-    _resolveStardima(); // per-item: re-resolve for the new episode
     _flashControls();
   }
 
@@ -361,122 +309,23 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
     c.dispose();
   }
 
-  /// Leave embed mode and stop the WebView's audio.
-  void _clearEmbed() {
-    final c = _embedController;
-    if (c != null) {
-      try {
-        c.loadRequest(Uri.parse('about:blank'));
-      } catch (_) {}
-    }
-    _embedController = null;
-    _embedUrl = null;
-  }
-
-  /// Approach B — put the provider's embed on the MAIN surface (not an overlay)
-  /// after tearing down the native controller.
-  void _enterEmbed(String url) {
-    _disposeController();
-    final c = WebViewController()
-      ..setJavaScriptMode(JavaScriptMode.unrestricted)
-      ..setBackgroundColor(Colors.black)
-      ..loadRequest(Uri.parse(url),
-          headers: const {'Referer': 'https://hyperwatching.com/'});
-    if (c.platform is AndroidWebViewController) {
-      (c.platform as AndroidWebViewController)
-          .setMediaPlaybackRequiresUserGesture(false);
-    }
-    setState(() {
-      _embedController = c;
-      _embedUrl = url;
-      _loading = false;
-    });
-    _flashControls();
-  }
-
-  /// Play a Stardima extra server: Approach A (extract direct stream → native)
-  /// or Approach B fallback (embed the host player on the main surface).
-  Future<void> _playStardima(StardimaServer s) async {
-    final id = ++_reqId;
-    _clearEmbed();
-    setState(() {
-      _serverPanelOpen = false;
-      _activeStardima = s;
-      _loading = true;
-      _error = false;
-    });
-    _flashControls();
-    final svc = ref.read(stardimaProvider);
-    final ok = await svc.resolveDirect(s);
-    if (!mounted || id != _reqId) return;
-    if (ok && s.directUrl != null) {
-      await _openDirect(s.directUrl!, s.headers ?? const {}, id);
-    } else {
-      _enterEmbed(s.embedUrl); // Approach B on the main surface
-    }
-  }
-
-  Future<void> _openDirect(
-      String url, Map<String, String> headers, int id) async {
-    try {
-      final old = _controller;
-      final c = VideoPlayerController.networkUrl(Uri.parse(url),
-          httpHeaders: headers);
-      _controller = c;
-      old?.removeListener(_onTick);
-      await c.initialize();
-      if (id != _reqId || !mounted) {
-        // Superseded or screen gone — drop both controllers (no lingering audio).
-        await c.dispose();
-        await old?.dispose();
-        return;
-      }
-      await old?.dispose();
-      _restored = false;
-      _ended = false;
-      c.addListener(_onTick);
-      _maybeRestore();
-      await c.play();
-      setState(() => _loading = false);
-    } catch (_) {
-      if (id != _reqId || !mounted) return;
-      // direct playback failed → fall back to the embed on the main surface
-      _enterEmbed(_activeStardima?.embedUrl ?? url);
-    }
-  }
-
   /// Netflix-style: stop playback the moment the player is no longer on screen.
-  /// `video_player` (ExoPlayer) and the embed WebView both keep playing audio
-  /// when the app is backgrounded, so pause them on any non-foreground state.
+  /// `video_player` (ExoPlayer) keeps playing audio when the app is
+  /// backgrounded, so pause it on any non-foreground state.
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state != AppLifecycleState.resumed) {
       _saveProgress();
       _controller?.pause();
-      _pauseEmbed();
     }
-  }
-
-  /// Best-effort pause of media inside the embed WebView (provider players keep
-  /// emitting audio in the background otherwise).
-  void _pauseEmbed() {
-    final c = _embedController;
-    if (c == null) return;
-    try {
-      c.runJavaScript(
-        "document.querySelectorAll('video,audio').forEach(function(e){e.pause();});",
-      );
-    } catch (_) {}
   }
 
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     _saveProgress();
-    _stCancel?.cancel(); // stop any in-flight Stardima resolution
     _hideTimer?.cancel();
     _saveTimer?.cancel();
-    _clearEmbed(); // stop + drop any embed WebView (no lingering audio)
     _disposeController(); // fully stop + dispose the video controller (frees audio)
     _playFocus.dispose();
     _playerScope.dispose();
@@ -507,7 +356,6 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
   @override
   Widget build(BuildContext context) {
     final t = ref.watch(stringsProvider);
-    final embed = _embedUrl != null && _embedController != null;
     return PopScope(
       onPopInvokedWithResult: (didPop, _) => _saveProgress(),
       child: FocusScope(
@@ -524,16 +372,15 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
               Positioned.fill(
                 child: ColoredBox(
                   color: Colors.black,
-                  child: embed
-                      ? WebViewWidget(controller: _embedController!)
-                      : (_controller != null && _controller!.value.isInitialized)
-                          ? Center(
-                              child: AspectRatio(
-                                aspectRatio: _controller!.value.aspectRatio,
-                                child: VideoPlayer(_controller!),
-                              ),
-                            )
-                          : const SizedBox.expand(),
+                  child: (_controller != null &&
+                          _controller!.value.isInitialized)
+                      ? Center(
+                          child: AspectRatio(
+                            aspectRatio: _controller!.value.aspectRatio,
+                            child: VideoPlayer(_controller!),
+                          ),
+                        )
+                      : const SizedBox.expand(),
                 ),
               ),
               // Control overlays on the scaled 1920×1080 design canvas. The
@@ -568,7 +415,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
                           duration: const Duration(milliseconds: 350),
                           child: IgnorePointer(
                             ignoring: !_controlsShown,
-                            child: _controls(t, embed),
+                            child: _controls(t),
                           ),
                         ),
                       ),
@@ -607,7 +454,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
         ]),
       );
 
-  Widget _controls(Map<String, String> t, bool embed) {
+  Widget _controls(Map<String, String> t) {
     return DecoratedBox(
       decoration: const BoxDecoration(
         gradient: LinearGradient(
@@ -626,7 +473,6 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
           child: Row(children: [
             _CtrlButton(
                 icon: Icons.arrow_back,
-                autofocus: embed,
                 onPressed: () => Navigator.maybePop(context)),
             const SizedBox(width: 20),
             Expanded(
@@ -650,38 +496,26 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
                 ],
               ),
             ),
-            if (embed)
-              // In embed mode the provider's own controls handle playback;
-              // expose a server button so the user can switch source.
-              _CtrlButton(
-                icon: Icons.dns_outlined,
-                label: t['server'],
-                onPressed: () => setState(() => _serverPanelOpen = true),
-              )
-            else
-              Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 20, vertical: 11),
-                decoration: BoxDecoration(
-                    color: Colors.white.withValues(alpha: 0.1),
-                    borderRadius: BorderRadius.circular(999)),
-                child: Text.rich(TextSpan(children: [
-                  TextSpan(
-                      text: '${t['nowPlaying']} ',
-                      style: const TextStyle(color: AppColors.inkSoft)),
-                  TextSpan(
-                      text: _activeStardima != null
-                          ? _activeStardima!.name
-                          : '${t['server']} $_server',
-                      style: const TextStyle(color: AppColors.ink)),
-                ]),
-                    style: const TextStyle(
-                        fontSize: 20, fontWeight: FontWeight.w800)),
-              ),
+            Container(
+              padding:
+                  const EdgeInsets.symmetric(horizontal: 20, vertical: 11),
+              decoration: BoxDecoration(
+                  color: Colors.white.withValues(alpha: 0.1),
+                  borderRadius: BorderRadius.circular(999)),
+              child: Text.rich(TextSpan(children: [
+                TextSpan(
+                    text: '${t['nowPlaying']} ',
+                    style: const TextStyle(color: AppColors.inkSoft)),
+                TextSpan(
+                    text: '${t['server']} $_server',
+                    style: const TextStyle(color: AppColors.ink)),
+              ]),
+                  style: const TextStyle(
+                      fontSize: 20, fontWeight: FontWeight.w800)),
+            ),
           ]),
         ),
-        // bottom (native transport only; embeds use their own controls)
-        if (!embed)
+        // bottom (native transport)
         Positioned(
           left: Spacing.pad,
           right: Spacing.pad,
@@ -785,31 +619,14 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
             Expanded(
               child: ListView(
                 children: [
-                  _sectionLabel(t['st_catalog']!),
                   for (int i = 0; i < servers.length; i++)
                     Padding(
                       padding: const EdgeInsets.only(bottom: 14),
                       child: _ServerOption(
                         label: '${t['server']} ${servers[i]}',
-                        selected:
-                            _activeStardima == null && servers[i] == _server,
-                        autofocus:
-                            _activeStardima == null && servers[i] == _server,
+                        selected: servers[i] == _server,
+                        autofocus: servers[i] == _server,
                         onPressed: () => _switchServer(servers[i]),
-                      ),
-                    ),
-                  const SizedBox(height: 10),
-                  _sectionLabel(t['st_extra']!),
-                  _StatusNote(status: _stStatus, count: _stServers.length, t: t),
-                  const SizedBox(height: 12),
-                  for (final s in _stServers)
-                    Padding(
-                      padding: const EdgeInsets.only(bottom: 14),
-                      child: _ServerOption(
-                        label: s.name,
-                        selected: identical(_activeStardima, s),
-                        autofocus: false,
-                        onPressed: () => _playStardima(s),
                       ),
                     ),
                 ],
@@ -827,15 +644,6 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
     );
   }
 
-  Widget _sectionLabel(String s) => Padding(
-        padding: const EdgeInsets.only(bottom: 12),
-        child: Text(s,
-            style: const TextStyle(
-                fontSize: 18,
-                fontWeight: FontWeight.w900,
-                letterSpacing: 1,
-                color: AppColors.inkMute)),
-      );
 }
 
 /// Circular / text control button (design `.ctrl`).
@@ -1059,68 +867,3 @@ class _ServerOption extends StatelessWidget {
   }
 }
 
-/// Live, per-item status line for the Stardima resolution. Sits visually
-/// separate from the selectable server entries (it is not focusable).
-class _StatusNote extends StatelessWidget {
-  final StStatus status;
-  final int count;
-  final Map<String, String> t;
-  const _StatusNote({required this.status, required this.count, required this.t});
-
-  @override
-  Widget build(BuildContext context) {
-    if (status == StStatus.idle) return const SizedBox.shrink();
-    late final String text;
-    late final Widget leading;
-    late final Color tint;
-    switch (status) {
-      case StStatus.loading:
-        text = t['st_searching']!;
-        tint = AppColors.inkSoft;
-        leading = const SizedBox(
-            width: 18,
-            height: 18,
-            child: CircularProgressIndicator(
-                strokeWidth: 2.4, color: AppColors.primary2));
-        break;
-      case StStatus.found:
-        text = t['st_found']!.replaceAll('{n}', '$count');
-        tint = AppColors.accent;
-        leading = const Icon(Icons.check_circle, size: 20, color: AppColors.accent);
-        break;
-      case StStatus.none:
-        text = t['st_none']!;
-        tint = AppColors.inkMute;
-        leading =
-            const Icon(Icons.info_outline, size: 20, color: AppColors.inkMute);
-        break;
-      case StStatus.error:
-        text = t['st_error']!;
-        tint = AppColors.primary2;
-        leading = const Icon(Icons.error_outline,
-            size: 20, color: AppColors.primary2);
-        break;
-      case StStatus.idle:
-        return const SizedBox.shrink();
-    }
-    return Container(
-      margin: const EdgeInsets.only(bottom: 6),
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-      decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.04),
-        borderRadius: BorderRadius.circular(12),
-        border: Border(
-            left: BorderSide(color: tint.withValues(alpha: 0.8), width: 3)),
-      ),
-      child: Row(children: [
-        leading,
-        const SizedBox(width: 12),
-        Expanded(
-          child: Text(text,
-              style: TextStyle(
-                  fontSize: 19, fontWeight: FontWeight.w700, color: tint)),
-        ),
-      ]),
-    );
-  }
-}

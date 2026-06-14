@@ -1,8 +1,6 @@
-import 'package:flutter/services.dart' show rootBundle;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../services/storage_service.dart';
 import '../services/catalog_service.dart';
-import '../services/stardima_service.dart';
 import '../services/voice_search_service.dart';
 import '../i18n/strings.dart';
 
@@ -14,15 +12,6 @@ final catalogProvider = Provider<CatalogService>(
 
 /// Bumped after an import so dependent UI rebuilds (catalog mutates in place).
 final catalogRevProvider = StateProvider<int>((ref) => 0);
-
-/// Stardima resolver. The series index is loaded once (lazily) from the bundled
-/// asset; resolution itself runs only on-demand when the player opens an item.
-final stardimaProvider = Provider<StardimaService>((ref) {
-  final svc = StardimaService();
-  rootBundle.loadString('assets/stardima_index.json').then(svc.setIndex);
-  ref.onDispose(svc.dispose);
-  return svc;
-});
 
 // ---------------- Settings (language + playback prefs) ----------------
 class SettingsState {

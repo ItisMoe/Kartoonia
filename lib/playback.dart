@@ -20,7 +20,6 @@ void playItem(BuildContext context, WidgetRef ref, ContentItem item,
         title: item.title,
         episodeLabel: t['movie']!,
         episodeNumber: 0,
-        seasonNumber: null,
       ),
     );
     return;
@@ -53,7 +52,6 @@ void playItem(BuildContext context, WidgetRef ref, ContentItem item,
       title: show.title,
       episodeLabel: '${t['epShort']}${target.episodeNumber}',
       episodeNumber: target.episodeNumber,
-      seasonNumber: target.seasonNumber,
       episodes: show.episodes,
     ),
   );
