@@ -3,9 +3,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:video_player/video_player.dart';
+import '../models/catalog_source.dart';
 import '../models/content_item.dart';
+import '../services/playback_resolver.dart';
 import '../services/storage_service.dart';
-import '../services/token_service.dart';
 import '../state/app_state.dart';
 import '../theme/theme.dart';
 import '../widgets/focusable.dart';
@@ -13,11 +14,15 @@ import '../widgets/tv_scaler.dart';
 
 class PlayerArgs {
   final String itemId;
-  final String pageUrl; // PAGE url to fetch fresh tokens from
+
+  /// Arabic Toons: the episode/movie PAGE url to fetch fresh tokens from.
+  /// Stardima: the `play_url` to run through the resolver pipeline.
+  final String pageUrl;
   final String title; // Arabic title (shown in the player header)
   final String episodeLabel;
   final int episodeNumber;
   final List<Episode>? episodes; // for prev/next (shows)
+  final CatalogSource source;
 
   const PlayerArgs({
     required this.itemId,
@@ -26,6 +31,7 @@ class PlayerArgs {
     required this.episodeLabel,
     required this.episodeNumber,
     this.episodes,
+    this.source = CatalogSource.arabicToons,
   });
 }
 
@@ -51,8 +57,15 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
 
   int _server = 1;
   List<int> _available = const [1];
+  Map<int, PlayableServer> _serverMap = const {};
   int _retry = 0;
   int _reqId = 0;
+
+  // Stardima resolution is expensive (multi-request pipeline), so cache the
+  // resolved server list per play_url to make server-switching instant. Arabic
+  // Toons must always re-fetch (tokens are IP/time-bound and expire).
+  List<PlayableServer>? _resolvedCache;
+  String? _resolvedFor;
 
   bool _loading = true;
   bool _error = false;
@@ -81,7 +94,11 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
     _pageUrl = widget.args.pageUrl;
     _epLabel = widget.args.episodeLabel;
     _epNumber = widget.args.episodeNumber;
-    _server = ref.read(storageProvider).getPreferredServer();
+    // Stardima: always open the FIRST resolved link; Arabic Toons honors the
+    // user's saved preferred server.
+    _server = widget.args.source == CatalogSource.stardima
+        ? 1
+        : ref.read(storageProvider).getPreferredServer();
 
     _load(_server);
     _flashControls();
@@ -113,6 +130,21 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
     }
   }
 
+  /// Resolve the playable server list for the current page/play url. Stardima
+  /// results are cached per url; Arabic Toons always fetches fresh tokens.
+  Future<List<PlayableServer>> _resolveServers() async {
+    if (widget.args.source == CatalogSource.stardima) {
+      if (_resolvedFor == _pageUrl && _resolvedCache != null) {
+        return _resolvedCache!;
+      }
+      final servers = await resolvePlayback(widget.args.source, _pageUrl);
+      _resolvedFor = _pageUrl;
+      _resolvedCache = servers;
+      return servers;
+    }
+    return resolvePlayback(widget.args.source, _pageUrl);
+  }
+
   Future<void> _load(int server) async {
     final id = ++_reqId;
     setState(() {
@@ -123,22 +155,28 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
       _server = server;
     });
     try {
-      final servers = await fetchFreshTokens(_pageUrl);
+      final servers = await _resolveServers();
       if (id != _reqId || !mounted) return;
       if (servers.isEmpty) throw Exception('no servers');
-      _available = servers.map((s) => s.serverNumber).toList();
-      final pick = servers.firstWhere((s) => s.serverNumber == server,
-          orElse: () => servers.first);
-      _server = pick.serverNumber;
+      _serverMap = {for (final s in servers) s.number: s};
+      _available = servers.map((s) => s.number).toList();
+      final pick = _serverMap[server] ?? servers.first;
+      _server = pick.number;
 
       final old = _controller;
       final c = VideoPlayerController.networkUrl(
-        Uri.parse(pick.rawUrl),
-        httpHeaders: kStreamHeaders,
+        Uri.parse(pick.url),
+        httpHeaders: pick.headers,
       );
       _controller = c;
       old?.removeListener(_onTick);
-      await c.initialize();
+      // Cap Stardima loads so a dead/hanging host advances to the next link
+      // instead of stalling the whole chain (Arabic Toons is left untouched).
+      if (widget.args.source == CatalogSource.stardima) {
+        await c.initialize().timeout(const Duration(seconds: 18));
+      } else {
+        await c.initialize();
+      }
       if (id != _reqId || !mounted) {
         // Superseded or the screen is gone — tear down BOTH the new controller
         // and the previous one so neither keeps playing in the background.
@@ -160,20 +198,34 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
 
   void _onError() {
     if (!mounted) return;
-    if (_retry < 2) {
+    // Arabic Toons benefits from retrying the same server (a fresh token fetch
+    // can succeed). Stardima hosts that fail won't recover on retry, so move to
+    // the next resolved link immediately — open them one by one.
+    final maxRetry = widget.args.source == CatalogSource.stardima ? 0 : 2;
+    if (_retry < maxRetry) {
       _retry++;
       Future.delayed(const Duration(milliseconds: 1500), () {
         if (mounted) _load(_server);
       });
-    } else if (_server < 3) {
-      _retry = 0;
-      _load(_server + 1);
-    } else {
-      setState(() {
-        _error = true;
-        _loading = false;
-      });
+      return;
     }
+    // Try the next link in order, one by one.
+    final idx = _available.indexOf(_server);
+    if (idx >= 0 && idx < _available.length - 1) {
+      _retry = 0;
+      _load(_available[idx + 1]);
+      return;
+    }
+    // Every link failed. Drop the cached resolution so the manual Retry re-runs
+    // the full resolver pipeline (the links may simply have gone stale).
+    if (widget.args.source == CatalogSource.stardima) {
+      _resolvedCache = null;
+      _resolvedFor = null;
+    }
+    setState(() {
+      _error = true;
+      _loading = false;
+    });
   }
 
   void _maybeRestore() {
@@ -399,7 +451,10 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
                                 const CircularProgressIndicator(
                                     color: AppColors.primary),
                                 const SizedBox(height: 20),
-                                Text(t['preparing']!,
+                                Text(
+                                    widget.args.source == CatalogSource.stardima
+                                        ? t['resolving']!
+                                        : t['preparing']!,
                                     style: const TextStyle(
                                         fontSize: 24,
                                         fontWeight: FontWeight.w700,
@@ -507,7 +562,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
                     text: '${t['nowPlaying']} ',
                     style: const TextStyle(color: AppColors.inkSoft)),
                 TextSpan(
-                    text: '${t['server']} $_server',
+                    text: _serverMap[_server]?.label ?? '${t['server']} $_server',
                     style: const TextStyle(color: AppColors.ink)),
               ]),
                   style: const TextStyle(
@@ -623,7 +678,8 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
                     Padding(
                       padding: const EdgeInsets.only(bottom: 14),
                       child: _ServerOption(
-                        label: '${t['server']} ${servers[i]}',
+                        label: _serverMap[servers[i]]?.label ??
+                            '${t['server']} ${servers[i]}',
                         selected: servers[i] == _server,
                         autofocus: servers[i] == _server,
                         onPressed: () => _switchServer(servers[i]),

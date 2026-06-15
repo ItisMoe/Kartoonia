@@ -12,7 +12,7 @@ Future<void> main() async {
 
   // Load services before the first frame; the branded splash covers it.
   final storage = await StorageService.create();
-  final catalog = await CatalogService.load();
+  final catalog = await CatalogService.load(storage.getCatalogSource());
 
   runApp(
     ProviderScope(

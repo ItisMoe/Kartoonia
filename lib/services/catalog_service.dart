@@ -1,8 +1,13 @@
 import 'dart:convert';
 import 'package:flutter/services.dart' show rootBundle;
+import '../models/catalog_source.dart';
 import '../models/content_item.dart';
+import '../models/stardima_adapter.dart';
 
-/// Loads, indexes and queries the bundled `assets/catalog.json`.
+/// Loads, indexes and queries a bundled catalog. The active source (Arabic Toons
+/// or Stardima) is chosen by the persisted setting; each has its own parser but
+/// both normalize into the same [ContentItem] model, so every query/render path
+/// below is source-agnostic.
 /// Ported + extended from the RN `catalogService.ts` (adds genres; drops
 /// ratings).
 
@@ -10,34 +15,50 @@ class CatalogService {
   List<Map<String, dynamic>> _rawShows = [];
   List<Map<String, dynamic>> _rawMovies = [];
 
+  /// The catalog currently loaded into memory.
+  CatalogSource source;
+
   late List<Show> shows;
   late List<Movie> movies;
   late List<ContentItem> all;
   late Map<String, ContentItem> _byId;
 
-  CatalogService._();
+  CatalogService._(this.source);
 
-  static Future<CatalogService> load() async {
-    final svc = CatalogService._();
-    final jsonStr = await rootBundle.loadString('assets/catalog.json');
-    svc._ingest(jsonStr);
+  static Future<CatalogService> load(CatalogSource source) async {
+    final svc = CatalogService._(source);
+    await svc._loadSource(source);
     return svc;
   }
 
-  void _ingest(String jsonStr) {
-    final data = jsonDecode(jsonStr) as Map<String, dynamic>;
-    _rawShows = ((data['shows'] as List?) ?? const [])
-        .map((e) => (e as Map).cast<String, dynamic>())
-        .toList();
-    _rawMovies = ((data['movies'] as List?) ?? const [])
-        .map((e) => (e as Map).cast<String, dynamic>())
-        .toList();
-    _reparse();
+  /// Swap the active catalog in place (re-fetch asset, re-parse, re-index) so
+  /// the UI can rebuild against the newly selected source from scratch.
+  Future<void> switchTo(CatalogSource next) async {
+    if (next == source && _byId.isNotEmpty) return;
+    await _loadSource(next);
   }
 
-  void _reparse() {
-    shows = _rawShows.map(Show.fromJson).toList();
-    movies = _rawMovies.map(Movie.fromJson).toList();
+  Future<void> _loadSource(CatalogSource src) async {
+    final jsonStr = await rootBundle.loadString(src.assetPath);
+    final data = jsonDecode(jsonStr) as Map<String, dynamic>;
+    source = src;
+    switch (src) {
+      case CatalogSource.arabicToons:
+        _rawShows = ((data['shows'] as List?) ?? const [])
+            .map((e) => (e as Map).cast<String, dynamic>())
+            .toList();
+        _rawMovies = ((data['movies'] as List?) ?? const [])
+            .map((e) => (e as Map).cast<String, dynamic>())
+            .toList();
+        shows = _rawShows.map(Show.fromJson).toList();
+        movies = _rawMovies.map(Movie.fromJson).toList();
+      case CatalogSource.stardima:
+        _rawShows = const [];
+        _rawMovies = const [];
+        final (s, m) = StardimaAdapter.parse(data);
+        shows = s;
+        movies = m;
+    }
     all = [...shows, ...movies];
     _byId = {for (final i in all) i.id: i};
   }

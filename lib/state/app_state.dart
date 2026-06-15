@@ -1,4 +1,5 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../models/catalog_source.dart';
 import '../services/storage_service.dart';
 import '../services/catalog_service.dart';
 import '../services/voice_search_service.dart';
@@ -10,8 +11,42 @@ final storageProvider = Provider<StorageService>(
 final catalogProvider = Provider<CatalogService>(
     (ref) => throw UnimplementedError('catalogProvider must be overridden'));
 
-/// Bumped after an import so dependent UI rebuilds (catalog mutates in place).
+/// Bumped after an import or a source switch so dependent UI rebuilds (the
+/// catalog mutates in place).
 final catalogRevProvider = StateProvider<int>((ref) => 0);
+
+// ---------------- Catalog source (Arabic Toons | Stardima) ----------------
+/// True while a source switch is loading/parsing the new catalog asset.
+final catalogSwitchingProvider = StateProvider<bool>((ref) => false);
+
+/// The active catalog source, persisted across restarts. Changing it reloads the
+/// catalog in place and bumps [catalogRevProvider] so the whole UI re-renders
+/// from the newly selected source.
+class CatalogSourceNotifier extends Notifier<CatalogSource> {
+  @override
+  CatalogSource build() => ref.read(storageProvider).getCatalogSource();
+
+  Future<void> setSource(CatalogSource next) async {
+    if (next == state) return;
+    ref.read(catalogSwitchingProvider.notifier).state = true;
+    try {
+      await ref.read(storageProvider).setCatalogSource(next);
+      await ref.read(catalogProvider).switchTo(next);
+      state = next;
+      // Reset transient browse/search filters that may not exist in the new
+      // source, then force every catalog-bound screen to rebuild.
+      ref.read(browseProvider.notifier).reset();
+      ref.read(searchProvider.notifier).clear();
+      ref.read(catalogRevProvider.notifier).state++;
+    } finally {
+      ref.read(catalogSwitchingProvider.notifier).state = false;
+    }
+  }
+}
+
+final catalogSourceProvider =
+    NotifierProvider<CatalogSourceNotifier, CatalogSource>(
+        CatalogSourceNotifier.new);
 
 // ---------------- Settings (language + playback prefs) ----------------
 class SettingsState {
@@ -92,24 +127,38 @@ class BrowseState {
   final String kind; // 'tv' | 'movies' | 'mylist'
   final String? letter;
   final String alphaScript; // 'en' | 'ar'
+  final String? category; // Stardima category filter (null = all)
   const BrowseState(
-      {this.kind = 'tv', this.letter, this.alphaScript = 'ar'});
-  BrowseState copy({String? kind, String? letter, bool clearLetter = false, String? alphaScript}) =>
+      {this.kind = 'tv', this.letter, this.alphaScript = 'ar', this.category});
+  BrowseState copy(
+          {String? kind,
+          String? letter,
+          bool clearLetter = false,
+          String? alphaScript,
+          String? category,
+          bool clearCategory = false}) =>
       BrowseState(
         kind: kind ?? this.kind,
         letter: clearLetter ? null : (letter ?? this.letter),
         alphaScript: alphaScript ?? this.alphaScript,
+        category: clearCategory ? null : (category ?? this.category),
       );
 }
 
 class BrowseNotifier extends Notifier<BrowseState> {
   @override
   BrowseState build() => const BrowseState();
-  void setKind(String k) => state = state.copy(kind: k, clearLetter: true);
+  void setKind(String k) =>
+      state = state.copy(kind: k, clearLetter: true, clearCategory: true);
   void setLetter(String? l) => state =
       l == null ? state.copy(clearLetter: true) : state.copy(letter: l);
   void setScript(String s) =>
       state = state.copy(alphaScript: s, clearLetter: true);
+  void setCategory(String? c) => state =
+      c == null ? state.copy(clearCategory: true) : state.copy(category: c);
+
+  /// Clear all transient filters (used when the catalog source changes).
+  void reset() => state = const BrowseState();
 }
 
 final browseProvider =

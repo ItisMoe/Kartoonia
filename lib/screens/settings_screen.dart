@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../models/catalog_source.dart';
 import '../services/youtube_service.dart';
 import '../state/app_state.dart';
 import '../theme/theme.dart';
@@ -16,6 +17,8 @@ class SettingsScreen extends ConsumerWidget {
     final settings = ref.watch(settingsProvider);
     final sn = ref.read(settingsProvider.notifier);
     final ytKey = ref.watch(ytKeyProvider);
+    final source = ref.watch(catalogSourceProvider);
+    final switching = ref.watch(catalogSwitchingProvider);
 
     Widget opt(String label, bool selected, VoidCallback onPressed,
             {bool autofocus = false}) =>
@@ -90,9 +93,41 @@ class SettingsScreen extends ConsumerWidget {
                 ),
               ]),
               const SizedBox(height: 52),
-              group(t['set_language']!, [
-                opt('English', settings.lang == 'en', () => sn.setLang('en'),
+              // Catalog source — which backend the whole app renders/plays from.
+              group(t['set_source']!, [
+                opt(t['source_arabictoons']!,
+                    source == CatalogSource.arabicToons,
+                    () => ref
+                        .read(catalogSourceProvider.notifier)
+                        .setSource(CatalogSource.arabicToons),
                     autofocus: true),
+                opt(
+                    t['source_stardima']!,
+                    source == CatalogSource.stardima,
+                    () => ref
+                        .read(catalogSourceProvider.notifier)
+                        .setSource(CatalogSource.stardima)),
+                if (switching)
+                  const Padding(
+                    padding: EdgeInsets.only(left: 8, top: 4),
+                    child: SizedBox(
+                      width: 26,
+                      height: 26,
+                      child: CircularProgressIndicator(
+                          strokeWidth: 3, color: AppColors.primary),
+                    ),
+                  ),
+              ]),
+              Padding(
+                padding: const EdgeInsets.only(bottom: 40, top: 4),
+                child: Text(t['set_source_hint']!,
+                    style: const TextStyle(
+                        fontSize: 20,
+                        fontWeight: FontWeight.w700,
+                        color: AppColors.inkMute)),
+              ),
+              group(t['set_language']!, [
+                opt('English', settings.lang == 'en', () => sn.setLang('en')),
                 opt('العربية', settings.lang == 'ar', () => sn.setLang('ar')),
               ]),
               group(t['set_subtitles']!, [

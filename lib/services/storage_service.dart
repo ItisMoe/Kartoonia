@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'package:shared_preferences/shared_preferences.dart';
+import '../models/catalog_source.dart';
 
 /// Persistence for watchlist, watch progress (continue watching) and prefs.
 /// Backed by SharedPreferences. Ported from the RN `storageService.ts`.
@@ -49,6 +50,7 @@ class StorageService {
   static const _kLang = 'kt/lang';
   static const _kPrefs = 'kt/prefs'; // motion/autoplay/subtitles
   static const _kYtKey = 'kt/ytKey'; // user-set YouTube Data API key override
+  static const _kCatalogSource = 'kt/catalogSource'; // arabicToons | stardima
 
   final SharedPreferences _prefs;
   StorageService(this._prefs);
@@ -123,6 +125,13 @@ class StorageService {
   // First launch defaults to English; persisted once the user picks a language.
   String getLang() => _prefs.getString(_kLang) ?? 'en';
   Future<void> setLang(String l) => _prefs.setString(_kLang, l);
+
+  // Catalog source — which backend the catalog renders from. Defaults to
+  // Arabic Toons (the legacy source) on first launch.
+  CatalogSource getCatalogSource() =>
+      CatalogSource.fromId(_prefs.getString(_kCatalogSource));
+  Future<void> setCatalogSource(CatalogSource s) =>
+      _prefs.setString(_kCatalogSource, s.id);
 
   // YouTube Data API key override. Empty => use the bundled default key.
   String getYoutubeKey() => _prefs.getString(_kYtKey) ?? '';

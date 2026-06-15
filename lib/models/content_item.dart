@@ -1,4 +1,5 @@
 import '../utils/image_urls.dart';
+import 'catalog_source.dart';
 
 /// Typed catalog models. Parsed from the heterogeneous catalog.json:
 ///  - shows have no top-level id/description; episodes live under seasons[],
@@ -148,6 +149,14 @@ sealed class ContentItem {
   TmdbData? get tmdb;
   String get type;
 
+  /// Which catalog this item came from — drives the playback path (direct
+  /// tokenized URL vs. the Stardima resolver).
+  CatalogSource get source;
+
+  /// Browse/filter categories. Arabic Toons uses [genres] (TMDB); Stardima maps
+  /// its single `category` here. Empty when the item is uncategorised.
+  List<String> get categories => genres;
+
   /// Card poster — tmdb w500 → tmdb poster(downsized) → thumbnail.
   String get posterUrl {
     final t = tmdb;
@@ -201,6 +210,8 @@ class Show extends ContentItem {
   final List<Season> seasons;
   final List<Episode> episodes; // flattened across all seasons
   final String? pageUrl;
+  @override
+  final CatalogSource source;
 
   Show({
     required this.id,
@@ -213,6 +224,7 @@ class Show extends ContentItem {
     required this.seasons,
     required this.episodes,
     this.pageUrl,
+    this.source = CatalogSource.arabicToons,
   });
 
   @override
@@ -265,6 +277,8 @@ class Movie extends ContentItem {
 
   final String pageUrl;
   final List<ServerSource> servers;
+  @override
+  final CatalogSource source;
 
   Movie({
     required this.id,
@@ -274,6 +288,7 @@ class Movie extends ContentItem {
     this.tmdb,
     required this.pageUrl,
     required this.servers,
+    this.source = CatalogSource.arabicToons,
   });
 
   @override
