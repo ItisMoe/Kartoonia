@@ -50,7 +50,6 @@ class _YoutubeScreenState extends ConsumerState<YoutubeScreen>
     PlayerService.instance.ensureCreated();
     _subscribe();
     _start();
-    _flashControls();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) _playFocus.requestFocus();
     });
@@ -110,6 +109,10 @@ class _YoutubeScreenState extends ConsumerState<YoutubeScreen>
       await _openAndWait(url, const Duration(seconds: 30));
       if (!mounted) return;
       setState(() => _loading = false);
+      // Now that playback is actually ready (and _playing has flipped true),
+      // start the auto-hide countdown. Flashing during loading was a no-op:
+      // the timer's `_playing` guard skipped hiding, so controls stuck on.
+      _flashControls();
     } on YoutubeException catch (e) {
       debugPrint('YouTube trailer failed: $e');
       _fail(e.kind == YoutubeErrorKind.quota
@@ -310,8 +313,8 @@ class _YoutubeScreenState extends ConsumerState<YoutubeScreen>
                 scale: focused ? 1.06 : 1,
                 duration: const Duration(milliseconds: 150),
                 child: Container(
-                  width: 60,
-                  height: 60,
+                  width: 46,
+                  height: 46,
                   decoration: BoxDecoration(
                       shape: BoxShape.circle,
                       color: focused
@@ -319,7 +322,7 @@ class _YoutubeScreenState extends ConsumerState<YoutubeScreen>
                           : Colors.black.withValues(alpha: 0.5)),
                   child: Icon(Icons.arrow_back,
                       color: focused ? AppColors.onFocus : Colors.white,
-                      size: 30),
+                      size: 24),
                 ),
               ),
             ),
@@ -341,7 +344,7 @@ class _YoutubeScreenState extends ConsumerState<YoutubeScreen>
         ),
       ),
       child: Padding(
-        padding: const EdgeInsets.fromLTRB(56, 0, 56, 56),
+        padding: const EdgeInsets.fromLTRB(44, 0, 44, 40),
         child: Column(
           mainAxisAlignment: MainAxisAlignment.end,
           children: [
@@ -353,7 +356,7 @@ class _YoutubeScreenState extends ConsumerState<YoutubeScreen>
                 onSeekBy: _seekBy,
               ),
             ),
-            const SizedBox(height: 26),
+            const SizedBox(height: 18),
             Focusable(
               focusNode: _playFocus,
               onPressed: _togglePlay,
@@ -361,8 +364,8 @@ class _YoutubeScreenState extends ConsumerState<YoutubeScreen>
                 scale: focused ? 1.06 : 1,
                 duration: const Duration(milliseconds: 150),
                 child: Container(
-                  width: 80,
-                  height: 80,
+                  width: 54,
+                  height: 54,
                   decoration: BoxDecoration(
                     shape: BoxShape.circle,
                     color: focused
@@ -370,7 +373,7 @@ class _YoutubeScreenState extends ConsumerState<YoutubeScreen>
                         : Colors.white.withValues(alpha: 0.12),
                   ),
                   child: Icon(_playing ? Icons.pause : Icons.play_arrow,
-                      size: 38,
+                      size: 28,
                       color: focused ? AppColors.onFocus : AppColors.ink),
                 ),
               ),
@@ -410,8 +413,8 @@ class _YtScrubBar extends StatelessWidget {
     return Row(children: [
       Text(_fmt(position),
           style: const TextStyle(
-              fontSize: 22, fontWeight: FontWeight.w800, color: AppColors.inkSoft)),
-      const SizedBox(width: 22),
+              fontSize: 15, fontWeight: FontWeight.w800, color: AppColors.inkSoft)),
+      const SizedBox(width: 16),
       Expanded(
         child: Focus(
           onKeyEvent: (node, event) {
@@ -431,10 +434,10 @@ class _YtScrubBar extends StatelessWidget {
           child: Builder(builder: (context) {
             final focused = Focus.of(context).hasFocus;
             return SizedBox(
-              height: 28,
+              height: 20,
               child: Stack(alignment: Alignment.centerLeft, children: [
                 Container(
-                  height: 8,
+                  height: 5,
                   decoration: BoxDecoration(
                       color: Colors.white.withValues(alpha: 0.22),
                       borderRadius: BorderRadius.circular(6)),
@@ -442,7 +445,7 @@ class _YtScrubBar extends StatelessWidget {
                 FractionallySizedBox(
                   widthFactor: frac,
                   child: Container(
-                    height: 8,
+                    height: 5,
                     decoration: BoxDecoration(
                         gradient: const LinearGradient(
                             colors: AppColors.primaryGradient),
@@ -452,8 +455,8 @@ class _YtScrubBar extends StatelessWidget {
                 Align(
                   alignment: Alignment(frac * 2 - 1, 0),
                   child: Container(
-                    width: focused ? 30 : 26,
-                    height: focused ? 30 : 26,
+                    width: focused ? 20 : 16,
+                    height: focused ? 20 : 16,
                     decoration: BoxDecoration(
                       shape: BoxShape.circle,
                       color: Colors.white,
@@ -476,10 +479,10 @@ class _YtScrubBar extends StatelessWidget {
           }),
         ),
       ),
-      const SizedBox(width: 22),
+      const SizedBox(width: 16),
       Text(_fmt(duration),
           style: const TextStyle(
-              fontSize: 22, fontWeight: FontWeight.w800, color: AppColors.inkSoft)),
+              fontSize: 15, fontWeight: FontWeight.w800, color: AppColors.inkSoft)),
     ]);
   }
 }
