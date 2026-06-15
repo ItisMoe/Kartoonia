@@ -1,0 +1,73 @@
+name: Release APK
+
+# Builds the release APK and attaches it to a GitHub Release whenever a version
+# tag (v*) is pushed. The asset is always named Kartoonia.apk so the stable link
+# https://github.com/ItisMoe/Kartoonia/releases/latest/download/Kartoonia.apk
+# always serves the newest build. Can also be run manually from the Actions tab.
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+permissions:
+  contents: write # required to create the Release and upload the APK
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    env:
+      # Surfaced at job level so the signing step's `if` can test for its presence.
+      KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.44.1'
+          channel: stable
+          cache: true
+
+      - name: Install dependencies
+        run: flutter pub get
+
+      # OPTIONAL — release signing. Runs only if the four signing secrets exist;
+      # otherwise the build falls back to the debug key (fine for sideloading).
+      - name: Configure release signing
+        if: ${{ env.KEYSTORE_BASE64 != '' }}
+        env:
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+        run: |
+          echo "$KEYSTORE_BASE64" | base64 --decode > android/app/keystore.jks
+          cat > android/key.properties <<EOF
+          storeFile=keystore.jks
+          storePassword=$KEYSTORE_PASSWORD
+          keyAlias=$KEY_ALIAS
+          keyPassword=$KEY_PASSWORD
+          EOF
+
+      - name: Build release APK
+        run: flutter build apk --release
+
+      - name: Rename APK to stable name
+        run: cp build/app/outputs/flutter-apk/app-release.apk Kartoonia.apk
+
+      - name: Publish to GitHub Release
+        # Only tag pushes create a Release; manual runs just build (a sanity check).
+        if: ${{ startsWith(github.ref, 'refs/tags/') }}
+        uses: softprops/action-gh-release@v2
+        with:
+          files: Kartoonia.apk
+          fail_on_unmatched_files: true
+          generate_release_notes: true

@@ -32,13 +32,28 @@ class CatalogImage extends StatelessWidget {
         ),
       );
 
-  Widget _image(String u, {Widget Function()? onError}) => CachedNetworkImage(
-        imageUrl: u,
-        fit: fit,
-        httpHeaders: needsReferer(u) ? kImageHeaders : null,
-        fadeInDuration: const Duration(milliseconds: 200),
-        placeholder: (_, _) => _placeholder(),
-        errorWidget: (_, _, _) => (onError ?? _placeholder)(),
+  Widget _image(String u, {Widget Function()? onError}) => LayoutBuilder(
+        builder: (context, constraints) {
+          // Decode at the size we actually paint, not the source's native
+          // resolution. Full-res poster/backdrop bitmaps (the carousel swaps a
+          // fresh backdrop every few seconds) bloat memory and cause GC-driven
+          // jank after a while; capping the decode width to the display size
+          // keeps each bitmap small. Height follows via the aspect ratio.
+          final dpr = MediaQuery.maybeOf(context)?.devicePixelRatio ?? 1.0;
+          final w = constraints.maxWidth;
+          final cacheW = w.isFinite && w > 0
+              ? (w * dpr).round().clamp(16, 1920)
+              : null;
+          return CachedNetworkImage(
+            imageUrl: u,
+            fit: fit,
+            memCacheWidth: cacheW,
+            httpHeaders: needsReferer(u) ? kImageHeaders : null,
+            fadeInDuration: const Duration(milliseconds: 200),
+            placeholder: (_, _) => _placeholder(),
+            errorWidget: (_, _, _) => (onError ?? _placeholder)(),
+          );
+        },
       );
 
   @override

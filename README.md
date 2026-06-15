@@ -8,8 +8,21 @@ The hard problem this app solves is **playback**: neither backend exposes a stab
 
 ---
 
+## Download
+
+📺 **[Download the latest APK](https://github.com/ItisMoe/Kartoonia/releases/latest/download/Kartoonia.apk)** · [All releases](https://github.com/ItisMoe/Kartoonia/releases/latest)
+
+Sideload the APK onto your Android TV / Google TV device (Android 11+). On most devices: enable **Settings → System → Developer options → Install unknown apps** (or **Apps → Security**), then install via a file manager / [Downloader](https://www.aftvnews.com/downloader/) app using the link above. For a quick manual install over USB/ADB:
+
+```bash
+adb install Kartoonia.apk
+```
+
+---
+
 ## Table of contents
 
+- [Download](#download)
 - [Features](#features)
 - [Tech stack](#tech-stack)
 - [Architecture overview](#architecture-overview)

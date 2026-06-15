@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:video_player/video_player.dart';
+import '../services/video_engine.dart';
 import '../services/youtube_service.dart';
 import '../services/youtube_stream_resolver.dart';
 import '../state/app_state.dart';
@@ -26,6 +27,7 @@ class _YoutubeScreenState extends ConsumerState<YoutubeScreen>
   VideoPlayerController? _controller;
   bool _loading = true;
   bool _failed = false;
+  String _failKey = 'yt_none'; // which message to show on the failure screen
 
   Duration _position = Duration.zero;
   Duration _duration = Duration.zero;
@@ -52,34 +54,75 @@ class _YoutubeScreenState extends ConsumerState<YoutubeScreen>
   Future<void> _start() async {
     try {
       final userKey = ref.read(storageProvider).getYoutubeKey();
-      final id = await YoutubeService.firstVideoId(widget.query, apiKey: userKey);
+      final ids =
+          await YoutubeService.searchVideoIds(widget.query, apiKey: userKey);
       if (!mounted) return;
-      if (id == null) return _fail();
-      final url = await YoutubeStreamResolver.resolve(id);
-      if (!mounted) return;
+      if (ids.isEmpty) return _fail();
+
+      // Try each candidate in relevance order until one yields a playable muxed
+      // stream — the top hit is often age/geo-restricted or has no muxed track,
+      // and a per-video extraction failure shouldn't sink the whole open.
+      String? url;
+      for (final id in ids) {
+        try {
+          url = await YoutubeStreamResolver.resolve(id);
+        } catch (e) {
+          debugPrint('YouTube resolve failed for $id: $e');
+          url = null;
+        }
+        if (!mounted) return;
+        if (url != null) break;
+      }
       if (url == null) return _fail();
+
+      // Wait for any decoder a previous screen is still releasing before we
+      // acquire one — Android's hardware decoder pool is tiny and freed
+      // asynchronously, so racing it makes the trailer intermittently fail to
+      // start. (See VideoEngine / player_screen.)
+      await VideoEngine.instance.ready();
+      if (!mounted) return;
 
       final c = VideoPlayerController.networkUrl(Uri.parse(url));
       _controller = c;
-      await c.initialize();
+      // Cap init so a stalled stream can't wedge the loader forever.
+      await c.initialize().timeout(const Duration(seconds: 30));
       if (!mounted) {
-        await c.dispose();
+        _controller = null;
+        await VideoEngine.instance.release(c);
         return;
       }
       c.addListener(_onTick);
       await c.play();
       setState(() => _loading = false);
+    } on YoutubeException catch (e) {
+      debugPrint('YouTube trailer failed: $e');
+      _fail(e.kind == YoutubeErrorKind.quota
+          ? 'yt_quota'
+          : e.kind == YoutubeErrorKind.network
+              ? 'yt_network'
+              : 'yt_error');
     } catch (e) {
       debugPrint('YouTube trailer failed: $e');
       _fail();
     }
   }
 
-  void _fail() {
+  void _fail([String msgKey = 'yt_none']) {
+    // Release the decoder immediately on any failure (including a mid-playback
+    // error) instead of holding it until the screen closes — keeps the shared
+    // pool clear for the next open.
+    final c = _controller;
+    _controller = null;
+    if (c != null) {
+      c.removeListener(_onTick);
+      c.setVolume(0);
+      VideoEngine.instance.release(c);
+    }
     if (!mounted) return;
     setState(() {
       _loading = false;
       _failed = true;
+      _failKey = msgKey;
     });
   }
 
@@ -143,8 +186,13 @@ class _YoutubeScreenState extends ConsumerState<YoutubeScreen>
     final c = _controller;
     _controller = null;
     c?.removeListener(_onTick);
+    // Mute before release so no audio tail survives the route teardown even if
+    // the platform-side dispose lags a frame behind (see player_screen).
+    c?.setVolume(0);
     c?.pause();
-    c?.dispose();
+    // Serialize the release through the VideoEngine so the next player to open
+    // waits for this decoder to be freed before it acquires one.
+    if (c != null) VideoEngine.instance.release(c);
     _playFocus.dispose();
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
     super.dispose();
@@ -169,7 +217,10 @@ class _YoutubeScreenState extends ConsumerState<YoutubeScreen>
     final t = ref.watch(stringsProvider);
     final c = _controller;
     final ready = c != null && c.value.isInitialized;
-    return Focus(
+    return PopScope(
+      // Stop audio the instant back is pressed — before the fade-out + dispose.
+      onPopInvokedWithResult: (didPop, _) => _controller?.pause(),
+      child: Focus(
       autofocus: true,
       skipTraversal: true,
       onKeyEvent: _keys,
@@ -206,7 +257,8 @@ class _YoutubeScreenState extends ConsumerState<YoutubeScreen>
                 const Icon(Icons.error_outline,
                     size: 56, color: AppColors.inkMute),
                 const SizedBox(height: 16),
-                Text(t['yt_none']!,
+                Text(t[_failKey] ?? t['yt_none']!,
+                    textAlign: TextAlign.center,
                     style: const TextStyle(
                         fontSize: 24,
                         fontWeight: FontWeight.w700,
@@ -268,6 +320,7 @@ class _YoutubeScreenState extends ConsumerState<YoutubeScreen>
             ),
           ),
         ]),
+      ),
       ),
     );
   }

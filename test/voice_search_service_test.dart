@@ -30,13 +30,27 @@ void main() {
       expect(id, 'AR_EG');
     });
 
-    test('falls back to system locale when script is unavailable', () {
+    test(
+        'uses the system locale only when it matches the requested script', () {
+      final id = pickSpeechLocaleId(
+        'ar',
+        available: const ['en_US', 'fr_FR'],
+        systemLocaleId: 'ar_EG',
+      );
+      expect(id, 'ar_EG');
+    });
+
+    test(
+        'never falls back to a non-matching system locale '
+        '(asking for "ar" must not yield English)', () {
       final id = pickSpeechLocaleId(
         'ar',
         available: const ['en_US', 'fr_FR'],
         systemLocaleId: 'en_US',
       );
-      expect(id, 'en_US');
+      // The user explicitly chose Arabic; a recognizer with the Arabic pack
+      // installed honors ar-SA even if it didn't advertise an `ar` locale.
+      expect(id, 'ar-SA');
     });
 
     test('falls back to a sensible default when nothing matches', () {

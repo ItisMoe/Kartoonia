@@ -5,8 +5,14 @@ import 'package:speech_to_text/speech_to_text.dart';
 ///
 /// Pure and testable: given the recognizer's [available] locale ids and the
 /// device [systemLocaleId], it prefers an available locale whose language
-/// matches the script ('ar' or 'en'), then the system locale, then a sensible
-/// hardcoded default. Locale ids may use either `_` or `-` as separator.
+/// matches the requested script ('ar' or 'en'). Crucially, it NEVER falls back
+/// to a locale in a different language than the one the user asked for — when
+/// the user picks Arabic, the result is always an Arabic locale (the system
+/// locale only counts if it too is Arabic), otherwise the hardcoded `ar-SA`.
+/// A recognizer with the Arabic language pack installed honors `ar-SA` even
+/// when it didn't advertise an `ar` locale, so this keeps voice search in the
+/// chosen language instead of silently reverting to the device's English.
+/// Locale ids may use either `_` or `-` as separator.
 String pickSpeechLocaleId(
   String kbScript, {
   required List<String> available,
@@ -14,15 +20,19 @@ String pickSpeechLocaleId(
 }) {
   final prefix = kbScript == 'ar' ? 'ar' : 'en';
 
-  bool matchesScript(String id) {
-    final lang = id.toLowerCase().replaceAll('-', '_').split('_').first;
-    return lang == prefix;
-  }
+  String langOf(String id) =>
+      id.toLowerCase().replaceAll('-', '_').split('_').first;
 
+  // 1. A recognizer locale advertised in the requested language.
   for (final id in available) {
-    if (matchesScript(id)) return id;
+    if (langOf(id) == prefix) return id;
   }
-  if (systemLocaleId.isNotEmpty) return systemLocaleId;
+  // 2. The system locale, but ONLY when it is the requested language — never
+  //    switch to (e.g.) English just because that's the device default.
+  if (systemLocaleId.isNotEmpty && langOf(systemLocaleId) == prefix) {
+    return systemLocaleId;
+  }
+  // 3. A sensible hardcoded default for the requested language.
   return prefix == 'ar' ? 'ar-SA' : 'en-US';
 }
 

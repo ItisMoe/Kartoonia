@@ -7,6 +7,7 @@ import '../models/catalog_source.dart';
 import '../models/content_item.dart';
 import '../services/playback_resolver.dart';
 import '../services/storage_service.dart';
+import '../services/video_engine.dart';
 import '../state/app_state.dart';
 import '../theme/theme.dart';
 import '../widgets/focusable.dart';
@@ -154,6 +155,22 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
       _ended = false;
       _server = server;
     });
+
+    // Release the outgoing controller BEFORE building the new one, and do it
+    // through the app-wide VideoEngine so the release is serialized with any
+    // controller a *previous screen* is still tearing down. Android devices
+    // (especially TV boxes) allow only a handful of concurrent hardware video
+    // decoders and release them asynchronously; creating the next ExoPlayer
+    // while an old decoder is still being freed is what makes playback fail
+    // intermittently. Awaiting here guarantees the pool is clear first.
+    final old = _controller;
+    _controller = null;
+    old?.removeListener(_onTick);
+    old?.setVolume(0);
+    await VideoEngine.instance.release(old);
+    if (id != _reqId || !mounted) return;
+
+    VideoPlayerController? c;
     try {
       final servers = await _resolveServers();
       if (id != _reqId || !mounted) return;
@@ -163,34 +180,35 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
       final pick = _serverMap[server] ?? servers.first;
       _server = pick.number;
 
-      final old = _controller;
-      final c = VideoPlayerController.networkUrl(
+      c = VideoPlayerController.networkUrl(
         Uri.parse(pick.url),
         httpHeaders: pick.headers,
       );
       _controller = c;
-      old?.removeListener(_onTick);
-      // Cap Stardima loads so a dead/hanging host advances to the next link
-      // instead of stalling the whole chain (Arabic Toons is left untouched).
-      if (widget.args.source == CatalogSource.stardima) {
-        await c.initialize().timeout(const Duration(seconds: 18));
-      } else {
-        await c.initialize();
-      }
+      // Cap loads so a dead/hanging host can't wedge the player forever.
+      // Stardima fails fast to the next link; Arabic Toons gets a longer budget
+      // for a fresh token fetch.
+      final budget = widget.args.source == CatalogSource.stardima
+          ? const Duration(seconds: 18)
+          : const Duration(seconds: 30);
+      await c.initialize().timeout(budget);
       if (id != _reqId || !mounted) {
-        // Superseded or the screen is gone — tear down BOTH the new controller
-        // and the previous one so neither keeps playing in the background.
-        await c.dispose();
-        await old?.dispose();
+        // Superseded or the screen is gone — release the controller we built.
+        if (identical(_controller, c)) _controller = null;
+        await VideoEngine.instance.release(c);
         return;
       }
-      await old?.dispose();
       c.addListener(_onTick);
       _maybeRestore();
       await c.play();
       setState(() => _loading = false);
       _retry = 0;
     } catch (_) {
+      // The init failed/timed out: release this controller (freeing its native
+      // decoder) and clear the slot BEFORE deciding what to try next, so a flaky
+      // host can never leak a decoder and the next attempt starts clean.
+      if (identical(_controller, c)) _controller = null;
+      await VideoEngine.instance.release(c);
       if (id != _reqId || !mounted) return;
       _onError();
     }
@@ -357,8 +375,15 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
     _controller = null;
     if (c == null) return;
     c.removeListener(_onTick);
+    // Mute first: on some Android builds the platform-side dispose lags a frame
+    // behind route teardown, so volume 0 guarantees no audio tail even if the
+    // ExoPlayer release hasn't landed yet. Then pause + release.
+    c.setVolume(0);
     c.pause();
-    c.dispose();
+    // Hand the release to the VideoEngine (can't await in a sync dispose). The
+    // next screen's player awaits this same queue before it acquires a decoder,
+    // so the hand-off never races the asynchronous native release.
+    VideoEngine.instance.release(c);
   }
 
   /// Netflix-style: stop playback the moment the player is no longer on screen.
@@ -409,7 +434,13 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
   Widget build(BuildContext context) {
     final t = ref.watch(stringsProvider);
     return PopScope(
-      onPopInvokedWithResult: (didPop, _) => _saveProgress(),
+      // Pop fires this BEFORE the route's fade-out + dispose, so stop audio here
+      // for an instant, reliable cut the moment the user presses back — dispose
+      // then releases the controller once the transition completes.
+      onPopInvokedWithResult: (didPop, _) {
+        _controller?.pause();
+        _saveProgress();
+      },
       child: FocusScope(
         node: _playerScope,
         child: Focus(
