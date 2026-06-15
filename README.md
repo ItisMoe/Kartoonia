@@ -18,6 +18,21 @@ Sideload the APK onto your Android TV / Google TV device (Android 11+). On most 
 adb install Kartoonia.apk
 ```
 
+### Install with the Downloader app (easiest on a TV)
+
+The [**Downloader**](https://www.aftvnews.com/downloader/) app (free, on the Play Store / Amazon Appstore) is the standard way to sideload onto a TV with just a remote — no file manager or PC needed.
+
+**Downloader code: `6954638`**
+
+1. Install **Downloader** from your TV's app store and open it.
+2. In the **Home** tab's URL box, enter `6954638` (or paste the full APK URL: `https://github.com/ItisMoe/Kartoonia/releases/latest/download/Kartoonia.apk`).
+3. Press **Go** → **Download**. When it finishes, choose **Install**, then **Done → Delete** to remove the downloaded APK.
+4. First time only: Downloader will prompt you to allow installs from unknown sources — enable it, then back out and retry the install.
+
+#### About the code
+
+The code `6954638` is issued by the free [aftv.news](https://aftv.news/code) service and redirects to the latest-APK URL above. Because that URL points at `releases/latest`, **the code keeps working across new releases** — no need to regenerate it when you publish a new version. If you ever need to re-point or refresh it, go to **https://aftv.news/code** and paste `https://github.com/ItisMoe/Kartoonia/releases/latest/download/Kartoonia.apk` again.
+
 ---
 
 ## Table of contents
