@@ -2,8 +2,9 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:video_player/video_player.dart';
-import '../services/video_engine.dart';
+import 'package:media_kit/media_kit.dart';
+import 'package:media_kit_video/media_kit_video.dart';
+import '../services/player_service.dart';
 import '../services/youtube_service.dart';
 import '../services/youtube_stream_resolver.dart';
 import '../state/app_state.dart';
@@ -11,9 +12,9 @@ import '../theme/theme.dart';
 import '../widgets/focusable.dart';
 
 /// In-app trailer / theme-song player. Searches YouTube for [query], extracts a
-/// direct muxed stream URL (no iframe), and plays it in the app's own
-/// `video_player` surface. Separate from the main streaming player. Disposes
-/// cleanly on close (no audio continues).
+/// direct muxed stream URL (no iframe), and plays it on the app's ONE shared
+/// player (see [PlayerService]). Reuses the same decoder as the main player so
+/// opening many trailers can't exhaust the Android-TV decoder pool.
 class YoutubeScreen extends ConsumerStatefulWidget {
   final String query;
   final String title;
@@ -24,7 +25,9 @@ class YoutubeScreen extends ConsumerStatefulWidget {
 
 class _YoutubeScreenState extends ConsumerState<YoutubeScreen>
     with WidgetsBindingObserver {
-  VideoPlayerController? _controller;
+  Player get _player => PlayerService.instance.player;
+  final List<StreamSubscription> _subs = [];
+
   bool _loading = true;
   bool _failed = false;
   String _failKey = 'yt_none'; // which message to show on the failure screen
@@ -44,11 +47,38 @@ class _YoutubeScreenState extends ConsumerState<YoutubeScreen>
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
+    PlayerService.instance.ensureCreated();
+    _subscribe();
     _start();
     _flashControls();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) _playFocus.requestFocus();
     });
+  }
+
+  /// Wire this screen to the shared player's streams; cancelled on dispose.
+  void _subscribe() {
+    final p = _player;
+    _subs.addAll([
+      p.stream.position.listen((pos) {
+        if (mounted) setState(() => _position = pos);
+      }),
+      p.stream.duration.listen((d) {
+        if (mounted) setState(() => _duration = d);
+      }),
+      p.stream.playing.listen((pl) {
+        if (mounted) setState(() => _playing = pl);
+      }),
+      p.stream.completed.listen((done) {
+        if (done && mounted && !_ended && !_loading) {
+          _ended = true;
+          Navigator.maybePop(context);
+        }
+      }),
+      p.stream.error.listen((_) {
+        if (mounted && !_loading) _fail();
+      }),
+    ]);
   }
 
   Future<void> _start() async {
@@ -75,24 +105,10 @@ class _YoutubeScreenState extends ConsumerState<YoutubeScreen>
       }
       if (url == null) return _fail();
 
-      // Wait for any decoder a previous screen is still releasing before we
-      // acquire one — Android's hardware decoder pool is tiny and freed
-      // asynchronously, so racing it makes the trailer intermittently fail to
-      // start. (See VideoEngine / player_screen.)
-      await VideoEngine.instance.ready();
+      // Swap the shared player onto the muxed stream and wait until it actually
+      // starts (or fails / times out). No new decoder is acquired.
+      await _openAndWait(url, const Duration(seconds: 30));
       if (!mounted) return;
-
-      final c = VideoPlayerController.networkUrl(Uri.parse(url));
-      _controller = c;
-      // Cap init so a stalled stream can't wedge the loader forever.
-      await c.initialize().timeout(const Duration(seconds: 30));
-      if (!mounted) {
-        _controller = null;
-        await VideoEngine.instance.release(c);
-        return;
-      }
-      c.addListener(_onTick);
-      await c.play();
       setState(() => _loading = false);
     } on YoutubeException catch (e) {
       debugPrint('YouTube trailer failed: $e');
@@ -107,44 +123,46 @@ class _YoutubeScreenState extends ConsumerState<YoutubeScreen>
     }
   }
 
-  void _fail([String msgKey = 'yt_none']) {
-    // Release the decoder immediately on any failure (including a mid-playback
-    // error) instead of holding it until the screen closes — keeps the shared
-    // pool clear for the next open.
-    final c = _controller;
-    _controller = null;
-    if (c != null) {
-      c.removeListener(_onTick);
-      c.setVolume(0);
-      VideoEngine.instance.release(c);
+  /// Point the shared player at [url] and complete once playback starts (first
+  /// known duration), or fail fast on a playback error / [budget] timeout.
+  /// Subscribes before opening so the first event can't slip past.
+  Future<void> _openAndWait(String url, Duration budget) {
+    final p = _player;
+    final c = Completer<void>();
+    var settled = false;
+    late final StreamSubscription dSub;
+    late final StreamSubscription eSub;
+    void finish([Object? err]) {
+      if (settled) return;
+      settled = true;
+      dSub.cancel();
+      eSub.cancel();
+      if (!c.isCompleted) {
+        err == null ? c.complete() : c.completeError(err);
+      }
     }
+
+    dSub = p.stream.duration.listen((d) {
+      if (d > Duration.zero) finish();
+    });
+    eSub = p.stream.error.listen((e) => finish(e));
+    PlayerService.instance.open(url).catchError((Object e) => finish(e));
+    return c.future.timeout(budget, onTimeout: () {
+      finish();
+      throw TimeoutException('open timed out');
+    });
+  }
+
+  void _fail([String msgKey = 'yt_none']) {
+    // Stop playback (keeps the shared player + its decoder alive) and show the
+    // failure screen.
+    PlayerService.instance.stop();
     if (!mounted) return;
     setState(() {
       _loading = false;
       _failed = true;
       _failKey = msgKey;
     });
-  }
-
-  void _onTick() {
-    final c = _controller;
-    if (c == null || !mounted) return;
-    final v = c.value;
-    if (v.hasError) {
-      _fail();
-      return;
-    }
-    setState(() {
-      _position = v.position;
-      _duration = v.duration;
-      _playing = v.isPlaying;
-    });
-    if (v.duration.inSeconds > 0 &&
-        !_ended &&
-        v.position >= v.duration - const Duration(milliseconds: 600)) {
-      _ended = true;
-      Navigator.maybePop(context);
-    }
   }
 
   void _flashControls() {
@@ -156,43 +174,34 @@ class _YoutubeScreenState extends ConsumerState<YoutubeScreen>
   }
 
   void _togglePlay() {
-    final c = _controller;
-    if (c != null && c.value.isInitialized) {
-      c.value.isPlaying ? c.pause() : c.play();
-    }
+    _player.playOrPause();
     _flashControls();
   }
 
   void _seekBy(Duration delta) {
-    final c = _controller;
-    if (c == null) return;
     var target = _position + delta;
     if (target < Duration.zero) target = Duration.zero;
     if (_duration > Duration.zero && target > _duration) target = _duration;
-    c.seekTo(target);
+    _player.seek(target);
     setState(() => _position = target);
     _flashControls();
   }
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state != AppLifecycleState.resumed) _controller?.pause();
+    if (state != AppLifecycleState.resumed) _player.pause();
   }
 
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     _hideTimer?.cancel();
-    final c = _controller;
-    _controller = null;
-    c?.removeListener(_onTick);
-    // Mute before release so no audio tail survives the route teardown even if
-    // the platform-side dispose lags a frame behind (see player_screen).
-    c?.setVolume(0);
-    c?.pause();
-    // Serialize the release through the VideoEngine so the next player to open
-    // waits for this decoder to be freed before it acquires one.
-    if (c != null) VideoEngine.instance.release(c);
+    for (final s in _subs) {
+      s.cancel();
+    }
+    // Stop playback but keep the shared player alive (decoder reused, never
+    // re-acquired) — same lifecycle rule as the main player.
+    PlayerService.instance.stop();
     _playFocus.dispose();
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
     super.dispose();
@@ -215,11 +224,10 @@ class _YoutubeScreenState extends ConsumerState<YoutubeScreen>
   @override
   Widget build(BuildContext context) {
     final t = ref.watch(stringsProvider);
-    final c = _controller;
-    final ready = c != null && c.value.isInitialized;
+    final ready = !_loading && !_failed;
     return PopScope(
       // Stop audio the instant back is pressed — before the fade-out + dispose.
-      onPopInvokedWithResult: (didPop, _) => _controller?.pause(),
+      onPopInvokedWithResult: (didPop, _) => _player.pause(),
       child: Focus(
       autofocus: true,
       skipTraversal: true,
@@ -227,18 +235,15 @@ class _YoutubeScreenState extends ConsumerState<YoutubeScreen>
       child: Scaffold(
         backgroundColor: Colors.black,
         body: Stack(children: [
-          if (ready)
-            Positioned.fill(
-              child: ColoredBox(
-                color: Colors.black,
-                child: Center(
-                  child: AspectRatio(
-                    aspectRatio: c.value.aspectRatio,
-                    child: VideoPlayer(c),
-                  ),
-                ),
-              ),
+          // The single shared player surface (letterboxed by media_kit itself).
+          Positioned.fill(
+            child: Video(
+              controller: PlayerService.instance.controller,
+              controls: NoVideoControls,
+              fit: BoxFit.contain,
+              fill: Colors.black,
             ),
+          ),
           if (_loading)
             Center(
               child: Column(mainAxisSize: MainAxisSize.min, children: [
@@ -283,7 +288,7 @@ class _YoutubeScreenState extends ConsumerState<YoutubeScreen>
               ]),
             ),
           // transport controls (only once playback is ready)
-          if (ready && !_failed)
+          if (ready)
             Positioned.fill(
               child: AnimatedOpacity(
                 opacity: _controlsShown ? 1 : 0,

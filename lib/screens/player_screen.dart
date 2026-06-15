@@ -2,12 +2,13 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:video_player/video_player.dart';
+import 'package:media_kit/media_kit.dart';
+import 'package:media_kit_video/media_kit_video.dart';
 import '../models/catalog_source.dart';
 import '../models/content_item.dart';
 import '../services/playback_resolver.dart';
+import '../services/player_service.dart';
 import '../services/storage_service.dart';
-import '../services/video_engine.dart';
 import '../state/app_state.dart';
 import '../theme/theme.dart';
 import '../widgets/focusable.dart';
@@ -49,7 +50,14 @@ class PlayerScreen extends ConsumerStatefulWidget {
 
 class _PlayerScreenState extends ConsumerState<PlayerScreen>
     with WidgetsBindingObserver {
-  VideoPlayerController? _controller;
+  // The ONE shared libmpv player. We never build/dispose a player here — we only
+  // swap its media (see PlayerService) — so a hardware decoder is acquired once
+  // and the Android-TV decoder pool can't be drained by opening many episodes.
+  Player get _player => PlayerService.instance.player;
+
+  // Per-screen stream subscriptions; cancelled on dispose so the next screen's
+  // subscriptions take over while the underlying player keeps living.
+  final List<StreamSubscription> _subs = [];
 
   // current episode (mutable for prev/next)
   late String _pageUrl;
@@ -92,6 +100,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
+    PlayerService.instance.ensureCreated();
     _pageUrl = widget.args.pageUrl;
     _epLabel = widget.args.episodeLabel;
     _epNumber = widget.args.episodeNumber;
@@ -101,6 +110,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
         ? 1
         : ref.read(storageProvider).getPreferredServer();
 
+    _subscribe();
     _load(_server);
     _flashControls();
     _saveTimer = Timer.periodic(_saveInterval, (_) => _saveProgress());
@@ -110,25 +120,33 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
     });
   }
 
-  void _onTick() {
-    final c = _controller;
-    if (c == null || !mounted) return;
-    final v = c.value;
-    if (v.hasError) {
-      _onError();
-      return;
-    }
-    setState(() {
-      _position = v.position;
-      _duration = v.duration;
-      _playing = v.isPlaying;
-    });
-    if (v.duration.inSeconds > 0 &&
-        !_ended &&
-        v.position >= v.duration - const Duration(milliseconds: 600)) {
-      _ended = true;
-      _onEnd();
-    }
+  /// Wire this screen to the shared player's state streams. The `error` handler
+  /// only acts mid-playback (`!_loading`); errors *during* a load are caught by
+  /// [_openAndWait] so a failing host advances to the next server cleanly.
+  void _subscribe() {
+    final p = _player;
+    _subs.addAll([
+      p.stream.position.listen((pos) {
+        if (mounted) setState(() => _position = pos);
+      }),
+      p.stream.duration.listen((d) {
+        if (!mounted) return;
+        setState(() => _duration = d);
+        if (d > Duration.zero) _maybeRestore();
+      }),
+      p.stream.playing.listen((pl) {
+        if (mounted) setState(() => _playing = pl);
+      }),
+      p.stream.completed.listen((done) {
+        if (done && mounted && !_ended && !_loading) {
+          _ended = true;
+          _onEnd();
+        }
+      }),
+      p.stream.error.listen((_) {
+        if (mounted && !_loading && !_error) _onError();
+      }),
+    ]);
   }
 
   /// Resolve the playable server list for the current page/play url. Stardima
@@ -156,21 +174,6 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
       _server = server;
     });
 
-    // Release the outgoing controller BEFORE building the new one, and do it
-    // through the app-wide VideoEngine so the release is serialized with any
-    // controller a *previous screen* is still tearing down. Android devices
-    // (especially TV boxes) allow only a handful of concurrent hardware video
-    // decoders and release them asynchronously; creating the next ExoPlayer
-    // while an old decoder is still being freed is what makes playback fail
-    // intermittently. Awaiting here guarantees the pool is clear first.
-    final old = _controller;
-    _controller = null;
-    old?.removeListener(_onTick);
-    old?.setVolume(0);
-    await VideoEngine.instance.release(old);
-    if (id != _reqId || !mounted) return;
-
-    VideoPlayerController? c;
     try {
       final servers = await _resolveServers();
       if (id != _reqId || !mounted) return;
@@ -180,38 +183,63 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
       final pick = _serverMap[server] ?? servers.first;
       _server = pick.number;
 
-      c = VideoPlayerController.networkUrl(
-        Uri.parse(pick.url),
-        httpHeaders: pick.headers,
-      );
-      _controller = c;
       // Cap loads so a dead/hanging host can't wedge the player forever.
       // Stardima fails fast to the next link; Arabic Toons gets a longer budget
       // for a fresh token fetch.
       final budget = widget.args.source == CatalogSource.stardima
           ? const Duration(seconds: 18)
           : const Duration(seconds: 30);
-      await c.initialize().timeout(budget);
-      if (id != _reqId || !mounted) {
-        // Superseded or the screen is gone — release the controller we built.
-        if (identical(_controller, c)) _controller = null;
-        await VideoEngine.instance.release(c);
-        return;
-      }
-      c.addListener(_onTick);
-      _maybeRestore();
-      await c.play();
+
+      // Reuse the ONE shared player: just point it at the new URL. No decoder is
+      // released or re-acquired, so the pool can never be exhausted.
+      await _openAndWait(pick.url, pick.headers, budget);
+      if (id != _reqId || !mounted) return;
+
       setState(() => _loading = false);
       _retry = 0;
     } catch (_) {
-      // The init failed/timed out: release this controller (freeing its native
-      // decoder) and clear the slot BEFORE deciding what to try next, so a flaky
-      // host can never leak a decoder and the next attempt starts clean.
-      if (identical(_controller, c)) _controller = null;
-      await VideoEngine.instance.release(c);
+      // Resolve/open/init failed or timed out. The shared player keeps its
+      // decoder — nothing to release — so just decide what to try next.
       if (id != _reqId || !mounted) return;
       _onError();
     }
+  }
+
+  /// Swap the shared player's media to [url] and complete once playback actually
+  /// starts (first known duration), or fail fast on a playback error / [budget]
+  /// timeout so a dead host advances to the next server instead of hanging on a
+  /// black screen. Subscribes BEFORE opening so the first duration/error event
+  /// can't slip past us.
+  Future<void> _openAndWait(
+      String url, Map<String, String> headers, Duration budget) {
+    final p = _player;
+    final c = Completer<void>();
+    var settled = false;
+    late final StreamSubscription dSub;
+    late final StreamSubscription eSub;
+    void finish([Object? err]) {
+      if (settled) return;
+      settled = true;
+      dSub.cancel();
+      eSub.cancel();
+      if (!c.isCompleted) {
+        err == null ? c.complete() : c.completeError(err);
+      }
+    }
+
+    dSub = p.stream.duration.listen((d) {
+      if (d > Duration.zero) finish();
+    });
+    eSub = p.stream.error.listen((e) => finish(e));
+    // Open after the listeners are attached, routing an open() failure through
+    // the same completion path.
+    PlayerService.instance
+        .open(url, headers: headers)
+        .catchError((Object e) => finish(e));
+    return c.future.timeout(budget, onTimeout: () {
+      finish();
+      throw TimeoutException('open timed out');
+    });
   }
 
   void _onError() {
@@ -247,16 +275,15 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
   }
 
   void _maybeRestore() {
-    final c = _controller;
-    if (_restored || c == null) return;
-    final dur = c.value.duration.inSeconds;
+    if (_restored) return;
+    final dur = _duration.inSeconds;
     if (dur <= 0) return;
     _restored = true;
     final saved = ref.read(storageProvider).getProgress(_pageUrl);
     if (saved != null &&
         saved.currentTime > 10 &&
         saved.currentTime < dur - 10) {
-      c.seekTo(Duration(seconds: saved.currentTime.round()));
+      _player.seek(Duration(seconds: saved.currentTime.round()));
     }
   }
 
@@ -340,20 +367,15 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
   }
 
   void _togglePlay() {
-    final c = _controller;
-    if (c != null && c.value.isInitialized) {
-      c.value.isPlaying ? c.pause() : c.play();
-    }
+    _player.playOrPause();
     _flashControls();
   }
 
   void _seekBy(Duration delta) {
-    final c = _controller;
-    if (c == null) return;
     var target = _position + delta;
     if (target < Duration.zero) target = Duration.zero;
     if (_duration > Duration.zero && target > _duration) target = _duration;
-    c.seekTo(target);
+    _player.seek(target);
     setState(() => _position = target);
     _flashControls();
   }
@@ -367,33 +389,12 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
     _flashControls();
   }
 
-  /// Tear down the native video controller (exactly one player at a time).
-  /// Pause first so ExoPlayer stops emitting audio immediately, even if the
-  /// async dispose lags behind the route teardown.
-  void _disposeController() {
-    final c = _controller;
-    _controller = null;
-    if (c == null) return;
-    c.removeListener(_onTick);
-    // Mute first: on some Android builds the platform-side dispose lags a frame
-    // behind route teardown, so volume 0 guarantees no audio tail even if the
-    // ExoPlayer release hasn't landed yet. Then pause + release.
-    c.setVolume(0);
-    c.pause();
-    // Hand the release to the VideoEngine (can't await in a sync dispose). The
-    // next screen's player awaits this same queue before it acquires a decoder,
-    // so the hand-off never races the asynchronous native release.
-    VideoEngine.instance.release(c);
-  }
-
   /// Netflix-style: stop playback the moment the player is no longer on screen.
-  /// `video_player` (ExoPlayer) keeps playing audio when the app is
-  /// backgrounded, so pause it on any non-foreground state.
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state != AppLifecycleState.resumed) {
       _saveProgress();
-      _controller?.pause();
+      _player.pause();
     }
   }
 
@@ -403,7 +404,13 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
     _saveProgress();
     _hideTimer?.cancel();
     _saveTimer?.cancel();
-    _disposeController(); // fully stop + dispose the video controller (frees audio)
+    for (final s in _subs) {
+      s.cancel();
+    }
+    // Stop playback but DO NOT dispose the player — it is shared and lives for
+    // the whole app, so its decoder is reused (never re-acquired) by the next
+    // screen. This is what makes the decoder pool impossible to exhaust.
+    PlayerService.instance.stop();
     _playFocus.dispose();
     _playerScope.dispose();
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
@@ -436,9 +443,9 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
     return PopScope(
       // Pop fires this BEFORE the route's fade-out + dispose, so stop audio here
       // for an instant, reliable cut the moment the user presses back — dispose
-      // then releases the controller once the transition completes.
+      // then stops the shared player once the transition completes.
       onPopInvokedWithResult: (didPop, _) {
-        _controller?.pause();
+        _player.pause();
         _saveProgress();
       },
       child: FocusScope(
@@ -450,20 +457,15 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
           child: Scaffold(
             backgroundColor: Colors.black,
             body: Stack(children: [
-              // The single player surface at NATIVE size (no canvas transform —
-              // platform views mis-composite under a FittedBox).
+              // The single shared player surface. media_kit's Video widget
+              // letterboxes the stream itself (BoxFit.contain), so no manual
+              // AspectRatio/transform is needed.
               Positioned.fill(
-                child: ColoredBox(
-                  color: Colors.black,
-                  child: (_controller != null &&
-                          _controller!.value.isInitialized)
-                      ? Center(
-                          child: AspectRatio(
-                            aspectRatio: _controller!.value.aspectRatio,
-                            child: VideoPlayer(_controller!),
-                          ),
-                        )
-                      : const SizedBox.expand(),
+                child: Video(
+                  controller: PlayerService.instance.controller,
+                  controls: NoVideoControls,
+                  fit: BoxFit.contain,
+                  fill: Colors.black,
                 ),
               ),
               // Control overlays on the scaled 1920×1080 design canvas. The
@@ -953,4 +955,3 @@ class _ServerOption extends StatelessWidget {
     );
   }
 }
-

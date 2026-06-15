@@ -16,10 +16,16 @@ dependencies:
   # State management
   flutter_riverpod: ^2.6.1
 
-  # Video playback (ExoPlayer via the first-party plugin). httpHeaders are
-  # forwarded to ExoPlayer's data source for the manifest AND every segment, so
-  # the CDN's required Referer/UA/Origin headers are sent on each request.
-  video_player: ^2.9.2
+  # Video playback via media_kit (libmpv). We keep ONE long-lived Player for the
+  # whole app and just swap its media per episode/trailer, so a hardware video
+  # decoder is acquired ONCE and never thrashed — the tiny Android-TV decoder
+  # pool can no longer be exhausted. (The old video_player path built a new
+  # ExoPlayer/decoder per episode and leaked them until an app restart.)
+  # httpHeaders are forwarded to libmpv for the manifest AND every segment, so
+  # the CDN's required Referer/UA/Origin headers are still sent on each request.
+  media_kit: ^1.1.11
+  media_kit_video: ^1.2.5
+  media_kit_libs_video: ^1.0.5
 
   # Networking + images
   http: ^1.2.2
