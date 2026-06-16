@@ -45,6 +45,15 @@ class PlayerService {
     final p = Player();
     _player = p;
     _controller = VideoController(p);
+    // libmpv otherwise opens whatever variant the HLS demuxer defaults to, which
+    // is frequently the LOWEST entry in a master playlist. Force the highest so
+    // "Auto" lands on the best quality with no manual track switch. Set once on
+    // the long-lived shared player; it survives every open(). Fire-and-forget —
+    // a native property nudge that must not block player creation.
+    final platform = p.platform;
+    if (platform is NativePlayer) {
+      platform.setProperty('hls-bitrate', 'max');
+    }
   }
 
   /// Point the shared player at [url] and start playback. Reuses the existing
