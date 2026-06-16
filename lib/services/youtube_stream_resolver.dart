@@ -103,20 +103,46 @@ List<YtVideoOption> selectVideoOptions(List<VideoStreamCandidate> options,
 /// `yt-dlp` does in the Python prototype. Isolates `youtube_explode_dart` so the
 /// rest of the app only ever deals with a plain URL string.
 class YoutubeStreamResolver {
-  /// Returns a playable muxed URL for [videoId], or null if none is available
-  /// (no muxed streams, geo-block, or a YouTube cipher change the package
-  /// hasn't caught up to yet). Throws on transport errors (caller handles).
-  static Future<String?> resolve(String videoId) async {
+  /// Resolve [videoId] into adaptive playback options (video-only <= [maxHeight]
+  /// paired with the best audio, plus a muxed fallback). Returns null when
+  /// nothing usable is found. Throws on transport errors (caller handles).
+  ///
+  /// If no usable audio-only stream exists, the video-only options are dropped
+  /// (they would play silent) and only the muxed fallback remains.
+  static Future<YoutubePlayback?> resolvePlayback(String videoId,
+      {int maxHeight = 720}) async {
     final yt = YoutubeExplode();
     try {
       final manifest = await yt.videos.streamsClient.getManifest(videoId);
-      final options = manifest.muxed
-          .map((s) => MuxedOption(
-                height: s.videoResolution.height,
-                url: s.url.toString(),
-              ))
-          .toList();
-      return pickMuxedUrl(options);
+      final audioUrl = pickBestAudioUrl([
+        for (final s in manifest.audioOnly)
+          AudioStreamCandidate(
+            bitrate: s.bitrate.bitsPerSecond,
+            url: s.url.toString(),
+            isMp4: s.container.name.toLowerCase() == 'mp4',
+          ),
+      ]);
+      final videos = audioUrl == null
+          ? const <YtVideoOption>[]
+          : selectVideoOptions([
+              for (final s in manifest.videoOnly)
+                VideoStreamCandidate(
+                  height: s.videoResolution.height,
+                  url: s.url.toString(),
+                  isMp4: s.container.name.toLowerCase() == 'mp4',
+                ),
+            ], maxHeight: maxHeight);
+      final muxedFallbackUrl = pickMuxedUrl([
+        for (final s in manifest.muxed)
+          MuxedOption(
+              height: s.videoResolution.height, url: s.url.toString()),
+      ]);
+      if (videos.isEmpty && muxedFallbackUrl == null) return null;
+      return YoutubePlayback(
+        videos: videos,
+        audioUrl: audioUrl,
+        muxedFallbackUrl: muxedFallbackUrl,
+      );
     } finally {
       yt.close();
     }

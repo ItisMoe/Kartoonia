@@ -64,6 +64,21 @@ class PlayerService {
     await _player!.open(Media(url, httpHeaders: headers));
   }
 
+  /// Open a video-only [videoUrl] and attach [audioUrl] as an external audio
+  /// track (how YouTube 720p+ is played: separate video + audio files). libmpv
+  /// timestamp-syncs the two. When [audioUrl] is null this behaves like [open].
+  Future<void> openWithAudio(
+    String videoUrl, {
+    String? audioUrl,
+    Map<String, String> headers = const {},
+  }) async {
+    ensureCreated();
+    await _player!.open(Media(videoUrl, httpHeaders: headers));
+    if (audioUrl != null) {
+      await _player!.setAudioTrack(AudioTrack.uri(audioUrl));
+    }
+  }
+
   /// Stop playback and unload the current media WITHOUT disposing the player, so
   /// the next [open] reuses the same warm decoder. Safe to call when nothing is
   /// playing.
