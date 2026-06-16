@@ -10,7 +10,6 @@ import '../services/youtube_stream_resolver.dart';
 import '../state/app_state.dart';
 import '../theme/theme.dart';
 import '../widgets/focusable.dart';
-import '../widgets/quality_panel.dart';
 
 /// In-app trailer / theme-song player. Searches YouTube for [query], extracts a
 /// direct muxed stream URL (no iframe), and plays it on the app's ONE shared
@@ -39,8 +38,6 @@ class _YoutubeScreenState extends ConsumerState<YoutubeScreen>
   bool _ended = false;
 
   YoutubePlayback? _playback;
-  int? _quality; // pinned height, or null for Auto
-  bool _qualityPanelOpen = false;
 
   bool _controlsShown = true;
   Timer? _hideTimer;
@@ -162,7 +159,6 @@ class _YoutubeScreenState extends ConsumerState<YoutubeScreen>
           ),
           const Duration(seconds: 30),
         );
-        if (mounted) setState(() => _quality = height);
         return;
       } catch (e) {
         debugPrint('YouTube adaptive open failed, trying muxed: $e');
@@ -172,25 +168,7 @@ class _YoutubeScreenState extends ConsumerState<YoutubeScreen>
     if (muxed == null) throw Exception('no playable youtube stream');
     await _openAndWait(
         () => PlayerService.instance.open(muxed), const Duration(seconds: 30));
-    if (mounted) setState(() => _quality = null);
   }
-
-  void _setQuality(int? height) {
-    setState(() => _qualityPanelOpen = false);
-    _playQuality(height).catchError((Object e) {
-      debugPrint('YouTube quality switch failed: $e');
-      if (mounted) _fail();
-    });
-    _flashControls();
-  }
-
-  List<String> _qualityLabels(Map<String, String> t) => [
-        t['autoQuality']!,
-        for (final v in (_playback?.videos ?? const <YtVideoOption>[]))
-          '${v.height}p',
-      ];
-
-  bool get _hasQualityChoice => (_playback?.videos.length ?? 0) >= 2;
 
   /// Run [open], completing once playback starts (first known duration) or
   /// failing fast on a playback error / [budget] timeout. Subscribes before
@@ -238,7 +216,7 @@ class _YoutubeScreenState extends ConsumerState<YoutubeScreen>
     if (!_controlsShown) setState(() => _controlsShown = true);
     _hideTimer?.cancel();
     _hideTimer = Timer(const Duration(milliseconds: 4200), () {
-      if (mounted && _playing && !_qualityPanelOpen) {
+      if (mounted && _playing) {
         setState(() => _controlsShown = false);
       }
     });
@@ -370,24 +348,6 @@ class _YoutubeScreenState extends ConsumerState<YoutubeScreen>
                 ),
               ),
             ),
-          if (ready && _qualityPanelOpen)
-            Positioned.fill(
-              child: Builder(builder: (context) {
-                final labels = _qualityLabels(t);
-                final sel =
-                    _quality == null ? 0 : labels.indexOf('${_quality}p');
-                return QualityPanel(
-                  title: t['quality']!,
-                  subtitle: t['chooseQuality']!,
-                  backLabel: t['back']!,
-                  labels: labels,
-                  selectedIndex: sel < 0 ? 0 : sel,
-                  onSelect: (i) => _setQuality(
-                      i == 0 ? null : _playback!.videos[i - 1].height),
-                  onClose: () => setState(() => _qualityPanelOpen = false),
-                );
-              }),
-            ),
           // back button
           Positioned(
             top: 36,
@@ -467,29 +427,6 @@ class _YoutubeScreenState extends ConsumerState<YoutubeScreen>
                     ),
                   ),
                 ),
-                if (_hasQualityChoice) ...[
-                  const SizedBox(width: 18),
-                  Focusable(
-                    onPressed: () => setState(() => _qualityPanelOpen = true),
-                    builder: (context, focused) => AnimatedScale(
-                      scale: focused ? 1.06 : 1,
-                      duration: const Duration(milliseconds: 150),
-                      child: Container(
-                        width: 54,
-                        height: 54,
-                        decoration: BoxDecoration(
-                          shape: BoxShape.circle,
-                          color: focused
-                              ? Colors.white
-                              : Colors.white.withValues(alpha: 0.12),
-                        ),
-                        child: Icon(Icons.high_quality,
-                            size: 28,
-                            color: focused ? AppColors.onFocus : AppColors.ink),
-                      ),
-                    ),
-                  ),
-                ],
               ],
             ),
           ],

@@ -9,12 +9,10 @@ import '../models/content_item.dart';
 import '../services/playback_error_policy.dart';
 import '../services/playback_resolver.dart';
 import '../services/player_service.dart';
-import '../services/video_quality.dart';
 import '../services/storage_service.dart';
 import '../state/app_state.dart';
 import '../theme/theme.dart';
 import '../widgets/focusable.dart';
-import '../widgets/quality_panel.dart';
 import '../widgets/tv_scaler.dart';
 
 class PlayerArgs {
@@ -95,13 +93,6 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
   // [_onPlaybackError]); null/inactive when no error is being confirmed.
   Timer? _errorConfirmTimer;
   bool _serverPanelOpen = false;
-  bool _qualityPanelOpen = false;
-  // Video tracks reported by libmpv for the current media. Populated from
-  // p.stream.tracks; drives the quality picker. Empty until the stream loads.
-  List<VideoTrack> _videoTracks = const [];
-  // The pinned quality height (e.g. 720), or null for "Auto". Reset to Auto on
-  // every _load — a pin must never carry into a stream that lacks that height.
-  int? _quality;
 
   // Focus: a scope for the whole player + a node for the play/pause button so
   // the D-pad always lands on a usable control when the controls appear.
@@ -150,9 +141,6 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
       p.stream.playing.listen((pl) {
         if (mounted) setState(() => _playing = pl);
       }),
-      p.stream.tracks.listen((tracks) {
-        if (mounted) setState(() => _videoTracks = tracks.video);
-      }),
       p.stream.completed.listen((done) {
         if (done && mounted && !_ended && !_loading) {
           _ended = true;
@@ -190,7 +178,6 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
       _restored = false;
       _ended = false;
       _server = server;
-      _quality = null;
     });
 
     try {
@@ -408,7 +395,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
     if (!_controlsShown) setState(() => _controlsShown = true);
     _hideTimer?.cancel();
     _hideTimer = Timer(_controlsTimeout, () {
-      if (mounted && _playing && !_serverPanelOpen && !_qualityPanelOpen) {
+      if (mounted && _playing && !_serverPanelOpen) {
         setState(() => _controlsShown = false);
       }
     });
@@ -434,22 +421,6 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
       _retry = 0;
     });
     _load(n);
-    _flashControls();
-  }
-
-  void _setQuality(int? height) {
-    setState(() {
-      _qualityPanelOpen = false;
-      _quality = height;
-    });
-    if (height == null) {
-      // Auto: hand back to libmpv's default selection, which hls-bitrate=max
-      // keeps pinned to the best variant — no reload on the common path.
-      _player.setVideoTrack(VideoTrack.auto());
-    } else {
-      final track = nearestTrackForHeight(_videoTracks, height);
-      if (track != null) _player.setVideoTrack(track);
-    }
     _flashControls();
   }
 
@@ -574,8 +545,6 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
                       ),
                     if (_serverPanelOpen)
                       Positioned.fill(child: _serverPanel(t)),
-                    if (_qualityPanelOpen)
-                      Positioned.fill(child: _qualityPanel(t)),
                   ]),
                 ),
               ),
@@ -712,13 +681,6 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
                     icon: Icons.skip_next, onPressed: _hasNext ? _next : null),
               const SizedBox(width: 26),
               _CtrlButton(
-                icon: Icons.high_quality,
-                label: t['quality'],
-                onPressed: hasSelectableQualities(_videoTracks)
-                    ? () => setState(() => _qualityPanelOpen = true)
-                    : null,
-              ),
-              _CtrlButton(
                 icon: Icons.dns_outlined,
                 label: t['server'],
                 onPressed: () {
@@ -804,20 +766,6 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
           ],
         ),
       ),
-    );
-  }
-
-  Widget _qualityPanel(Map<String, String> t) {
-    final options = buildQualityOptions(_videoTracks, autoLabel: t['autoQuality']!);
-    final selectedIndex = options.indexWhere((o) => o.height == _quality);
-    return QualityPanel(
-      title: t['quality']!,
-      subtitle: t['chooseQuality']!,
-      backLabel: t['back']!,
-      labels: [for (final o in options) o.label],
-      selectedIndex: selectedIndex < 0 ? 0 : selectedIndex,
-      onSelect: (i) => _setQuality(options[i].height),
-      onClose: () => setState(() => _qualityPanelOpen = false),
     );
   }
 
