@@ -14,6 +14,7 @@ import '../services/storage_service.dart';
 import '../state/app_state.dart';
 import '../theme/theme.dart';
 import '../widgets/focusable.dart';
+import '../widgets/quality_panel.dart';
 import '../widgets/tv_scaler.dart';
 
 class PlayerArgs {
@@ -808,74 +809,15 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
 
   Widget _qualityPanel(Map<String, String> t) {
     final options = buildQualityOptions(_videoTracks, autoLabel: t['autoQuality']!);
-    return Align(
-      alignment: AlignmentDirectional.centerEnd,
-      child: Container(
-        width: 560,
-        height: double.infinity,
-        color: AppColors.bg1,
-        padding: const EdgeInsets.fromLTRB(44, 80, 44, 28),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(children: [
-              Container(
-                width: 62,
-                height: 62,
-                decoration: BoxDecoration(
-                    borderRadius: BorderRadius.circular(17),
-                    gradient:
-                        const LinearGradient(colors: AppColors.primaryGradient)),
-                child: const Icon(Icons.high_quality,
-                    size: 32, color: AppColors.onPrimary),
-              ),
-              const SizedBox(width: 18),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(t['quality']!,
-                        style: const TextStyle(
-                            fontFamily: Fonts.display,
-                            fontFamilyFallback: Fonts.fallback,
-                            fontWeight: FontWeight.w600,
-                            fontSize: 38,
-                            color: AppColors.ink)),
-                    Text(t['chooseQuality']!,
-                        style: const TextStyle(
-                            fontSize: 19,
-                            fontWeight: FontWeight.w700,
-                            color: AppColors.inkMute)),
-                  ],
-                ),
-              ),
-            ]),
-            const SizedBox(height: 26),
-            Expanded(
-              child: ListView(
-                children: [
-                  for (int i = 0; i < options.length; i++)
-                    Padding(
-                      padding: const EdgeInsets.only(bottom: 14),
-                      child: _ServerOption(
-                        label: options[i].label,
-                        selected: options[i].height == _quality,
-                        autofocus: options[i].height == _quality,
-                        onPressed: () => _setQuality(options[i].height),
-                      ),
-                    ),
-                ],
-              ),
-            ),
-            const SizedBox(height: 12),
-            _CtrlButton(
-              icon: Icons.close,
-              label: t['back'],
-              onPressed: () => setState(() => _qualityPanelOpen = false),
-            ),
-          ],
-        ),
-      ),
+    final selectedIndex = options.indexWhere((o) => o.height == _quality);
+    return QualityPanel(
+      title: t['quality']!,
+      subtitle: t['chooseQuality']!,
+      backLabel: t['back']!,
+      labels: [for (final o in options) o.label],
+      selectedIndex: selectedIndex < 0 ? 0 : selectedIndex,
+      onSelect: (i) => _setQuality(options[i].height),
+      onClose: () => setState(() => _qualityPanelOpen = false),
     );
   }
 
