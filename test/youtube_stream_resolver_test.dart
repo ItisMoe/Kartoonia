@@ -32,4 +32,62 @@ void main() {
       expect(pickMuxedUrl(options), 'u1080');
     });
   });
+
+  group('pickBestAudioUrl', () {
+    test('returns null when empty', () {
+      expect(pickBestAudioUrl(const []), isNull);
+    });
+    test('picks the highest bitrate', () {
+      expect(
+        pickBestAudioUrl(const [
+          AudioStreamCandidate(bitrate: 128000, url: 'a', isMp4: true),
+          AudioStreamCandidate(bitrate: 256000, url: 'b', isMp4: false),
+        ]),
+        'b',
+      );
+    });
+    test('prefers mp4 on a bitrate tie', () {
+      expect(
+        pickBestAudioUrl(const [
+          AudioStreamCandidate(bitrate: 128000, url: 'webm', isMp4: false),
+          AudioStreamCandidate(bitrate: 128000, url: 'mp4', isMp4: true),
+        ]),
+        'mp4',
+      );
+    });
+  });
+
+  group('selectVideoOptions', () {
+    test('caps at maxHeight and sorts high to low (all video-only)', () {
+      final r = selectVideoOptions(const [
+        VideoStreamCandidate(height: 360, url: '360', isMp4: true),
+        VideoStreamCandidate(height: 1080, url: '1080', isMp4: true),
+        VideoStreamCandidate(height: 720, url: '720', isMp4: true),
+      ]);
+      expect(r.map((o) => o.height).toList(), [720, 360]);
+      expect(r.every((o) => o.muxed == false), isTrue);
+    });
+    test('prefers mp4 when a height has both mp4 and webm', () {
+      final r = selectVideoOptions(const [
+        VideoStreamCandidate(height: 720, url: '720webm', isMp4: false),
+        VideoStreamCandidate(height: 720, url: '720mp4', isMp4: true),
+      ]);
+      expect(r.length, 1);
+      expect(r.first.url, '720mp4');
+    });
+    test('keeps webm when a height has no mp4', () {
+      final r = selectVideoOptions(const [
+        VideoStreamCandidate(height: 480, url: '480webm', isMp4: false),
+      ]);
+      expect(r.single.url, '480webm');
+    });
+    test('empty when nothing is at or below the cap', () {
+      expect(
+        selectVideoOptions(const [
+          VideoStreamCandidate(height: 1080, url: '1080', isMp4: true),
+        ], maxHeight: 720),
+        isEmpty,
+      );
+    });
+  });
 }
