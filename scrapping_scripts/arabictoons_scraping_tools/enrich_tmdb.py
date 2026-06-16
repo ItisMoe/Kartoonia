@@ -331,6 +331,8 @@ def build_tmdb_block(session, res, kind, conf, query):
         "type": kind,
         "original_title": res.get("original_name") or res.get("original_title"),
         "vote_average": en_d.get("vote_average", res.get("vote_average")),
+        "vote_count": en_d.get("vote_count", res.get("vote_count")),
+        "popularity": en_d.get("popularity", res.get("popularity")),
         "year": year,
         "match_confidence": conf,
         "match_query": query,
