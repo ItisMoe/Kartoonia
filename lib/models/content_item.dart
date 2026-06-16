@@ -1,6 +1,14 @@
 import '../utils/image_urls.dart';
 import 'catalog_source.dart';
 
+/// Internal fame-ranking tuning (never displayed). `kFameMeanVote` is the prior
+/// mean rating (C), `kFameBayesPrior` the prior weight in votes (m), and
+/// `kFameVoteFloor` the minimum vote_count for a title to enter the curated
+/// "famous" Home pools.
+const double kFameMeanVote = 7.0;
+const double kFameBayesPrior = 50.0;
+const int kFameVoteFloor = 20;
+
 /// Typed catalog models. Parsed from the heterogeneous catalog.json:
 ///  - shows have no top-level id/description; episodes live under seasons[],
 ///    and they carry `ids` (per-season source ids) + optional tmdb.
@@ -115,6 +123,12 @@ class TmdbData {
   /// Internal popularity signal only — NEVER displayed in the UI.
   final double? voteAverage;
 
+  /// Total TMDB rating count — the best "is this famous" proxy. Internal only.
+  final int? voteCount;
+
+  /// TMDB trending score. Internal ranking signal only; never displayed.
+  final double? popularity;
+
   const TmdbData({
     this.posterUrl,
     this.posterUrlW500,
@@ -124,6 +138,8 @@ class TmdbData {
     this.genres = const [],
     this.year,
     this.voteAverage,
+    this.voteCount,
+    this.popularity,
   });
 
   factory TmdbData.fromJson(Map<String, dynamic> j) => TmdbData(
@@ -137,6 +153,8 @@ class TmdbData {
             .toList(),
         year: (j['year'] as num?)?.toInt(),
         voteAverage: (j['vote_average'] as num?)?.toDouble(),
+        voteCount: (j['vote_count'] as num?)?.toInt(),
+        popularity: (j['popularity'] as num?)?.toDouble(),
       );
 }
 
@@ -191,6 +209,34 @@ sealed class ContentItem {
   /// Internal popularity score (TMDB vote average; never shown). Items without
   /// a tmdb match sort to the bottom.
   double get popularity => tmdb?.voteAverage ?? 0;
+
+  /// Raw TMDB rating count (internal). Null until the catalog is enriched.
+  int? get voteCount => tmdb?.voteCount;
+
+  /// TMDB trending score (internal tiebreak). Null until enriched.
+  double? get tmdbPopularity => tmdb?.popularity;
+
+  /// Bayesian weighted rating — denoises tiny-sample vote_averages (a 1–2 vote
+  /// 10.0 gets pulled toward the catalog mean). Falls back to the raw
+  /// vote_average when vote_count is unknown (pre-enrichment).
+  double get weightedRating {
+    final v = tmdb?.voteCount;
+    final r = tmdb?.voteAverage ?? 0;
+    if (v == null) return r;
+    return (v / (v + kFameBayesPrior)) * r +
+        (kFameBayesPrior / (v + kFameBayesPrior)) * kFameMeanVote;
+  }
+
+  /// Eligible for the curated "famous" Home pools.
+  bool get isFamous => (tmdb?.voteCount ?? 0) >= kFameVoteFloor;
+
+  /// Primary fame ranking scalar (higher = more famous). Uses vote_count when
+  /// known — a title everyone watched accrues many votes — else the denoised
+  /// rating so an un-enriched catalog still orders sensibly.
+  double get fameScore {
+    final v = tmdb?.voteCount;
+    return v != null ? v.toDouble() : weightedRating;
+  }
 }
 
 class Show extends ContentItem {
