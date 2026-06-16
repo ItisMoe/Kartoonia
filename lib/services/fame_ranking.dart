@@ -5,6 +5,12 @@ import '../models/content_item.dart';
 /// asset I/O.
 
 /// Sort comparator: most famous first, breaking ties by TMDB trending score.
+///
+/// Ranks by [ContentItem.fameScore], which uses vote_count for enriched items
+/// and a rating fallback for un-enriched ones — the two are on different scales,
+/// so mixing them produces undefined ordering. This comparator is intended to be
+/// called on an already-[ContentItem.isFamous]-filtered pool (as [famousPool]
+/// does) to ensure only enriched items are compared.
 int compareByFame(ContentItem a, ContentItem b) {
   final c = b.fameScore.compareTo(a.fameScore);
   if (c != 0) return c;

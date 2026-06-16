@@ -206,6 +206,7 @@ sealed class ContentItem {
   List<String> get genres => tmdb?.genres ?? const [];
   int? get year => tmdb?.year;
 
+  // NOTE: returns voteAverage, not TmdbData.popularity (see tmdbPopularity). Legacy; removed once consumers migrate to fameScore.
   /// Internal popularity score (TMDB vote average; never shown). Items without
   /// a tmdb match sort to the bottom.
   double get popularity => tmdb?.voteAverage ?? 0;
@@ -232,7 +233,9 @@ sealed class ContentItem {
 
   /// Primary fame ranking scalar (higher = more famous). Uses vote_count when
   /// known — a title everyone watched accrues many votes — else the denoised
-  /// rating so an un-enriched catalog still orders sensibly.
+  /// rating so an un-enriched catalog still orders sensibly. A confirmed
+  /// vote_count of 0 intentionally yields 0.0, ranking below any un-enriched
+  /// title whose rating fallback is positive.
   double get fameScore {
     final v = tmdb?.voteCount;
     return v != null ? v.toDouble() : weightedRating;

@@ -59,6 +59,10 @@ void main() {
       expect(movie(voteAverage: 8.7, voteCount: 5350).fameScore, 5350.0);
       expect(movie(voteAverage: 8).fameScore, 8.0);
     });
+    test('isFamous is inclusive at the vote_count floor', () {
+      expect(movie(voteAverage: 7, voteCount: kFameVoteFloor).isFamous, isTrue);
+      expect(movie(voteAverage: 7, voteCount: kFameVoteFloor - 1).isFamous, isFalse);
+    });
   });
 
   group('famousPool', () {
