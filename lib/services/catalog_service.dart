@@ -3,6 +3,7 @@ import 'package:flutter/services.dart' show rootBundle;
 import '../models/catalog_source.dart';
 import '../models/content_item.dart';
 import '../models/stardima_adapter.dart';
+import 'fame_ranking.dart';
 
 /// Loads, indexes and queries a bundled catalog. The active source (Arabic Toons
 /// or Stardima) is chosen by the persisted setting; each has its own parser but
@@ -65,25 +66,13 @@ class CatalogService {
 
   ContentItem? getById(String id) => _byId[id];
 
-  // ---- Popularity (internal ordering only; vote_average is never shown) ----
-  /// All items that have a popularity signal, highest first.
-  List<ContentItem> popularPool() {
-    final pool = all.where((i) => i.popularity > 0).toList()
-      ..sort((a, b) => b.popularity.compareTo(a.popularity));
-    return pool.isNotEmpty ? pool : List.of(all);
-  }
+  // ---- Fame ranking (internal ordering only; vote_average is never shown) ----
+  /// Curated famous pool (denoised by vote_count), highest fame first.
+  List<ContentItem> popularPool() => famousPool(all);
 
-  List<Show> popularShows() {
-    final list = shows.where((s) => s.popularity > 0).toList()
-      ..sort((a, b) => b.popularity.compareTo(a.popularity));
-    return list.isNotEmpty ? list : List.of(shows);
-  }
+  List<Show> popularShows() => famousPool(shows);
 
-  List<Movie> popularMovies() {
-    final list = movies.where((m) => m.popularity > 0).toList()
-      ..sort((a, b) => b.popularity.compareTo(a.popularity));
-    return list.isNotEmpty ? list : List.of(movies);
-  }
+  List<Movie> popularMovies() => famousPool(movies);
 
   /// Highest-popularity titles for the curated "Most Popular" row.
   List<ContentItem> mostPopular({int count = 30}) =>
