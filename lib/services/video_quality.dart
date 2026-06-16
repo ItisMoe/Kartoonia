@@ -2,7 +2,7 @@ import 'package:media_kit/media_kit.dart';
 
 /// One entry in the player's quality picker. [height] is the video height in
 /// pixels (e.g. 720), or null for the adaptive "Auto" option. [label] is the
-/// display string — the resolution rows are "<height>p"; the Auto row uses the
+/// display string — the resolution rows are `<height>p`; the Auto row uses the
 /// localized label passed into [buildQualityOptions].
 class QualityOption {
   final int? height;
@@ -21,7 +21,7 @@ Set<int> _distinctHeights(List<VideoTrack> tracks) {
 }
 
 /// Build the picker: Auto first (height null, [autoLabel]), then one row per
-/// distinct real height, sorted high -> low and labelled "<height>p". Tracks
+/// distinct real height, sorted high -> low and labelled `<height>p`. Tracks
 /// without a usable height (null/zero — e.g. synthetic auto/no tracks) are
 /// dropped, and equal heights are deduped.
 List<QualityOption> buildQualityOptions(
