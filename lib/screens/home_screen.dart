@@ -82,8 +82,12 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       ));
     }
 
-    // Most Popular — curated by popularity (vote_average), highest first, stable.
-    final mostPopular = catalog.mostPopular(count: 30);
+    // Most Popular — a daily-rotating sample of the famous pool, so the row
+    // shows a different slice of well-known titles each day.
+    final mostPopular =
+        dailyShuffled(catalog.popularPool().take(80).toList(), salt: 'most')
+            .take(30)
+            .toList();
     rows.add(ContentRow(
       title: t['most_popular']!,
       count: mostPopular.length,
@@ -153,7 +157,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     // Genre rows (>= 4 items): most-popular within the genre, shuffled daily.
     for (final entry in catalog.genreRows()) {
       final byPop = entry.value.toList()
-        ..sort((a, b) => b.popularity.compareTo(a.popularity));
+        ..sort((a, b) => b.fameScore.compareTo(a.fameScore));
       rows.add(ContentRow(
         title: translateGenre(entry.key),
         count: entry.value.length,

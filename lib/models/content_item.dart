@@ -206,11 +206,6 @@ sealed class ContentItem {
   List<String> get genres => tmdb?.genres ?? const [];
   int? get year => tmdb?.year;
 
-  // NOTE: returns voteAverage, not TmdbData.popularity (see tmdbPopularity). Legacy; removed once consumers migrate to fameScore.
-  /// Internal popularity score (TMDB vote average; never shown). Items without
-  /// a tmdb match sort to the bottom.
-  double get popularity => tmdb?.voteAverage ?? 0;
-
   /// Raw TMDB rating count (internal). Null until the catalog is enriched.
   int? get voteCount => tmdb?.voteCount;
 
