@@ -6,6 +6,7 @@ import 'package:media_kit/media_kit.dart';
 import 'package:media_kit_video/media_kit_video.dart';
 import '../models/catalog_source.dart';
 import '../models/content_item.dart';
+import '../services/playback_error_policy.dart';
 import '../services/playback_resolver.dart';
 import '../services/player_service.dart';
 import '../services/storage_service.dart';
@@ -88,6 +89,9 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
   bool _controlsShown = true;
   Timer? _hideTimer;
   Timer? _saveTimer;
+  // Pending confirmation that a mid-playback error is a real stall (see
+  // [_onPlaybackError]); null/inactive when no error is being confirmed.
+  Timer? _errorConfirmTimer;
   bool _serverPanelOpen = false;
 
   // Focus: a scope for the whole player + a node for the play/pause button so
@@ -144,7 +148,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
         }
       }),
       p.stream.error.listen((_) {
-        if (mounted && !_loading && !_error) _onError();
+        if (mounted && !_loading && !_error) _onPlaybackError();
       }),
     ]);
   }
@@ -166,6 +170,8 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
 
   Future<void> _load(int server) async {
     final id = ++_reqId;
+    // A new load supersedes any pending error confirmation for the old media.
+    _errorConfirmTimer?.cancel();
     setState(() {
       _loading = true;
       _error = false;
@@ -239,6 +245,35 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
     return c.future.timeout(budget, onTimeout: () {
       finish();
       throw TimeoutException('open timed out');
+    });
+  }
+
+  /// Handle an error reported *during* playback. libmpv logs at error level for
+  /// transient, self-recovering problems too (a retried segment/range request, a
+  /// momentary connection reset, a cache underrun), so a single error event does
+  /// NOT mean the server died. Treating it as fatal is what popped the
+  /// "All servers failed" overlay over a stream that was still playing fine.
+  ///
+  /// So an error is only a suspicion: snapshot the position, wait briefly, and
+  /// fail over ONLY if playback is genuinely stalled (still trying to play yet
+  /// not advancing). If it kept advancing, finished, or the user paused, the
+  /// error was transient and we leave the running stream untouched.
+  void _onPlaybackError() {
+    // A confirmation window is already running — let it decide.
+    if (_errorConfirmTimer?.isActive ?? false) return;
+    final before = _player.state.position;
+    _errorConfirmTimer = Timer(const Duration(seconds: 6), () {
+      if (!mounted || _loading || _error) return;
+      final s = _player.state;
+      if (shouldFailOverAfterError(
+        positionBefore: before,
+        positionNow: s.position,
+        playing: s.playing,
+        buffering: s.buffering,
+        completed: s.completed,
+      )) {
+        _onError();
+      }
     });
   }
 
@@ -404,6 +439,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
     _saveProgress();
     _hideTimer?.cancel();
     _saveTimer?.cancel();
+    _errorConfirmTimer?.cancel();
     for (final s in _subs) {
       s.cancel();
     }
