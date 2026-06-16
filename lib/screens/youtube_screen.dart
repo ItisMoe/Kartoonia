@@ -10,6 +10,7 @@ import '../services/youtube_stream_resolver.dart';
 import '../state/app_state.dart';
 import '../theme/theme.dart';
 import '../widgets/focusable.dart';
+import '../widgets/quality_panel.dart';
 
 /// In-app trailer / theme-song player. Searches YouTube for [query], extracts a
 /// direct muxed stream URL (no iframe), and plays it on the app's ONE shared
@@ -36,6 +37,10 @@ class _YoutubeScreenState extends ConsumerState<YoutubeScreen>
   Duration _duration = Duration.zero;
   bool _playing = false;
   bool _ended = false;
+
+  YoutubePlayback? _playback;
+  int? _quality; // pinned height, or null for Auto
+  bool _qualityPanelOpen = false;
 
   bool _controlsShown = true;
   Timer? _hideTimer;
@@ -88,25 +93,30 @@ class _YoutubeScreenState extends ConsumerState<YoutubeScreen>
       if (!mounted) return;
       if (ids.isEmpty) return _fail();
 
-      // Try each candidate in relevance order until one yields a playable muxed
-      // stream — the top hit is often age/geo-restricted or has no muxed track,
-      // and a per-video extraction failure shouldn't sink the whole open.
-      String? url;
+      // Try each candidate in relevance order until one resolves to playable
+      // streams — the top hit is often age/geo-restricted or has no usable
+      // streams, and one failure shouldn't sink the whole open.
+      YoutubePlayback? playback;
       for (final id in ids) {
         try {
-          url = await YoutubeStreamResolver.resolve(id);
+          playback = await YoutubeStreamResolver.resolvePlayback(id);
         } catch (e) {
           debugPrint('YouTube resolve failed for $id: $e');
-          url = null;
+          playback = null;
         }
         if (!mounted) return;
-        if (url != null) break;
+        if (playback != null) break;
       }
-      if (url == null) return _fail();
+      if (playback == null) return _fail();
+      _playback = playback;
 
-      // Swap the shared player onto the muxed stream and wait until it actually
-      // starts (or fails / times out). No new decoder is acquired.
-      await _openAndWait(url, const Duration(seconds: 30));
+      // Play Auto (best <=720 + audio); _playQuality falls back to muxed 360p.
+      try {
+        await _playQuality(null);
+      } catch (e) {
+        debugPrint('YouTube playback failed: $e');
+        return _fail();
+      }
       if (!mounted) return;
       setState(() => _loading = false);
       // Now that playback is actually ready (and _playing has flipped true),
@@ -126,10 +136,66 @@ class _YoutubeScreenState extends ConsumerState<YoutubeScreen>
     }
   }
 
-  /// Point the shared player at [url] and complete once playback starts (first
-  /// known duration), or fail fast on a playback error / [budget] timeout.
-  /// Subscribes before opening so the first event can't slip past.
-  Future<void> _openAndWait(String url, Duration budget) {
+  /// The video option for [height] (null = Auto = best), or null if none exist.
+  YtVideoOption? _videoForHeight(YoutubePlayback pb, int? height) {
+    if (pb.videos.isEmpty) return null;
+    if (height == null) return pb.videos.first;
+    for (final v in pb.videos) {
+      if (v.height == height) return v;
+    }
+    return pb.videos.first;
+  }
+
+  /// Open the requested quality (null = Auto). Tries the adaptive video+audio
+  /// path; on failure falls back to the muxed 360p stream. Throws when nothing
+  /// can be played.
+  Future<void> _playQuality(int? height) async {
+    final pb = _playback;
+    if (pb == null) return;
+    final video = _videoForHeight(pb, height);
+    if (video != null) {
+      try {
+        await _openAndWait(
+          () => PlayerService.instance.openWithAudio(
+            video.url,
+            audioUrl: video.muxed ? null : pb.audioUrl,
+          ),
+          const Duration(seconds: 30),
+        );
+        if (mounted) setState(() => _quality = height);
+        return;
+      } catch (e) {
+        debugPrint('YouTube adaptive open failed, trying muxed: $e');
+      }
+    }
+    final muxed = pb.muxedFallbackUrl;
+    if (muxed == null) throw Exception('no playable youtube stream');
+    await _openAndWait(
+        () => PlayerService.instance.open(muxed), const Duration(seconds: 30));
+    if (mounted) setState(() => _quality = null);
+  }
+
+  void _setQuality(int? height) {
+    setState(() => _qualityPanelOpen = false);
+    _playQuality(height).catchError((Object e) {
+      debugPrint('YouTube quality switch failed: $e');
+      if (mounted) _fail();
+    });
+    _flashControls();
+  }
+
+  List<String> _qualityLabels(Map<String, String> t) => [
+        t['autoQuality']!,
+        for (final v in (_playback?.videos ?? const <YtVideoOption>[]))
+          '${v.height}p',
+      ];
+
+  bool get _hasQualityChoice => (_playback?.videos.length ?? 0) >= 2;
+
+  /// Run [open], completing once playback starts (first known duration) or
+  /// failing fast on a playback error / [budget] timeout. Subscribes before
+  /// opening so the first event can't slip past.
+  Future<void> _openAndWait(Future<void> Function() open, Duration budget) {
     final p = _player;
     final c = Completer<void>();
     var settled = false;
@@ -149,7 +215,7 @@ class _YoutubeScreenState extends ConsumerState<YoutubeScreen>
       if (d > Duration.zero) finish();
     });
     eSub = p.stream.error.listen((e) => finish(e));
-    PlayerService.instance.open(url).catchError((Object e) => finish(e));
+    open().catchError((Object e) => finish(e));
     return c.future.timeout(budget, onTimeout: () {
       finish();
       throw TimeoutException('open timed out');
@@ -172,7 +238,9 @@ class _YoutubeScreenState extends ConsumerState<YoutubeScreen>
     if (!_controlsShown) setState(() => _controlsShown = true);
     _hideTimer?.cancel();
     _hideTimer = Timer(const Duration(milliseconds: 4200), () {
-      if (mounted && _playing) setState(() => _controlsShown = false);
+      if (mounted && _playing && !_qualityPanelOpen) {
+        setState(() => _controlsShown = false);
+      }
     });
   }
 
@@ -302,6 +370,24 @@ class _YoutubeScreenState extends ConsumerState<YoutubeScreen>
                 ),
               ),
             ),
+          if (ready && _qualityPanelOpen)
+            Positioned.fill(
+              child: Builder(builder: (context) {
+                final labels = _qualityLabels(t);
+                final sel =
+                    _quality == null ? 0 : labels.indexOf('${_quality}p');
+                return QualityPanel(
+                  title: t['quality']!,
+                  subtitle: t['chooseQuality']!,
+                  backLabel: t['back']!,
+                  labels: labels,
+                  selectedIndex: sel < 0 ? 0 : sel,
+                  onSelect: (i) => _setQuality(
+                      i == 0 ? null : _playback!.videos[i - 1].height),
+                  onClose: () => setState(() => _qualityPanelOpen = false),
+                );
+              }),
+            ),
           // back button
           Positioned(
             top: 36,
@@ -357,26 +443,54 @@ class _YoutubeScreenState extends ConsumerState<YoutubeScreen>
               ),
             ),
             const SizedBox(height: 18),
-            Focusable(
-              focusNode: _playFocus,
-              onPressed: _togglePlay,
-              builder: (context, focused) => AnimatedScale(
-                scale: focused ? 1.06 : 1,
-                duration: const Duration(milliseconds: 150),
-                child: Container(
-                  width: 54,
-                  height: 54,
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    color: focused
-                        ? Colors.white
-                        : Colors.white.withValues(alpha: 0.12),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Focusable(
+                  focusNode: _playFocus,
+                  onPressed: _togglePlay,
+                  builder: (context, focused) => AnimatedScale(
+                    scale: focused ? 1.06 : 1,
+                    duration: const Duration(milliseconds: 150),
+                    child: Container(
+                      width: 54,
+                      height: 54,
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        color: focused
+                            ? Colors.white
+                            : Colors.white.withValues(alpha: 0.12),
+                      ),
+                      child: Icon(_playing ? Icons.pause : Icons.play_arrow,
+                          size: 28,
+                          color: focused ? AppColors.onFocus : AppColors.ink),
+                    ),
                   ),
-                  child: Icon(_playing ? Icons.pause : Icons.play_arrow,
-                      size: 28,
-                      color: focused ? AppColors.onFocus : AppColors.ink),
                 ),
-              ),
+                if (_hasQualityChoice) ...[
+                  const SizedBox(width: 18),
+                  Focusable(
+                    onPressed: () => setState(() => _qualityPanelOpen = true),
+                    builder: (context, focused) => AnimatedScale(
+                      scale: focused ? 1.06 : 1,
+                      duration: const Duration(milliseconds: 150),
+                      child: Container(
+                        width: 54,
+                        height: 54,
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          color: focused
+                              ? Colors.white
+                              : Colors.white.withValues(alpha: 0.12),
+                        ),
+                        child: Icon(Icons.high_quality,
+                            size: 28,
+                            color: focused ? AppColors.onFocus : AppColors.ink),
+                      ),
+                    ),
+                  ),
+                ],
+              ],
             ),
           ],
         ),
