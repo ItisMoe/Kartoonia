@@ -33,12 +33,20 @@ PATH = None
 
 
 def save(cat, path):
+    # Write a full backup copy first (atomic), then overwrite the real file's
+    # CONTENTS in place. os.replace() can't be used here: on Windows the Dart
+    # analysis server keeps a shared-read handle on the bundled asset, which
+    # blocks rename/delete of the target but still permits an in-place write.
+    data = json.dumps(cat, ensure_ascii=False, indent=2).encode("utf-8")
     tmp = path + ".tmp"
-    with open(tmp, "w", encoding="utf-8") as f:
-        json.dump(cat, f, ensure_ascii=False, indent=2)
+    with open(tmp, "wb") as f:
+        f.write(data)
     for _ in range(8):
         try:
-            os.replace(tmp, path)
+            with open(path, "r+b") as f:
+                f.truncate(0)
+                f.write(data)
+            os.remove(tmp)
             return
         except PermissionError:
             time.sleep(0.5)
