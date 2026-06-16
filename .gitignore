@@ -4,6 +4,10 @@
 *.pyc
 *.swp
 .DS_Store
+
+# Secrets — TMDB API key/token (never commit)
+tmdb_key.txt
+**/tmdb_key.txt
 .atom/
 .build/
 .buildlog/
