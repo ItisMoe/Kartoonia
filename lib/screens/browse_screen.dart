@@ -1,11 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import '../models/catalog_source.dart';
 import '../models/content_item.dart';
 import '../navigation.dart';
 import '../services/catalog_service.dart';
 import '../state/app_state.dart';
-import '../utils/genre_translations.dart';
 import '../theme/theme.dart';
 import '../theme/layout.dart';
 import '../widgets/content_card.dart';
@@ -47,22 +45,15 @@ class BrowseScreen extends ConsumerWidget {
     }
 
     final isMyList = kind == 'mylist';
-    // Stardima filters by its own categories; Arabic Toons keeps the A–Z bar.
-    final isStardima = catalog.source == CatalogSource.stardima;
 
-    // letter filtering (Arabic Toons)
+    // A–Z first-letter browsing for every catalog source — Arabic Toons and
+    // Stardima behave identically (no per-source category chips).
     final script = browse.alphaScript;
     final letter = browse.letter;
-    // category filtering (Stardima)
-    final category = browse.category;
 
     List<ContentItem> shown;
     if (isMyList) {
       shown = items;
-    } else if (isStardima) {
-      shown = category == null
-          ? items
-          : items.where((s) => s.categories.contains(category)).toList();
     } else {
       shown = letter == null
           ? items
@@ -130,10 +121,6 @@ class BrowseScreen extends ConsumerWidget {
         ? <String>{}
         : items.map((s) => firstLetterFor(s.title, script)).toSet();
     final letters = (script == 'ar' ? alphaAr : alphaEn).split('');
-    // Categories present in the current kind's items (Stardima only).
-    final categories = isStardima
-        ? (items.expand((s) => s.categories).toSet().toList()..sort())
-        : const <String>[];
 
     return ScreenShell(
       current: _navKey(),
@@ -166,34 +153,7 @@ class BrowseScreen extends ConsumerWidget {
               ),
             ),
           ),
-          if (!isMyList && isStardima && categories.isNotEmpty)
-            SliverToBoxAdapter(
-              child: SizedBox(
-                height: 70,
-                child: ListView(
-                  scrollDirection: Axis.horizontal,
-                  padding: const EdgeInsets.symmetric(horizontal: Spacing.pad),
-                  children: [
-                    _railChip(SelectableChip(
-                      label: t['alpha_all']!,
-                      selected: category == null,
-                      radius: 13,
-                      onPressed: () =>
-                          ref.read(browseProvider.notifier).setCategory(null),
-                    )),
-                    for (final c in categories)
-                      _railChip(SelectableChip(
-                        label: translateGenre(c),
-                        selected: category == c,
-                        radius: 13,
-                        onPressed: () =>
-                            ref.read(browseProvider.notifier).setCategory(c),
-                      )),
-                  ],
-                ),
-              ),
-            )
-          else if (!isMyList && !isStardima)
+          if (!isMyList)
             SliverToBoxAdapter(
               child: SizedBox(
                 height: 70,
