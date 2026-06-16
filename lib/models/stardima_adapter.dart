@@ -43,6 +43,10 @@ class StardimaAdapter {
       voteAverage: (e?['vote_average'] as num?)?.toDouble(),
       voteCount: (e?['vote_count'] as num?)?.toInt(),
       popularity: (e?['popularity'] as num?)?.toDouble(),
+      tmdbId: (e?['tmdb_id'] as num?)?.toInt(),
+      tmdbGenres: (e?['en'] is Map && (e!['en'] as Map)['genres'] is List)
+          ? ((e['en'] as Map)['genres'] as List).map((x) => x.toString()).toList()
+          : const [],
     );
   }
 

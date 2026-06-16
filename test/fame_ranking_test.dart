@@ -4,17 +4,30 @@ import 'package:kartoonia/models/stardima_adapter.dart';
 import 'package:kartoonia/services/fame_ranking.dart';
 
 void main() {
-  Movie movie({double? voteAverage, int? voteCount, double? popularity}) => Movie(
+  Movie movie({
+    double? voteAverage,
+    int? voteCount,
+    double? popularity,
+    List<String>? tmdbGenres,
+    int? tmdbId,
+  }) =>
+      Movie(
         id: 'm',
         title: 't',
         thumbnailUrl: '',
         description: '',
-        tmdb: (voteAverage == null && voteCount == null && popularity == null)
+        tmdb: (voteAverage == null &&
+                voteCount == null &&
+                popularity == null &&
+                tmdbGenres == null &&
+                tmdbId == null)
             ? null
             : TmdbData(
                 voteAverage: voteAverage,
                 voteCount: voteCount,
                 popularity: popularity,
+                tmdbGenres: tmdbGenres ?? const [],
+                tmdbId: tmdbId,
               ),
         pageUrl: '',
         servers: const [],
@@ -64,20 +77,25 @@ void main() {
       expect(movie(voteAverage: 7, voteCount: kFameVoteFloor).isFamous, isTrue);
       expect(movie(voteAverage: 7, voteCount: kFameVoteFloor - 1).isFamous, isFalse);
     });
+    test('isAnimation reads tmdb genres', () {
+      expect(movie(voteAverage: 8, voteCount: 30, tmdbGenres: ['Animation']).isAnimation, isTrue);
+      expect(movie(voteAverage: 8, voteCount: 30, tmdbGenres: ['Drama']).isAnimation, isFalse);
+      expect(movie(voteAverage: 8, voteCount: 30).isAnimation, isFalse);
+    });
   });
 
   group('famousPool', () {
     test('keeps only floor-clearing items, ordered by fame desc', () {
-      final a = movie(voteAverage: 8, voteCount: 5000);
-      final b = movie(voteAverage: 9, voteCount: 100);
-      final c = movie(voteAverage: 10, voteCount: 2);
-      final d = movie(voteAverage: 9);
+      final a = movie(voteAverage: 8, voteCount: 5000, tmdbGenres: ['Animation']);
+      final b = movie(voteAverage: 9, voteCount: 100, tmdbGenres: ['Animation']);
+      final c = movie(voteAverage: 10, voteCount: 2, tmdbGenres: ['Animation']);
+      final d = movie(voteAverage: 9, tmdbGenres: ['Animation']);
       final pool = famousPool([c, b, a, d]);
       expect(pool, [a, b]);
     });
     test('breaks fame ties by tmdb popularity', () {
-      final a = movie(voteAverage: 8, voteCount: 100, popularity: 5);
-      final b = movie(voteAverage: 8, voteCount: 100, popularity: 50);
+      final a = movie(voteAverage: 8, voteCount: 100, popularity: 5, tmdbGenres: ['Animation']);
+      final b = movie(voteAverage: 8, voteCount: 100, popularity: 50, tmdbGenres: ['Animation']);
       expect(famousPool([a, b]), [b, a]);
     });
     test('falls back to weighted rating when nothing is famous', () {
@@ -88,6 +106,26 @@ void main() {
     });
     test('returns all items when there is no signal at all', () {
       expect(famousPool([movie(), movie()]).length, 2);
+    });
+  });
+
+  group('famousPool cleanup', () {
+    test('excludes non-animation famous titles', () {
+      final cartoon = movie(voteAverage: 8, voteCount: 5000, tmdbGenres: ['Animation'], tmdbId: 1);
+      final liveAction = movie(voteAverage: 8, voteCount: 9000, tmdbGenres: ['Drama'], tmdbId: 2);
+      expect(famousPool([liveAction, cartoon]), [cartoon]);
+    });
+    test('treats Family as animation-eligible', () {
+      final fam = movie(voteAverage: 8, voteCount: 5000, tmdbGenres: ['Family'], tmdbId: 3);
+      expect(famousPool([fam]), [fam]);
+    });
+    test('dedupes titles that share a TMDB id', () {
+      final a = movie(voteAverage: 8, voteCount: 5000, tmdbGenres: ['Animation'], tmdbId: 7);
+      final b = movie(voteAverage: 8, voteCount: 5000, tmdbGenres: ['Animation'], tmdbId: 7);
+      final c = movie(voteAverage: 8, voteCount: 4000, tmdbGenres: ['Animation'], tmdbId: 8);
+      final pool = famousPool([a, b, c]);
+      expect(pool.length, 2);
+      expect(pool.map((m) => m.tmdbId), [7, 8]);
     });
   });
 

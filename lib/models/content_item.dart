@@ -129,6 +129,14 @@ class TmdbData {
   /// TMDB trending score. Internal ranking signal only; never displayed.
   final double? popularity;
 
+  /// TMDB numeric id — used to dedupe titles that matched the same TMDB entry.
+  final int? tmdbId;
+
+  /// TMDB (English) genres, read from the nested `en`/`ar` block. Used to keep
+  /// the famous pool to Animation/Family titles. Distinct from [genres], which
+  /// may be a source-specific category (Stardima).
+  final List<String> tmdbGenres;
+
   const TmdbData({
     this.posterUrl,
     this.posterUrlW500,
@@ -140,22 +148,32 @@ class TmdbData {
     this.voteAverage,
     this.voteCount,
     this.popularity,
+    this.tmdbId,
+    this.tmdbGenres = const [],
   });
 
-  factory TmdbData.fromJson(Map<String, dynamic> j) => TmdbData(
-        posterUrl: j['poster_url'] as String?,
-        posterUrlW500: j['poster_url_w500'] as String?,
-        backdropUrl: j['backdrop_url'] as String?,
-        overviewAr: j['overview_ar'] as String?,
-        overviewEn: j['overview_en'] as String?,
-        genres: ((j['genres'] as List?) ?? const [])
-            .map((e) => e.toString())
-            .toList(),
-        year: (j['year'] as num?)?.toInt(),
-        voteAverage: (j['vote_average'] as num?)?.toDouble(),
-        voteCount: (j['vote_count'] as num?)?.toInt(),
-        popularity: (j['popularity'] as num?)?.toDouble(),
-      );
+  factory TmdbData.fromJson(Map<String, dynamic> j) {
+    final en = j['en'];
+    final enGenres = (en is Map && en['genres'] is List)
+        ? (en['genres'] as List).map((e) => e.toString()).toList()
+        : null;
+    final topGenres = (j['genres'] as List?)?.map((e) => e.toString()).toList();
+    final genres = enGenres ?? topGenres ?? const <String>[];
+    return TmdbData(
+      posterUrl: j['poster_url'] as String?,
+      posterUrlW500: j['poster_url_w500'] as String?,
+      backdropUrl: j['backdrop_url'] as String?,
+      overviewAr: j['overview_ar'] as String?,
+      overviewEn: j['overview_en'] as String?,
+      genres: genres,
+      tmdbGenres: genres,
+      tmdbId: (j['tmdb_id'] as num?)?.toInt(),
+      year: (j['year'] as num?)?.toInt(),
+      voteAverage: (j['vote_average'] as num?)?.toDouble(),
+      voteCount: (j['vote_count'] as num?)?.toInt(),
+      popularity: (j['popularity'] as num?)?.toDouble(),
+    );
+  }
 }
 
 /// Base for Show | Movie.
@@ -221,6 +239,16 @@ sealed class ContentItem {
     if (v == null) return r;
     return (v / (v + kFameBayesPrior)) * r +
         (kFameBayesPrior / (v + kFameBayesPrior)) * kFameMeanVote;
+  }
+
+  /// TMDB id for dedupe (null when unmatched).
+  int? get tmdbId => tmdb?.tmdbId;
+
+  /// True when the matched TMDB entry is animated/kid-oriented. Used to keep the
+  /// famous pool to cartoons (drops live-action mismatches).
+  bool get isAnimation {
+    final g = tmdb?.tmdbGenres ?? const <String>[];
+    return g.contains('Animation') || g.contains('Family');
   }
 
   /// Eligible for the curated "famous" Home pools.
