@@ -26,15 +26,25 @@ class StardimaAdapter {
     return (shows, movies);
   }
 
-  static TmdbData _tmdb(Map<String, dynamic> raw) => TmdbData(
-        // Stardima already serves correctly-sized TMDB images; expose the poster
-        // as the w500 variant the card getter prefers, and the backdrop as-is.
-        posterUrlW500: _str(raw['poster_url']),
-        posterUrl: _str(raw['poster_url']),
-        backdropUrl: _str(raw['backdrop_url']),
-        year: int.tryParse(_str(raw['year']) ?? ''),
-        genres: _category(raw),
-      );
+  static TmdbData _tmdb(Map<String, dynamic> raw) {
+    final t = raw['tmdb'];
+    final e = t is Map ? t.cast<String, dynamic>() : null;
+    return TmdbData(
+      // Stardima already serves correctly-sized TMDB images; expose the poster
+      // as the w500 variant the card getter prefers, and the backdrop as-is.
+      // Prefer enriched artwork when present, else the scraped flat fields.
+      posterUrlW500: _str(e?['poster_url_w500']) ?? _str(raw['poster_url']),
+      posterUrl: _str(e?['poster_url']) ?? _str(raw['poster_url']),
+      backdropUrl: _str(e?['backdrop_url']) ?? _str(raw['backdrop_url']),
+      year: int.tryParse(_str(raw['year']) ?? '') ??
+          (e?['year'] as num?)?.toInt(),
+      // Keep the single source `category` as the item's genre (filter rail).
+      genres: _category(raw),
+      voteAverage: (e?['vote_average'] as num?)?.toDouble(),
+      voteCount: (e?['vote_count'] as num?)?.toInt(),
+      popularity: (e?['popularity'] as num?)?.toDouble(),
+    );
+  }
 
   /// The single `category` field becomes the item's category list (empty when
   /// blank, so uncategorised items don't pollute the filter rail).

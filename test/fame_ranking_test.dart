@@ -1,5 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:kartoonia/models/content_item.dart';
+import 'package:kartoonia/models/stardima_adapter.dart';
 import 'package:kartoonia/services/fame_ranking.dart';
 
 void main() {
@@ -87,6 +88,45 @@ void main() {
     });
     test('returns all items when there is no signal at all', () {
       expect(famousPool([movie(), movie()]).length, 2);
+    });
+  });
+
+  group('StardimaAdapter enrichment', () {
+    test('reads vote_count/popularity from an enriched tmdb block', () {
+      final (_, movies) = StardimaAdapter.parse({
+        'movies': [
+          {
+            'id': '1',
+            'title': 'Famous Toon',
+            'poster_url': 'p.jpg',
+            'backdrop_url': 'b.jpg',
+            'year': '2011',
+            'category': 'Comedy',
+            'play_url': 'http://x',
+            'tmdb': {
+              'vote_average': 8.7,
+              'vote_count': 5350,
+              'popularity': 46.6,
+            },
+          }
+        ],
+        'tvshows': const [],
+      });
+      final m = movies.single;
+      expect(m.voteCount, 5350);
+      expect(m.tmdbPopularity, 46.6);
+      expect(m.isFamous, isTrue);
+      expect(m.categories, ['Comedy']);
+    });
+
+    test('items without a tmdb block stay non-famous', () {
+      final (_, movies) = StardimaAdapter.parse({
+        'movies': [
+          {'id': '2', 'title': 'Obscure', 'poster_url': 'p', 'play_url': 'u'}
+        ],
+        'tvshows': const [],
+      });
+      expect(movies.single.isFamous, isFalse);
     });
   });
 }
