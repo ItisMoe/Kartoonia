@@ -48,3 +48,55 @@ List<T> _dedupeByTmdbId<T extends ContentItem>(List<T> items) {
   }
   return out;
 }
+
+/// Browse ordering: every item kept, most-known first.
+///
+/// Partitions to avoid the vote_count-vs-rating scale mix that [compareByFame]
+/// warns about: enriched titles (TMDB vote_count known) lead, ordered by
+/// vote_count desc; the rest follow, ordered by denoised
+/// [ContentItem.weightedRating] desc. Ties fall back to case-insensitive title
+/// order so the grid is stable day-to-day.
+List<T> sortedForBrowse<T extends ContentItem>(List<T> items) {
+  final enriched = <T>[];
+  final rest = <T>[];
+  for (final i in items) {
+    (i.voteCount != null ? enriched : rest).add(i);
+  }
+  int byTitle(T a, T b) =>
+      a.title.toLowerCase().compareTo(b.title.toLowerCase());
+  enriched.sort((a, b) {
+    final c = (b.voteCount ?? 0).compareTo(a.voteCount ?? 0);
+    return c != 0 ? c : byTitle(a, b);
+  });
+  rest.sort((a, b) {
+    final c = b.weightedRating.compareTo(a.weightedRating);
+    return c != 0 ? c : byTitle(a, b);
+  });
+  return [...enriched, ...rest];
+}
+
+/// All distinct genres present across [items], sorted alphabetically.
+List<String> genresIn(List<ContentItem> items) {
+  final set = <String>{};
+  for (final i in items) {
+    set.addAll(i.genres);
+  }
+  return set.toList()..sort();
+}
+
+/// Genre groupings for [items]: genres with >= [min] items, capped at [cap]
+/// rows. Each entry's value is every item in that genre, unsorted (callers
+/// rank/shuffle as needed).
+List<MapEntry<String, List<ContentItem>>> genreRowsFor(
+  List<ContentItem> items, {
+  int min = 4,
+  int cap = 8,
+}) {
+  final out = <MapEntry<String, List<ContentItem>>>[];
+  for (final g in genresIn(items)) {
+    final inGenre = items.where((i) => i.genres.contains(g)).toList();
+    if (inGenre.length >= min) out.add(MapEntry(g, inGenre));
+    if (out.length >= cap) break;
+  }
+  return out;
+}

@@ -167,4 +167,65 @@ void main() {
       expect(movies.single.isFamous, isFalse);
     });
   });
+
+  group('sortedForBrowse', () {
+    test('enriched titles lead, ordered by vote_count desc', () {
+      final a = movie(voteAverage: 7, voteCount: 100);
+      final b = movie(voteAverage: 7, voteCount: 5000);
+      final c = movie(voteAverage: 7, voteCount: 900);
+      expect(sortedForBrowse([a, b, c]), [b, c, a]);
+    });
+
+    test('any enriched title outranks every un-enriched one', () {
+      // vote_count 5 == fameScore 5.0 would lose to a 9.0 rating under
+      // compareByFame; sortedForBrowse must still put the enriched title first.
+      final enriched = movie(voteAverage: 1, voteCount: 5);
+      final unrated = movie(voteAverage: 9);
+      expect(sortedForBrowse([unrated, enriched]), [enriched, unrated]);
+    });
+
+    test('un-enriched titles fall back to weighted rating desc', () {
+      final a = movie(voteAverage: 6);
+      final b = movie(voteAverage: 9);
+      expect(sortedForBrowse([a, b]), [b, a]);
+    });
+
+    test('keeps all items (drops nothing)', () {
+      expect(sortedForBrowse([movie(), movie(), movie()]).length, 3);
+    });
+
+    test('empty in, empty out', () {
+      expect(sortedForBrowse(<Movie>[]), isEmpty);
+    });
+  });
+
+  group('genre helpers', () {
+    Movie withGenres(String id, List<String> g) => Movie(
+          id: id,
+          title: id,
+          thumbnailUrl: '',
+          description: '',
+          tmdb: TmdbData(genres: g),
+          pageUrl: '',
+          servers: const [],
+        );
+
+    test('genresIn returns distinct genres sorted', () {
+      final items = [
+        withGenres('1', ['Comedy', 'Action']),
+        withGenres('2', ['Action']),
+      ];
+      expect(genresIn(items), ['Action', 'Comedy']);
+    });
+
+    test('genreRowsFor keeps only genres at/above min, capped', () {
+      final items = [
+        for (var i = 0; i < 4; i++) withGenres('a$i', ['Action']),
+        for (var i = 0; i < 3; i++) withGenres('c$i', ['Comedy']),
+      ];
+      final rows = genreRowsFor(items, min: 4);
+      expect(rows.map((e) => e.key), ['Action']);
+      expect(rows.single.value.length, 4);
+    });
+  });
 }
