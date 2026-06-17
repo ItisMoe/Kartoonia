@@ -167,4 +167,35 @@ void main() {
       expect(movies.single.isFamous, isFalse);
     });
   });
+
+  group('sortedForBrowse', () {
+    test('enriched titles lead, ordered by vote_count desc', () {
+      final a = movie(voteAverage: 7, voteCount: 100);
+      final b = movie(voteAverage: 7, voteCount: 5000);
+      final c = movie(voteAverage: 7, voteCount: 900);
+      expect(sortedForBrowse([a, b, c]), [b, c, a]);
+    });
+
+    test('any enriched title outranks every un-enriched one', () {
+      // vote_count 5 == fameScore 5.0 would lose to a 9.0 rating under
+      // compareByFame; sortedForBrowse must still put the enriched title first.
+      final enriched = movie(voteAverage: 1, voteCount: 5);
+      final unrated = movie(voteAverage: 9);
+      expect(sortedForBrowse([unrated, enriched]), [enriched, unrated]);
+    });
+
+    test('un-enriched titles fall back to weighted rating desc', () {
+      final a = movie(voteAverage: 6);
+      final b = movie(voteAverage: 9);
+      expect(sortedForBrowse([a, b]), [b, a]);
+    });
+
+    test('keeps all items (drops nothing)', () {
+      expect(sortedForBrowse([movie(), movie(), movie()]).length, 3);
+    });
+
+    test('empty in, empty out', () {
+      expect(sortedForBrowse(<Movie>[]), isEmpty);
+    });
+  });
 }

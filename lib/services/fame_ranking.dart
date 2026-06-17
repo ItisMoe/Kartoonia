@@ -48,3 +48,29 @@ List<T> _dedupeByTmdbId<T extends ContentItem>(List<T> items) {
   }
   return out;
 }
+
+/// Browse ordering: every item kept, most-known first.
+///
+/// Partitions to avoid the vote_count-vs-rating scale mix that [compareByFame]
+/// warns about: enriched titles (TMDB vote_count known) lead, ordered by
+/// vote_count desc; the rest follow, ordered by denoised
+/// [ContentItem.weightedRating] desc. Ties fall back to case-insensitive title
+/// order so the grid is stable day-to-day.
+List<T> sortedForBrowse<T extends ContentItem>(List<T> items) {
+  final enriched = <T>[];
+  final rest = <T>[];
+  for (final i in items) {
+    (i.voteCount != null ? enriched : rest).add(i);
+  }
+  int byTitle(T a, T b) =>
+      a.title.toLowerCase().compareTo(b.title.toLowerCase());
+  enriched.sort((a, b) {
+    final c = (b.voteCount ?? 0).compareTo(a.voteCount ?? 0);
+    return c != 0 ? c : byTitle(a, b);
+  });
+  rest.sort((a, b) {
+    final c = b.weightedRating.compareTo(a.weightedRating);
+    return c != 0 ? c : byTitle(a, b);
+  });
+  return [...enriched, ...rest];
+}
