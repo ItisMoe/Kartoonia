@@ -199,41 +199,43 @@ final searchProvider =
 /// unavailable: no recognizer / mic permission denied (button hides itself).
 enum VoiceStatus { idle, listening, unavailable }
 
-/// Single recognizer instance for the app's lifetime.
-final voiceServiceProvider = Provider<VoiceSearchService>((ref) {
-  final svc = VoiceSearchService();
-  ref.onDispose(svc.stop);
-  return svc;
-});
+/// Single recognizer wrapper for the app's lifetime.
+final voiceServiceProvider =
+    Provider<VoiceSearchService>((ref) => VoiceSearchService());
 
 class VoiceNotifier extends Notifier<VoiceStatus> {
   @override
-  VoiceStatus build() => VoiceStatus.idle;
+  VoiceStatus build() {
+    _checkAvailability();
+    return VoiceStatus.idle;
+  }
 
-  /// Toggles a listening session. Reads the active keyboard script to pick the
-  /// recognition language and streams the transcript into [searchProvider].
+  /// Reflects "no recognizer" as the muted mic-off icon, without blocking the
+  /// button — a press still attempts recognition in case the check was wrong.
+  Future<void> _checkAvailability() async {
+    final ok = await ref.read(voiceServiceProvider).isAvailable();
+    if (!ok && state == VoiceStatus.idle) state = VoiceStatus.unavailable;
+  }
+
+  /// Opens the system voice dialog, then drops the final transcript into the
+  /// search box. The dialog owns the listening session, so there is nothing to
+  /// stop — a press while already listening is ignored.
   Future<void> toggle() async {
-    final svc = ref.read(voiceServiceProvider);
-    if (state == VoiceStatus.listening) {
-      await svc.stop();
-      state = VoiceStatus.idle;
-      return;
-    }
+    if (state == VoiceStatus.listening) return;
 
+    final svc = ref.read(voiceServiceProvider);
     final search = ref.read(searchProvider.notifier);
     final kbScript = ref.read(searchProvider).kbScript;
+    final prompt = ref.read(stringsProvider)['voiceSpeak'];
+
     state = VoiceStatus.listening;
     try {
-      final ok = await svc.start(
-        kbScript: kbScript,
-        onText: (text, _) => search.setQuery(text),
-        onDone: () {
-          if (state == VoiceStatus.listening) state = VoiceStatus.idle;
-        },
-      );
-      if (!ok) state = VoiceStatus.unavailable;
+      final text = await svc.recognize(kbScript: kbScript, prompt: prompt);
+      if (text != null) search.setQuery(text);
     } catch (_) {
-      state = VoiceStatus.unavailable;
+      // Swallow: an unavailable recognizer just yields no transcript.
+    } finally {
+      state = VoiceStatus.idle;
     }
   }
 }

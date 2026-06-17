@@ -1,123 +1,51 @@
 import 'package:flutter/foundation.dart';
-import 'package:speech_to_text/speech_to_text.dart';
+import 'package:flutter/services.dart';
 
-/// Picks the best speech-recognition locale id for the given keyboard script.
+/// Maps the active keyboard script to a BCP-47 locale tag for the system
+/// speech recognizer. 'ar' → Arabic (Saudi), anything else → US English.
+String voiceLocaleFor(String kbScript) => kbScript == 'ar' ? 'ar-SA' : 'en-US';
+
+/// Voice search backed by the platform's system speech dialog (Android's
+/// `RecognizerIntent`), bridged through the `kartoonia/voice` method channel.
 ///
-/// Pure and testable: given the recognizer's [available] locale ids and the
-/// device [systemLocaleId], it prefers an available locale whose language
-/// matches the requested script ('ar' or 'en'). Crucially, it NEVER falls back
-/// to a locale in a different language than the one the user asked for — when
-/// the user picks Arabic, the result is always an Arabic locale (the system
-/// locale only counts if it too is Arabic), otherwise the hardcoded `ar-SA`.
-/// A recognizer with the Arabic language pack installed honors `ar-SA` even
-/// when it didn't advertise an `ar` locale, so this keeps voice search in the
-/// chosen language instead of silently reverting to the device's English.
-/// Locale ids may use either `_` or `-` as separator.
-String pickSpeechLocaleId(
-  String kbScript, {
-  required List<String> available,
-  required String systemLocaleId,
-}) {
-  final prefix = kbScript == 'ar' ? 'ar' : 'en';
-
-  String langOf(String id) =>
-      id.toLowerCase().replaceAll('-', '_').split('_').first;
-
-  // 1. A recognizer locale advertised in the requested language.
-  for (final id in available) {
-    if (langOf(id) == prefix) return id;
-  }
-  // 2. The system locale, but ONLY when it is the requested language — never
-  //    switch to (e.g.) English just because that's the device default.
-  if (systemLocaleId.isNotEmpty && langOf(systemLocaleId) == prefix) {
-    return systemLocaleId;
-  }
-  // 3. A sensible hardcoded default for the requested language.
-  return prefix == 'ar' ? 'ar-SA' : 'en-US';
-}
-
-/// Thin wrapper around [SpeechToText] for the search screen. Owns one-time
-/// initialization (which also triggers the microphone permission prompt),
-/// locale selection, and start/stop of a listening session.
+/// On Android TV / Google TV this is the only reliable path. The continuous
+/// `SpeechRecognizer` API the old `speech_to_text` plugin used gets no audio on
+/// a Chromecast dongle — it has no built-in microphone, and the remote's mic is
+/// reserved for the system Assistant — so it would report "listening" forever
+/// without ever capturing a word. The system dialog instead uses the remote's
+/// mic and returns a single final transcript, which also removes the
+/// partial-result re-search lag the old approach caused.
 class VoiceSearchService {
-  final SpeechToText _speech = SpeechToText();
-  bool _initialized = false;
-  bool _available = false;
-  List<String> _localeIds = const [];
-  String _systemLocaleId = '';
+  static const _channel = MethodChannel('kartoonia/voice');
 
-  /// End-of-session callback for the active listening session, if any.
-  VoidCallback? _onDone;
-
-  bool get isListening => _speech.isListening;
-
-  /// Initializes the recognizer once. Returns whether speech is available
-  /// (the device has a recognizer and the mic permission was granted).
-  Future<bool> ensureInitialized() async {
-    if (_initialized) return _available;
+  /// Whether the device exposes a usable speech-recognition path.
+  Future<bool> isAvailable() async {
     try {
-      _available = await _speech.initialize(
-        onError: (e) => debugPrint('VoiceSearch error: ${e.errorMsg}'),
-        onStatus: (s) {
-          debugPrint('VoiceSearch status: $s');
-          // Surface end-of-session even when stopped without a final result.
-          if (s == SpeechToText.doneStatus ||
-              s == SpeechToText.notListeningStatus) {
-            final cb = _onDone;
-            _onDone = null;
-            cb?.call();
-          }
-        },
-      );
-      if (_available) {
-        final locales = await _speech.locales();
-        _localeIds = locales.map((l) => l.localeId).toList();
-        final sys = await _speech.systemLocale();
-        _systemLocaleId = sys?.localeId ?? '';
-      }
-    } catch (e) {
-      debugPrint('VoiceSearch init failed: $e');
-      _available = false;
+      return await _channel.invokeMethod<bool>('isAvailable') ?? false;
+    } on PlatformException catch (e) {
+      debugPrint('VoiceSearch isAvailable failed: $e');
+      return false;
+    } on MissingPluginException {
+      return false;
     }
-    _initialized = true;
-    return _available;
   }
 
-  /// Starts a listening session for the language implied by [kbScript].
-  ///
-  /// [onText] is called with partial transcripts as the user speaks and once
-  /// more with the final transcript. [onDone] fires when the session ends
-  /// (final result, timeout, or stop).
-  Future<bool> start({
-    required String kbScript,
-    required void Function(String text, bool isFinal) onText,
-    required VoidCallback onDone,
-  }) async {
-    final ok = await ensureInitialized();
-    if (!ok) return false;
-
-    final localeId = pickSpeechLocaleId(
-      kbScript,
-      available: _localeIds,
-      systemLocaleId: _systemLocaleId,
-    );
-
-    _onDone = onDone;
-    await _speech.listen(
-      onResult: (r) => onText(r.recognizedWords, r.finalResult),
-      listenOptions: SpeechListenOptions(
-        partialResults: true,
-        cancelOnError: true,
-        listenMode: ListenMode.search,
-        localeId: localeId,
-        listenFor: const Duration(seconds: 20),
-        pauseFor: const Duration(seconds: 4),
-      ),
-    );
-    return true;
-  }
-
-  Future<void> stop() async {
-    if (_speech.isListening) await _speech.stop();
+  /// Launches the system voice dialog for [kbScript] and resolves with the
+  /// recognized text, or null when the user cancelled, nothing was heard, or
+  /// recognition is unavailable. [prompt] is shown in the system UI.
+  Future<String?> recognize({required String kbScript, String? prompt}) async {
+    try {
+      final text = await _channel.invokeMethod<String>('recognize', {
+        'localeId': voiceLocaleFor(kbScript),
+        'prompt': prompt,
+      });
+      final trimmed = text?.trim();
+      return (trimmed == null || trimmed.isEmpty) ? null : trimmed;
+    } on PlatformException catch (e) {
+      debugPrint('VoiceSearch recognize failed: $e');
+      return null;
+    } on MissingPluginException {
+      return null;
+    }
   }
 }
