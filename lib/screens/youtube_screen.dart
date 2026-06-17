@@ -44,11 +44,20 @@ class _YoutubeScreenState extends ConsumerState<YoutubeScreen>
 
   final FocusNode _playFocus = FocusNode(debugLabel: 'ytPlayPause');
 
+  // Phones watch in landscape; captured here so dispose can restore portrait.
+  late final bool _isTv = ref.read(isTvProvider);
+
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
+    if (!_isTv) {
+      SystemChrome.setPreferredOrientations(const [
+        DeviceOrientation.landscapeLeft,
+        DeviceOrientation.landscapeRight,
+      ]);
+    }
     PlayerService.instance.ensureCreated();
     _subscribe();
     _start();
@@ -253,6 +262,9 @@ class _YoutubeScreenState extends ConsumerState<YoutubeScreen>
     PlayerService.instance.stop();
     _playFocus.dispose();
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
+    if (!_isTv) {
+      SystemChrome.setPreferredOrientations(const [DeviceOrientation.portraitUp]);
+    }
     super.dispose();
   }
 

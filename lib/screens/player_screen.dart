@@ -99,11 +99,23 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
   final FocusScopeNode _playerScope = FocusScopeNode(debugLabel: 'player');
   final FocusNode _playFocus = FocusNode(debugLabel: 'playPause');
 
+  // Captured in initState so dispose can restore the right orientation without
+  // touching the provider after the widget tree is torn down.
+  late final bool _isTv = ref.read(isTvProvider);
+
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
+    // Phones browse in portrait but watch in landscape — flip while the player
+    // is on screen, then restore portrait on the way out (TVs stay landscape).
+    if (!_isTv) {
+      SystemChrome.setPreferredOrientations(const [
+        DeviceOrientation.landscapeLeft,
+        DeviceOrientation.landscapeRight,
+      ]);
+    }
     PlayerService.instance.ensureCreated();
     _pageUrl = widget.args.pageUrl;
     _epLabel = widget.args.episodeLabel;
@@ -462,6 +474,9 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
     _playFocus.dispose();
     _playerScope.dispose();
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
+    if (!_isTv) {
+      SystemChrome.setPreferredOrientations(const [DeviceOrientation.portraitUp]);
+    }
     super.dispose();
   }
 

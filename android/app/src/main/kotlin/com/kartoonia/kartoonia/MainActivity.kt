@@ -1,7 +1,10 @@
 package com.kartoonia.kartoonia
 
 import android.app.Activity
+import android.app.UiModeManager
+import android.content.Context
 import android.content.Intent
+import android.content.res.Configuration
 import android.net.Uri
 import android.speech.RecognizerIntent
 import android.speech.SpeechRecognizer
@@ -40,6 +43,10 @@ class MainActivity : FlutterActivity() {
                     result.success(pendingDeepLink)
                     pendingDeepLink = null
                 }
+                // Whether this device is an Android TV / Google TV (leanback) box,
+                // as opposed to a touch phone/tablet. Drives the UI fork in main():
+                // TVs get the D-pad 1920×1080 canvas, phones get the portrait UI.
+                "isTelevision" -> result.success(isTelevision())
                 else -> result.notImplemented()
             }
         }
@@ -64,6 +71,17 @@ class MainActivity : FlutterActivity() {
 
         // capture the deep link the app may have been launched with
         pendingDeepLink = linkFrom(intent)
+    }
+
+    /// True on leanback devices (Android TV / Google TV). Falls back to false
+    /// (touch UI) if the system service is somehow unavailable.
+    private fun isTelevision(): Boolean {
+        return try {
+            val uiModeManager = getSystemService(Context.UI_MODE_SERVICE) as UiModeManager
+            uiModeManager.currentModeType == Configuration.UI_MODE_TYPE_TELEVISION
+        } catch (e: Throwable) {
+            false
+        }
     }
 
     private fun voiceRecognitionAvailable(): Boolean {

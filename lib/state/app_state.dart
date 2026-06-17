@@ -5,6 +5,12 @@ import '../services/catalog_service.dart';
 import '../services/voice_search_service.dart';
 import '../i18n/strings.dart';
 
+/// True on Android TV / Google TV (leanback). Detected once in main() via the
+/// native channel and injected below; drives the UI fork (TV D-pad canvas vs.
+/// the portrait touch phone UI).
+final isTvProvider = Provider<bool>(
+    (ref) => throw UnimplementedError('isTvProvider must be overridden'));
+
 /// Injected in main() via ProviderScope overrides after async init.
 final storageProvider = Provider<StorageService>(
     (ref) => throw UnimplementedError('storageProvider must be overridden'));
@@ -14,6 +20,11 @@ final catalogProvider = Provider<CatalogService>(
 /// Bumped after an import or a source switch so dependent UI rebuilds (the
 /// catalog mutates in place).
 final catalogRevProvider = StateProvider<int>((ref) => 0);
+
+/// Selected bottom-tab index for the phone shell (0=Home, 1=Browse, 2=Search,
+/// 3=My List). A provider so screens can switch tabs programmatically (e.g. the
+/// Home search affordance or an empty My-List CTA).
+final phoneTabProvider = StateProvider<int>((ref) => 0);
 
 // ---------------- Catalog source (Arabic Toons | Stardima) ----------------
 /// True while a source switch is loading/parsing the new catalog asset.
