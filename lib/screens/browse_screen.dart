@@ -3,15 +3,22 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../models/content_item.dart';
 import '../navigation.dart';
 import '../services/catalog_service.dart';
+import '../services/fame_ranking.dart';
 import '../state/app_state.dart';
 import '../theme/theme.dart';
 import '../theme/layout.dart';
+import '../utils/daily_shuffle.dart';
+import '../utils/genre_translations.dart';
 import '../widgets/content_card.dart';
+import '../widgets/content_row.dart';
 import '../widgets/ensure_visible.dart';
 import '../widgets/screen_shell.dart';
 import '../widgets/selectable_chip.dart';
 
-/// Browse TV Shows / Movies / My List with an A–Z alpha bar (design `.browse`).
+/// Browse TV Shows / Movies / My List. Movies and TV each render either a
+/// Home-style sectioned view (default "All": no letter, no genre filter) or a
+/// flat fame-sorted grid (a letter and/or a genre filter is active, sorted
+/// known-first). My List is always a plain grid in its own order.
 class BrowseScreen extends ConsumerWidget {
   final String kind; // 'tv' | 'movies' | 'mylist'
   const BrowseScreen({super.key, required this.kind});
@@ -26,41 +33,52 @@ class BrowseScreen extends ConsumerWidget {
     final browse = ref.watch(browseProvider);
     final user = ref.watch(userProvider);
 
+    final isMyList = kind == 'mylist';
     final title = kind == 'movies'
         ? t['browse_movies']!
-        : kind == 'mylist'
+        : isMyList
             ? t['browse_mylist']!
             : t['browse_tv']!;
 
-    List<ContentItem> items;
+    List<ContentItem> typeItems;
     if (kind == 'movies') {
-      items = catalog.movies;
-    } else if (kind == 'mylist') {
-      items = user.watchlistIds
+      typeItems = catalog.movies;
+    } else if (isMyList) {
+      typeItems = user.watchlistIds
           .map(catalog.getById)
           .whereType<ContentItem>()
           .toList();
     } else {
-      items = catalog.shows;
+      typeItems = catalog.shows;
     }
 
-    final isMyList = kind == 'mylist';
-
-    // A–Z first-letter browsing for every catalog source — Arabic Toons and
-    // Stardima behave identically (no per-source category chips).
     final script = browse.alphaScript;
     final letter = browse.letter;
+    final category = browse.category;
+
+    // Sectioned (Mode A) only for the default, unfiltered Movies/TV view.
+    final sectioned = !isMyList && letter == null && category == null;
+
+    // Genre-filtered base — feeds both the grid and the alpha bar present-set.
+    final base = (category == null)
+        ? typeItems
+        : typeItems.where((i) => i.genres.contains(category)).toList();
 
     List<ContentItem> shown;
     if (isMyList) {
-      shown = items;
+      shown = typeItems;
+    } else if (sectioned) {
+      shown = base; // unused for rendering; header count uses typeItems
     } else {
-      shown = letter == null
-          ? items
-          : items
+      final filtered = letter == null
+          ? base
+          : base
               .where((s) => firstLetterFor(s.title, script) == letter)
               .toList();
+      shown = sortedForBrowse(filtered);
     }
+
+    void open(ContentItem i) => AppNav.detail(context, i);
 
     Widget grid(List<ContentItem> list) {
       if (list.isEmpty) {
@@ -108,7 +126,7 @@ class BrowseScreen extends ConsumerWidget {
                 expand: true,
                 autofocus: i == 0,
                 movieLabel: t['movie']!,
-                onPressed: () => AppNav.detail(context, list[i]),
+                onPressed: () => open(list[i]),
               ),
             ),
             childCount: list.length,
@@ -117,10 +135,76 @@ class BrowseScreen extends ConsumerWidget {
       );
     }
 
+    // Mode A: Home-style rows for a single type, no hero, daily-rotated.
+    List<Widget> sectionRows() {
+      final pool = famousPool(typeItems);
+      final rows = <Widget>[];
+
+      final mostPopular =
+          dailyShuffled(pool.take(80).toList(), salt: 'b_most_$kind')
+              .take(30)
+              .toList();
+      rows.add(ContentRow(
+        title: t['most_popular']!,
+        count: mostPopular.length,
+        cards: [
+          for (final i in mostPopular)
+            PosterCard(item: i, movieLabel: t['movie']!, onPressed: () => open(i)),
+        ],
+      ));
+
+      final popular =
+          dailyShuffled(pool.take(60).toList(), salt: 'b_pop_$kind')
+              .take(20)
+              .toList();
+      rows.add(ContentRow(
+        title: t['row_popular']!,
+        count: popular.length,
+        cards: [
+          for (final i in popular)
+            PosterCard(item: i, movieLabel: t['movie']!, onPressed: () => open(i)),
+        ],
+      ));
+
+      final top10 =
+          dailyShuffled(pool.take(40).toList(), salt: 'b_top_$kind')
+              .take(10)
+              .toList();
+      rows.add(ContentRow(
+        title: t['topten']!,
+        top10Badge: true,
+        cards: [
+          for (int i = 0; i < top10.length; i++)
+            Top10Card(
+                item: top10[i], rank: i + 1, onPressed: () => open(top10[i])),
+        ],
+      ));
+
+      for (final entry in genreRowsFor(typeItems)) {
+        final byFame = entry.value.toList()
+          ..sort((a, b) => b.fameScore.compareTo(a.fameScore));
+        rows.add(ContentRow(
+          title: translateGenre(entry.key),
+          count: entry.value.length,
+          cards: [
+            for (final i in dailyShuffled(byFame.take(24).toList(),
+                    salt: 'b_${entry.key}_$kind')
+                .take(20))
+              PosterCard(
+                  item: i, movieLabel: t['movie']!, onPressed: () => open(i)),
+          ],
+        ));
+      }
+      return rows;
+    }
+
     final present = isMyList
         ? <String>{}
-        : items.map((s) => firstLetterFor(s.title, script)).toSet();
+        : base.map((s) => firstLetterFor(s.title, script)).toSet();
     final letters = (script == 'ar' ? alphaAr : alphaEn).split('');
+
+    final headerCount =
+        (isMyList || sectioned) ? typeItems.length : shown.length;
 
     return ScreenShell(
       current: _navKey(),
@@ -130,7 +214,8 @@ class BrowseScreen extends ConsumerWidget {
           const SliverToBoxAdapter(child: SizedBox(height: 150)),
           SliverToBoxAdapter(
             child: Padding(
-              padding: const EdgeInsets.fromLTRB(Spacing.pad, 0, Spacing.pad, 30),
+              padding:
+                  const EdgeInsets.fromLTRB(Spacing.pad, 0, Spacing.pad, 30),
               child: Row(
                 textBaseline: TextBaseline.alphabetic,
                 crossAxisAlignment: CrossAxisAlignment.baseline,
@@ -144,7 +229,7 @@ class BrowseScreen extends ConsumerWidget {
                           letterSpacing: -0.5,
                           color: AppColors.ink)),
                   const SizedBox(width: 16),
-                  Text('${shown.length}',
+                  Text('$headerCount',
                       style: const TextStyle(
                           fontSize: 24,
                           fontWeight: FontWeight.w800,
@@ -159,8 +244,20 @@ class BrowseScreen extends ConsumerWidget {
                 height: 70,
                 child: ListView(
                   scrollDirection: Axis.horizontal,
-                  padding: const EdgeInsets.symmetric(horizontal: Spacing.pad),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: Spacing.pad),
                   children: [
+                    // Filter button — shows the active genre when one is set.
+                    _railChip(SelectableChip(
+                      label: category == null
+                          ? t['browse_filter']!
+                          : translateGenre(category),
+                      selected: category != null,
+                      radius: 13,
+                      onPressed: () =>
+                          _openFilter(context, ref, typeItems, category, t),
+                    )),
+                    const SizedBox(width: 16),
                     // script toggle
                     _railChip(SelectableChip(
                       label: t['kbLatin']!,
@@ -201,7 +298,10 @@ class BrowseScreen extends ConsumerWidget {
               ),
             ),
           const SliverToBoxAdapter(child: SizedBox(height: 24)),
-          grid(shown),
+          if (sectioned)
+            SliverList(delegate: SliverChildListDelegate(sectionRows()))
+          else
+            grid(shown),
         ],
       ),
     );
@@ -211,4 +311,67 @@ class BrowseScreen extends ConsumerWidget {
         padding: const EdgeInsets.only(right: 8),
         child: EnsureVisibleOnFocus(child: Center(child: child)),
       );
+
+  /// D-pad genre picker. Selecting a genre sets the category filter (collapsing
+  /// the sectioned view into a fame-sorted grid); "All Genres" clears it.
+  Future<void> _openFilter(
+    BuildContext context,
+    WidgetRef ref,
+    List<ContentItem> items,
+    String? current,
+    Map<String, String> t,
+  ) {
+    final genres = genresIn(items);
+    return showDialog<void>(
+      context: context,
+      builder: (ctx) => Dialog(
+        backgroundColor: AppColors.bg2,
+        insetPadding:
+            const EdgeInsets.symmetric(horizontal: 120, vertical: 80),
+        child: Padding(
+          padding: const EdgeInsets.all(28),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(t['browse_filter']!,
+                  style: const TextStyle(
+                      fontSize: 28,
+                      fontWeight: FontWeight.w800,
+                      color: AppColors.ink)),
+              const SizedBox(height: 20),
+              Flexible(
+                child: SingleChildScrollView(
+                  child: Wrap(
+                    spacing: 12,
+                    runSpacing: 12,
+                    children: [
+                      SelectableChip(
+                        label: t['filter_all_genres']!,
+                        selected: current == null,
+                        autofocus: true,
+                        onPressed: () {
+                          ref.read(browseProvider.notifier).setCategory(null);
+                          Navigator.of(ctx).pop();
+                        },
+                      ),
+                      for (final g in genres)
+                        SelectableChip(
+                          label: translateGenre(g),
+                          selected: current == g,
+                          onPressed: () {
+                            ref.read(browseProvider.notifier).setCategory(g);
+                            Navigator.of(ctx).pop();
+                          },
+                        ),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
 }
