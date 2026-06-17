@@ -415,6 +415,18 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
     _flashControls();
   }
 
+  /// Absolute seek used by touch tap/drag on the scrub bar (the D-pad path uses
+  /// the relative [_seekBy]). [fraction] is 0..1 of the total duration.
+  void _seekToFraction(double fraction) {
+    if (_duration <= Duration.zero) return;
+    final clamped = fraction.clamp(0.0, 1.0);
+    final target = Duration(
+        milliseconds: (_duration.inMilliseconds * clamped).round());
+    _player.seek(target);
+    setState(() => _position = target);
+    _flashControls();
+  }
+
   void _switchServer(int n) {
     setState(() {
       _serverPanelOpen = false;
@@ -653,6 +665,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
                 position: _position,
                 duration: _duration,
                 onSeekBy: _seekBy,
+                onSeekToFraction: _seekToFraction,
               ),
             ),
             const SizedBox(height: 26),
@@ -838,15 +851,18 @@ class _CtrlButton extends StatelessWidget {
   }
 }
 
-/// Focusable scrub bar; D-pad LEFT/RIGHT seek ±10s, UP/DOWN move focus away.
+/// Focusable scrub bar. D-pad LEFT/RIGHT seek ±10s (UP/DOWN move focus away);
+/// on touch, tapping or dragging anywhere along the bar seeks to that position.
 class _ScrubBar extends StatelessWidget {
   final Duration position;
   final Duration duration;
   final void Function(Duration) onSeekBy;
+  final void Function(double fraction) onSeekToFraction;
   const _ScrubBar({
     required this.position,
     required this.duration,
     required this.onSeekBy,
+    required this.onSeekToFraction,
   });
 
   String _fmt(Duration d) {
@@ -887,9 +903,21 @@ class _ScrubBar extends StatelessWidget {
           },
           child: Builder(builder: (context) {
             final focused = Focus.of(context).hasFocus;
-            return SizedBox(
-              height: 28,
-              child: Stack(alignment: Alignment.centerLeft, children: [
+            return LayoutBuilder(builder: (context, c) {
+              final width = c.maxWidth;
+              void seekAt(double dx) {
+                if (width > 0) onSeekToFraction(dx / width);
+              }
+              return GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                // Touch: tap or drag anywhere on the bar jumps to that point
+                // (the bar is forced LTR, so dx/width maps straight to 0..1).
+                onTapDown: (d) => seekAt(d.localPosition.dx),
+                onHorizontalDragStart: (d) => seekAt(d.localPosition.dx),
+                onHorizontalDragUpdate: (d) => seekAt(d.localPosition.dx),
+                child: SizedBox(
+                  height: 28,
+                  child: Stack(alignment: Alignment.centerLeft, children: [
                 Container(
                   height: 8,
                   decoration: BoxDecoration(
@@ -928,8 +956,10 @@ class _ScrubBar extends StatelessWidget {
                     ),
                   ),
                 ),
-              ]),
-            );
+                  ]),
+                ),
+              );
+            });
           }),
         ),
       ),

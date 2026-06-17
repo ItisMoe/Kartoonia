@@ -5,7 +5,9 @@
     <!-- Voice search: record audio for on-device speech recognition -->
     <uses-permission android:name="android.permission.RECORD_AUDIO"/>
 
-    <!-- Android TV / Google TV: works without touchscreen, on leanback -->
+    <!-- Runs on both Android TV / Google TV (leanback, no touchscreen) AND
+         touch phones/tablets. Nothing is required, so the app installs on every
+         form factor: leanback-only TVs, and phones that lack a leanback UI. -->
     <uses-feature android:name="android.software.leanback" android:required="false"/>
     <uses-feature android:name="android.hardware.touchscreen" android:required="false"/>
     <!-- Mic is optional: TVs without one still install (voice button hides itself) -->
@@ -28,8 +30,9 @@
             android:theme="@style/LaunchTheme"
             android:configChanges="orientation|keyboardHidden|keyboard|screenSize|smallestScreenSize|locale|layoutDirection|fontScale|screenLayout|density|uiMode"
             android:hardwareAccelerated="true"
-            android:screenOrientation="landscape"
-            android:windowSoftInputMode="adjustResize">
+            android:screenOrientation="sensorLandscape"
+            android:windowSoftInputMode="adjustResize"
+            android:resizeableActivity="true">
             <meta-data
               android:name="io.flutter.embedding.android.NormalTheme"
               android:resource="@style/NormalTheme"
