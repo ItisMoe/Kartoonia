@@ -74,3 +74,29 @@ List<T> sortedForBrowse<T extends ContentItem>(List<T> items) {
   });
   return [...enriched, ...rest];
 }
+
+/// All distinct genres present across [items], sorted alphabetically.
+List<String> genresIn(List<ContentItem> items) {
+  final set = <String>{};
+  for (final i in items) {
+    set.addAll(i.genres);
+  }
+  return set.toList()..sort();
+}
+
+/// Genre groupings for [items]: genres with >= [min] items, capped at [cap]
+/// rows. Each entry's value is every item in that genre, unsorted (callers
+/// rank/shuffle as needed).
+List<MapEntry<String, List<ContentItem>>> genreRowsFor(
+  List<ContentItem> items, {
+  int min = 4,
+  int cap = 8,
+}) {
+  final out = <MapEntry<String, List<ContentItem>>>[];
+  for (final g in genresIn(items)) {
+    final inGenre = items.where((i) => i.genres.contains(g)).toList();
+    if (inGenre.length >= min) out.add(MapEntry(g, inGenre));
+    if (out.length >= cap) break;
+  }
+  return out;
+}

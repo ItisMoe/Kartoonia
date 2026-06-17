@@ -198,4 +198,34 @@ void main() {
       expect(sortedForBrowse(<Movie>[]), isEmpty);
     });
   });
+
+  group('genre helpers', () {
+    Movie withGenres(String id, List<String> g) => Movie(
+          id: id,
+          title: id,
+          thumbnailUrl: '',
+          description: '',
+          tmdb: TmdbData(genres: g),
+          pageUrl: '',
+          servers: const [],
+        );
+
+    test('genresIn returns distinct genres sorted', () {
+      final items = [
+        withGenres('1', ['Comedy', 'Action']),
+        withGenres('2', ['Action']),
+      ];
+      expect(genresIn(items), ['Action', 'Comedy']);
+    });
+
+    test('genreRowsFor keeps only genres at/above min, capped', () {
+      final items = [
+        for (var i = 0; i < 4; i++) withGenres('a$i', ['Action']),
+        for (var i = 0; i < 3; i++) withGenres('c$i', ['Comedy']),
+      ];
+      final rows = genreRowsFor(items, min: 4);
+      expect(rows.map((e) => e.key), ['Action']);
+      expect(rows.single.value.length, 4);
+    });
+  });
 }

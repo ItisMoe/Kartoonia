@@ -112,29 +112,15 @@ class CatalogService {
   }
 
   // ---- Genres ----
-  List<String> getAllGenres() {
-    final set = <String>{};
-    for (final i in all) {
-      set.addAll(i.genres);
-    }
-    final list = set.toList()..sort();
-    return list;
-  }
+  List<String> getAllGenres() => genresIn(all);
 
   List<ContentItem> byGenre(String genre) =>
       all.where((i) => i.genres.contains(genre)).toList();
 
   /// Genre rows for Home: genres with >= [min] items, capped at [cap] rows.
   List<MapEntry<String, List<ContentItem>>> genreRows(
-      {int min = 4, int cap = 6}) {
-    final out = <MapEntry<String, List<ContentItem>>>[];
-    for (final g in getAllGenres()) {
-      final items = byGenre(g);
-      if (items.length >= min) out.add(MapEntry(g, items));
-      if (out.length >= cap) break;
-    }
-    return out;
-  }
+          {int min = 4, int cap = 6}) =>
+      genreRowsFor(all, min: min, cap: cap);
 
   // ---- Browse filtering + sorting (no rating sort) ----
   List<ContentItem> browse(String kind) {
