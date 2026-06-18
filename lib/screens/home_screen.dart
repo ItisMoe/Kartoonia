@@ -91,6 +91,26 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       ));
     }
 
+    // My List (watchlist) — poster row, most-recently-added first.
+    final myList = [
+      for (final id in user.watchlistIds)
+        if (catalog.getById(id) != null) catalog.getById(id)!,
+    ];
+    if (myList.isNotEmpty) {
+      rows.add(ContentRow(
+        title: t['nav_mylist']!,
+        count: myList.length,
+        cards: [
+          for (final i in myList)
+            PosterCard(
+                item: i,
+                movieLabel: t['movie']!,
+                sourceLabel: badge(i),
+                onPressed: () => open(i)),
+        ],
+      ));
+    }
+
     // Most Popular — a daily-rotating sample of the famous pool, so the row
     // shows a different slice of well-known titles each day.
     final mostPopular =
