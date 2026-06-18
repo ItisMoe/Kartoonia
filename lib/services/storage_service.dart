@@ -51,6 +51,7 @@ class StorageService {
   static const _kPrefs = 'kt/prefs'; // motion/autoplay
   static const _kYtKey = 'kt/ytKey'; // user-set YouTube Data API key override
   static const _kCatalogSource = 'kt/catalogSource'; // arabicToons | stardima
+  static const _kRecentSearches = 'kt/recentSearches';
 
   final SharedPreferences _prefs;
   StorageService(this._prefs);
@@ -116,6 +117,39 @@ class StorageService {
     }
     return best;
   }
+
+  /// Drop a single episode's progress (keyed by its page/episode url).
+  Future<void> removeProgress(String episodeUrl) async {
+    final map = _readProgress()..remove(episodeUrl);
+    await _prefs.setString(
+        _kProgress, jsonEncode(map.map((k, v) => MapEntry(k, v.toJson()))));
+  }
+
+  /// Drop all progress for a show/movie (clears the whole title from the
+  /// Continue Watching row).
+  Future<void> removeProgressForItem(String itemId) async {
+    final map = _readProgress()..removeWhere((_, v) => v.itemId == itemId);
+    await _prefs.setString(
+        _kProgress, jsonEncode(map.map((k, v) => MapEntry(k, v.toJson()))));
+  }
+
+  // ---- Recent searches ----
+  /// Recent search queries, most-recent first.
+  List<String> getRecentSearches() =>
+      _prefs.getStringList(_kRecentSearches) ?? const [];
+
+  /// Record a query: trims, ignores empties, de-dupes case-insensitively,
+  /// moves to the front, and caps the list at 8.
+  Future<void> addRecentSearch(String q) async {
+    final query = q.trim();
+    if (query.isEmpty) return;
+    final list = [...getRecentSearches()]
+      ..removeWhere((e) => e.toLowerCase() == query.toLowerCase());
+    list.insert(0, query);
+    await _prefs.setStringList(_kRecentSearches, list.take(8).toList());
+  }
+
+  Future<void> clearRecentSearches() => _prefs.remove(_kRecentSearches);
 
   // ---- Preferences ----
   int getPreferredServer() => _prefs.getInt(_kPreferredServer) ?? 1;
