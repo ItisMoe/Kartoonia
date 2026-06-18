@@ -46,24 +46,6 @@ class _CardRing extends StatelessWidget {
   }
 }
 
-/// Small corner tag naming the catalog source. Shown only on titles that exist
-/// in both sources, so the two duplicate cards are distinguishable.
-Widget _sourceBadge(String label) => Positioned(
-      top: 12,
-      left: 12,
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-        decoration: BoxDecoration(
-          color: const Color(0x9E050710),
-          borderRadius: BorderRadius.circular(6),
-          border: Border.all(color: Colors.white.withValues(alpha: 0.18)),
-        ),
-        child: Text(label,
-            style: const TextStyle(
-                fontWeight: FontWeight.w800, fontSize: 13, color: Colors.white)),
-      ),
-    );
-
 Widget _movieTag(BuildContext context, String label) => Positioned(
       top: 12,
       right: 12,
@@ -104,7 +86,6 @@ class PosterCard extends StatelessWidget {
   final bool autofocus;
   final bool expand; // fill parent (for grid cells) instead of fixed size
   final String movieLabel;
-  final String? sourceLabel; // catalog-source badge for cross-source duplicates
   final VoidCallback? onLongPress; // press-and-hold OK / touch long-press
 
   const PosterCard({
@@ -117,7 +98,6 @@ class PosterCard extends StatelessWidget {
     this.autofocus = false,
     this.expand = false,
     this.movieLabel = 'فيلم',
-    this.sourceLabel,
     this.onLongPress,
   });
 
@@ -155,7 +135,6 @@ class PosterCard extends StatelessWidget {
                         const Positioned(
                             left: 0, right: 0, bottom: 0, height: 160, child: _scrim),
                         if (isMovie) _movieTag(context, movieLabel),
-                        if (sourceLabel != null) _sourceBadge(sourceLabel!),
                         if (caption != null)
                           Positioned(
                             left: 16,

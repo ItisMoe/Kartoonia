@@ -24,11 +24,8 @@ class CatalogService {
   late List<ContentItem> all;
   late Map<String, ContentItem> _byId;
 
-  /// TMDB ids that appear in BOTH catalog sources.
-  Set<int> _duplicatedTmdbIds = const {};
-
-  /// tmdbId -> {source: item} for ids present in BOTH sources. Drives the
-  /// detail-screen source toggle and the collapsed library.
+  /// tmdbId -> {source: item} for ids present (exactly once) in BOTH sources.
+  /// Drives the detail-screen source toggle and the collapsed library.
   Map<int, Map<CatalogSource, ContentItem>> _groups = const {};
 
   CatalogService._(this.source);
@@ -89,7 +86,6 @@ class CatalogService {
       }
     }
     svc._groups = groups;
-    svc._duplicatedTmdbIds = groups.keys.toSet();
 
     // Collapsed library: keep every Arabic Toons item; drop the Stardima twin
     // of each clean pair (it stays reachable via alternateFor/_byId).

@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import '../models/catalog_source.dart';
 import '../models/content_item.dart';
 import '../navigation.dart';
 import '../services/catalog_service.dart';
@@ -81,13 +80,6 @@ class BrowseScreen extends ConsumerWidget {
 
     void open(ContentItem i) => AppNav.detail(context, i);
 
-    // Source badge for titles present in BOTH catalogs (else null = no badge).
-    String? badge(ContentItem i) => catalog.isDuplicated(i)
-        ? (i.source == CatalogSource.stardima
-            ? t['source_badge_st']
-            : t['source_badge_at'])
-        : null;
-
     Widget grid(List<ContentItem> list) {
       if (list.isEmpty) {
         return SliverToBoxAdapter(
@@ -134,7 +126,6 @@ class BrowseScreen extends ConsumerWidget {
                 expand: true,
                 autofocus: i == 0,
                 movieLabel: t['movie']!,
-                sourceLabel: badge(list[i]),
                 onPressed: () => open(list[i]),
               ),
             ),
@@ -161,7 +152,6 @@ class BrowseScreen extends ConsumerWidget {
             PosterCard(
                 item: i,
                 movieLabel: t['movie']!,
-                sourceLabel: badge(i),
                 onPressed: () => open(i)),
         ],
       ));
@@ -178,7 +168,6 @@ class BrowseScreen extends ConsumerWidget {
             PosterCard(
                 item: i,
                 movieLabel: t['movie']!,
-                sourceLabel: badge(i),
                 onPressed: () => open(i)),
         ],
       ));
