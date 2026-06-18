@@ -166,10 +166,30 @@ class SearchNotifier extends Notifier<SearchState> {
   void setFilter(String f) => state = state.copy(filter: f);
   void setScript(String s) => state = state.copy(kbScript: s);
   void setQuery(String q) => state = state.copy(query: q);
+
+  /// Persist the current query as a recent search (called when the user opens a
+  /// result), then refresh the recent list.
+  Future<void> record() async {
+    final q = state.query.trim();
+    if (q.isEmpty) return;
+    await ref.read(storageProvider).addRecentSearch(q);
+    ref.read(recentSearchesProvider.notifier).state =
+        ref.read(storageProvider).getRecentSearches();
+  }
+
+  Future<void> clearRecent() async {
+    await ref.read(storageProvider).clearRecentSearches();
+    ref.read(recentSearchesProvider.notifier).state = const [];
+  }
 }
 
 final searchProvider =
     NotifierProvider<SearchNotifier, SearchState>(SearchNotifier.new);
+
+/// Persisted recent search queries (most-recent first), surfaced on the empty
+/// Search screen. Seeded from storage; updated when a search is "used".
+final recentSearchesProvider = StateProvider<List<String>>(
+    (ref) => ref.read(storageProvider).getRecentSearches());
 
 // ---------------- Voice search ----------------
 /// idle: not listening. listening: actively transcribing into the search box.

@@ -25,6 +25,7 @@ class SearchScreen extends ConsumerWidget {
     final t = ref.watch(stringsProvider);
     final s = ref.watch(searchProvider);
     final notifier = ref.read(searchProvider.notifier);
+    final recent = ref.watch(recentSearchesProvider);
     final voice = ref.watch(voiceProvider);
     final listening = voice == VoiceStatus.listening;
 
@@ -149,6 +150,33 @@ class SearchScreen extends ConsumerWidget {
                       ),
                   ]),
                   const SizedBox(height: 20),
+                  if (q.isEmpty && recent.isNotEmpty) ...[
+                    Row(children: [
+                      Text(t['recent_searches']!,
+                          style: const TextStyle(
+                              fontSize: 22,
+                              fontWeight: FontWeight.w800,
+                              color: AppColors.inkSoft)),
+                      const SizedBox(width: 12),
+                      SelectableChip(
+                          label: t['clear']!,
+                          selected: false,
+                          onPressed: () => notifier.clearRecent()),
+                    ]),
+                    const SizedBox(height: 14),
+                    Wrap(
+                      spacing: 10,
+                      runSpacing: 10,
+                      children: [
+                        for (final r in recent)
+                          SelectableChip(
+                              label: r,
+                              selected: false,
+                              onPressed: () => notifier.setQuery(r)),
+                      ],
+                    ),
+                    const SizedBox(height: 24),
+                  ],
                   Text(
                     q.isEmpty
                         ? t['row_popular']!
@@ -179,8 +207,10 @@ class SearchScreen extends ConsumerWidget {
                                 expand: true,
                                 movieLabel: t['movie']!,
                                 sourceLabel: badge(results[i]),
-                                onPressed: () =>
-                                    AppNav.detail(context, results[i]),
+                                onPressed: () {
+                                  notifier.record();
+                                  AppNav.detail(context, results[i]);
+                                },
                               ),
                             ),
                           ),
