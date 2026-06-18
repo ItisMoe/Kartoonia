@@ -89,6 +89,10 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
   bool _controlsShown = true;
   Timer? _hideTimer;
   Timer? _saveTimer;
+  // End-of-episode "next up" card + its autoplay countdown.
+  bool _showNextCard = false;
+  int _nextCountdown = 8;
+  Timer? _nextTimer;
   // Pending confirmation that a mid-playback error is a real stall (see
   // [_onPlaybackError]); null/inactive when no error is being confirmed.
   Timer? _errorConfirmTimer;
@@ -361,7 +365,9 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
 
   void _goEpisode(Episode ep) {
     _saveProgress();
+    _nextTimer?.cancel();
     setState(() {
+      _showNextCard = false;
       _pageUrl = ep.episodeUrl;
       _epLabel = '${ref.read(stringsProvider)['epShort']}${ep.episodeNumber}';
       _epNumber = ep.episodeNumber;
@@ -383,11 +389,37 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
 
   void _onEnd() {
     _saveProgressComplete();
-    if (_hasNext) {
-      _next();
-    } else {
+    if (!_hasNext) {
       Navigator.maybePop(context);
+      return;
     }
+    // Show a "next up" card. With autoplay on it counts down and advances; with
+    // autoplay off it waits for the user to pick Play next or Cancel.
+    final autoplay = ref.read(settingsProvider).prefs['autoplay'] != 'off';
+    setState(() {
+      _showNextCard = true;
+      _nextCountdown = 8;
+      _controlsShown = true;
+    });
+    if (autoplay) {
+      _nextTimer?.cancel();
+      _nextTimer = Timer.periodic(const Duration(seconds: 1), (_) {
+        if (!mounted) return;
+        setState(() => _nextCountdown--);
+        if (_nextCountdown <= 0) _playNextFromCard();
+      });
+    }
+  }
+
+  void _playNextFromCard() {
+    _nextTimer?.cancel();
+    setState(() => _showNextCard = false);
+    _next();
+  }
+
+  void _cancelNextCard() {
+    _nextTimer?.cancel();
+    setState(() => _showNextCard = false);
   }
 
   void _saveProgressComplete() {
@@ -464,6 +496,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
     _hideTimer?.cancel();
     _saveTimer?.cancel();
     _errorConfirmTimer?.cancel();
+    _nextTimer?.cancel();
     for (final s in _subs) {
       s.cancel();
     }
@@ -568,6 +601,23 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
                             ignoring: !_controlsShown,
                             child: _controls(t),
                           ),
+                        ),
+                      ),
+                    if (_showNextCard && _hasNext)
+                      Positioned(
+                        right: Spacing.pad,
+                        bottom: 56,
+                        child: _NextCard(
+                          epLabel:
+                              '${t['epShort']}${widget.args.episodes![_epIndex + 1].episodeNumber}',
+                          nextLabel: t['next_episode']!,
+                          playLabel: t['play_now']!,
+                          cancelLabel: t['back']!,
+                          upNextLabel: t['playing_in']!,
+                          countdown:
+                              (_nextTimer?.isActive ?? false) ? _nextCountdown : null,
+                          onPlay: _playNextFromCard,
+                          onCancel: _cancelNextCard,
                         ),
                       ),
                     if (_serverPanelOpen)
@@ -797,6 +847,80 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
     );
   }
 
+}
+
+/// End-of-episode "next up" card. Shows the upcoming episode label, an optional
+/// autoplay countdown, and Play-now / Cancel controls.
+class _NextCard extends StatelessWidget {
+  final String epLabel;
+  final String nextLabel;
+  final String playLabel;
+  final String cancelLabel;
+  final String upNextLabel;
+  final int? countdown;
+  final VoidCallback onPlay;
+  final VoidCallback onCancel;
+  const _NextCard({
+    required this.epLabel,
+    required this.nextLabel,
+    required this.playLabel,
+    required this.cancelLabel,
+    required this.upNextLabel,
+    required this.countdown,
+    required this.onPlay,
+    required this.onCancel,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: 520,
+      padding: const EdgeInsets.fromLTRB(28, 24, 28, 24),
+      decoration: BoxDecoration(
+        color: AppColors.bg1.withValues(alpha: 0.96),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
+        boxShadow: [
+          BoxShadow(
+              color: Colors.black.withValues(alpha: 0.6),
+              blurRadius: 40,
+              offset: const Offset(0, 18)),
+        ],
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            countdown != null ? '$upNextLabel $countdown' : nextLabel,
+            style: const TextStyle(
+                fontSize: 20,
+                fontWeight: FontWeight.w800,
+                color: AppColors.inkSoft),
+          ),
+          const SizedBox(height: 6),
+          Text(epLabel,
+              style: const TextStyle(
+                  fontFamily: Fonts.display,
+                  fontFamilyFallback: Fonts.fallback,
+                  fontWeight: FontWeight.w600,
+                  fontSize: 30,
+                  color: AppColors.ink)),
+          const SizedBox(height: 18),
+          Row(children: [
+            _CtrlButton(
+                icon: Icons.play_arrow,
+                label: playLabel,
+                autofocus: true,
+                onPressed: onPlay),
+            const SizedBox(width: 12),
+            _CtrlButton(
+                icon: Icons.close, label: cancelLabel, onPressed: onCancel),
+          ]),
+        ],
+      ),
+    );
+  }
 }
 
 /// Circular / text control button (design `.ctrl`).
