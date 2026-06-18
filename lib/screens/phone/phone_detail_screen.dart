@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../models/catalog_source.dart';
 import '../../models/content_item.dart';
 import '../../navigation.dart';
 import '../../playback.dart';
+import '../../services/storage_service.dart';
 import '../../state/app_state.dart';
 import '../../theme/theme.dart';
 import '../../utils/genre_translations.dart';
@@ -19,6 +21,19 @@ class PhoneDetailScreen extends ConsumerStatefulWidget {
 
 class _PhoneDetailScreenState extends ConsumerState<PhoneDetailScreen> {
   int _seasonIdx = 0;
+  CatalogSource? _selectedSource;
+
+  /// Default to whichever twin has stored progress (so Resume works), else the
+  /// Arabic Toons source.
+  CatalogSource _defaultSource(
+      StorageService storage, ContentItem base, ContentItem? alt) {
+    if (alt != null &&
+        storage.progressForItem(alt.id) > 0 &&
+        storage.progressForItem(base.id) <= 0) {
+      return alt.source;
+    }
+    return base.source;
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -26,9 +41,9 @@ class _PhoneDetailScreenState extends ConsumerState<PhoneDetailScreen> {
     final catalog = ref.watch(catalogProvider);
     final t = ref.watch(stringsProvider);
     final user = ref.watch(userProvider);
-    final item = catalog.getById(widget.itemId);
+    final base = catalog.getById(widget.itemId);
 
-    if (item == null) {
+    if (base == null) {
       return Scaffold(
         backgroundColor: AppColors.bg1,
         appBar: AppBar(backgroundColor: Colors.transparent),
@@ -39,8 +54,15 @@ class _PhoneDetailScreenState extends ConsumerState<PhoneDetailScreen> {
       );
     }
 
-    final inList = user.watchlistIds.contains(item.id);
     final storage = ref.read(storageProvider);
+    final alt = catalog.alternateFor(base);
+    // Resume-aware default source (computed once per mount).
+    _selectedSource ??= _defaultSource(storage, base, alt);
+    final item = (alt != null && _selectedSource == alt.source) ? alt : base;
+    final primary = catalog.primaryFor(base);
+
+    final inList = user.watchlistIds.contains(primary.id) ||
+        (alt != null && user.watchlistIds.contains(alt.id));
     final hasProgress = storage.progressForItem(item.id) > 0;
     final genreLine = item.genres.map(translateGenre).join(' · ');
     final size = MediaQuery.of(context).size;
@@ -141,7 +163,7 @@ class _PhoneDetailScreenState extends ConsumerState<PhoneDetailScreen> {
                             icon: inList ? Icons.check : Icons.add,
                             highlight: inList,
                             onTap: () {
-                              ref.read(userProvider.notifier).toggle(item.id);
+                              ref.read(userProvider.notifier).toggle(primary.id);
                               setState(() {});
                             },
                           ),
@@ -156,6 +178,10 @@ class _PhoneDetailScreenState extends ConsumerState<PhoneDetailScreen> {
                                 color: AppColors.inkSoft)),
                       ],
                       const SizedBox(height: 22),
+                      if (alt != null) ...[
+                        _sourceToggle(item.source, base.source, alt.source, t),
+                        const SizedBox(height: 18),
+                      ],
                       if (item is Show) _episodes(item, t),
                     ],
                   ),
@@ -188,6 +214,52 @@ class _PhoneDetailScreenState extends ConsumerState<PhoneDetailScreen> {
             ),
           ),
         ),
+      ]),
+    );
+  }
+
+  /// Arabic Toons / Stardima picker, shown only for titles in both sources.
+  Widget _sourceToggle(CatalogSource selected, CatalogSource atSource,
+      CatalogSource stSource, Map<String, String> t) {
+    Widget chip(CatalogSource src) {
+      final on = src == selected;
+      return GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: () => setState(() => _selectedSource = src),
+        child: Container(
+          margin: const EdgeInsets.only(right: 8),
+          alignment: Alignment.center,
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(10),
+            gradient: on
+                ? const LinearGradient(colors: AppColors.primaryGradient)
+                : null,
+            color: on ? null : AppColors.bg2,
+          ),
+          child: Text(
+              src == CatalogSource.stardima
+                  ? t['source_badge_st']!
+                  : t['source_badge_at']!,
+              style: TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w800,
+                  color: on ? AppColors.onPrimary : AppColors.inkSoft)),
+        ),
+      );
+    }
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 4),
+      child: Row(children: [
+        Text(t['source_label']!,
+            style: const TextStyle(
+                fontSize: 14,
+                fontWeight: FontWeight.w800,
+                color: AppColors.inkMute)),
+        const SizedBox(width: 12),
+        chip(atSource),
+        chip(stSource),
       ]),
     );
   }

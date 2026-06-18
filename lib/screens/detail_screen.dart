@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../models/catalog_source.dart';
 import '../models/content_item.dart';
 import '../navigation.dart';
 import '../playback.dart';
+import '../services/storage_service.dart';
 import '../state/app_state.dart';
 import '../theme/theme.dart';
 import '../utils/genre_translations.dart';
@@ -22,6 +24,19 @@ class DetailScreen extends ConsumerStatefulWidget {
 
 class _DetailScreenState extends ConsumerState<DetailScreen> {
   int _seasonIdx = 0;
+  CatalogSource? _selectedSource;
+
+  /// Default to whichever twin has stored progress (so Resume works), else the
+  /// Arabic Toons source.
+  CatalogSource _defaultSource(
+      StorageService storage, ContentItem base, ContentItem? alt) {
+    if (alt != null &&
+        storage.progressForItem(alt.id) > 0 &&
+        storage.progressForItem(base.id) <= 0) {
+      return alt.source;
+    }
+    return base.source;
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -29,9 +44,9 @@ class _DetailScreenState extends ConsumerState<DetailScreen> {
     final catalog = ref.watch(catalogProvider);
     final t = ref.watch(stringsProvider);
     final user = ref.watch(userProvider);
-    final item = catalog.getById(widget.itemId);
+    final base = catalog.getById(widget.itemId);
 
-    if (item == null) {
+    if (base == null) {
       return ScreenShell(
         current: '',
         child: Center(
@@ -45,8 +60,15 @@ class _DetailScreenState extends ConsumerState<DetailScreen> {
       );
     }
 
-    final inList = user.watchlistIds.contains(item.id);
     final storage = ref.read(storageProvider);
+    final alt = catalog.alternateFor(base);
+    // Resume-aware default source (computed once per mount).
+    _selectedSource ??= _defaultSource(storage, base, alt);
+    final item = (alt != null && _selectedSource == alt.source) ? alt : base;
+    final primary = catalog.primaryFor(base);
+
+    final inList = user.watchlistIds.contains(primary.id) ||
+        (alt != null && user.watchlistIds.contains(alt.id));
     final hasProgress = storage.progressForItem(item.id) > 0;
 
     // meta chiplets
@@ -173,12 +195,16 @@ class _DetailScreenState extends ConsumerState<DetailScreen> {
                     icon: inList ? Icons.check : Icons.add,
                     variant: inList ? PillVariant.inList : PillVariant.normal,
                     onPressed: () {
-                      ref.read(userProvider.notifier).toggle(item.id);
+                      ref.read(userProvider.notifier).toggle(primary.id);
                       setState(() {});
                     },
                   ),
                 ]),
                 const SizedBox(height: 36),
+                if (alt != null) ...[
+                  _sourceToggle(item.source, base.source, alt.source, t),
+                  const SizedBox(height: 28),
+                ],
                 if (item is Show) _episodes(item, t),
               ],
             ),
@@ -261,6 +287,33 @@ class _DetailScreenState extends ConsumerState<DetailScreen> {
         ),
       ],
     );
+  }
+
+  /// Arabic Toons / Stardima picker, shown only for titles that exist in both
+  /// sources. Switching swaps the seasons/episodes and Play target.
+  Widget _sourceToggle(CatalogSource selected, CatalogSource atSource,
+      CatalogSource stSource, Map<String, String> t) {
+    Widget chip(CatalogSource src) => Padding(
+          padding: const EdgeInsets.only(right: 10),
+          child: SelectableChip(
+            label: src == CatalogSource.stardima
+                ? t['source_badge_st']!
+                : t['source_badge_at']!,
+            selected: src == selected,
+            radius: 13,
+            onPressed: () => setState(() => _selectedSource = src),
+          ),
+        );
+    return Row(mainAxisSize: MainAxisSize.min, children: [
+      Text(t['source_label']!,
+          style: const TextStyle(
+              fontSize: 19,
+              fontWeight: FontWeight.w800,
+              color: AppColors.inkMute)),
+      const SizedBox(width: 16),
+      chip(atSource),
+      chip(stSource),
+    ]);
   }
 
   Widget _chiplet(String s) => Container(
