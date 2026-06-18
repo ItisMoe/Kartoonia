@@ -218,35 +218,39 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
 
     return ScreenShell(
       current: 'home',
-      child: SingleChildScrollView(
-        padding: const EdgeInsets.only(bottom: 90),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // Wrapped so that when D-pad focus travels back UP from the rows
-            // onto a hero control, the page scrolls the hero into view (cards
-            // get this via their own EnsureVisibleOnFocus; the hero needs it
-            // too, otherwise focus lands off-screen and the hero feels stuck).
-            EnsureVisibleOnFocus(
+      // CustomScrollView so off-screen rows (the genre rows especially) build
+      // lazily as they scroll into view instead of all at once.
+      child: CustomScrollView(
+        slivers: [
+          // Wrapped so that when D-pad focus travels back UP from the rows onto
+          // a hero control, the page scrolls the hero into view (cards get this
+          // via their own EnsureVisibleOnFocus; the hero needs it too, otherwise
+          // focus lands off-screen and the hero feels stuck).
+          SliverToBoxAdapter(
+            child: EnsureVisibleOnFocus(
               alignment: 0,
               child: HeroCarousel(
                 items: featured,
                 t: t,
                 isRtl: settings.isRtl,
                 autoplay: settings.prefs['autoplay'] != 'off',
-                onPlay: (i) => i is Movie
-                    ? playItem(context, ref, i)
-                    : playItem(context, ref, i),
+                onPlay: (i) => playItem(context, ref, i),
                 onMoreInfo: open,
                 onToggleList: (i) =>
                     ref.read(userProvider.notifier).toggle(i.id),
                 isInList: (i) => user.watchlistIds.contains(i.id),
               ),
             ),
-            const SizedBox(height: 24),
-            ...rows,
-          ],
-        ),
+          ),
+          const SliverToBoxAdapter(child: SizedBox(height: 24)),
+          SliverList(
+            delegate: SliverChildBuilderDelegate(
+              (context, i) => rows[i],
+              childCount: rows.length,
+            ),
+          ),
+          const SliverToBoxAdapter(child: SizedBox(height: 90)),
+        ],
       ),
     );
   }
