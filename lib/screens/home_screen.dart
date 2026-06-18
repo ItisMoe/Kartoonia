@@ -7,6 +7,7 @@ import '../playback.dart';
 import '../services/recommendations.dart';
 import '../services/storage_service.dart';
 import '../state/app_state.dart';
+import '../theme/theme.dart';
 import '../utils/daily_shuffle.dart';
 import '../utils/genre_translations.dart';
 import '../widgets/content_card.dart';
@@ -45,6 +46,46 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
 
   String _genreLine(ContentItem s) =>
       s.genres.take(2).map(translateGenre).join(' · ');
+
+  /// Press-and-hold a Continue Watching card: Resume, or Remove (clears all of
+  /// the title's progress so it leaves the row).
+  void _continueWatchingMenu(
+      BuildContext context, WidgetRef ref, ContentItem item,
+      Map<String, String> t) {
+    showDialog<void>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: AppColors.bg2,
+        title: Text(t['remove_cw_q']!,
+            style: const TextStyle(color: AppColors.ink)),
+        actions: [
+          TextButton(
+            onPressed: () {
+              Navigator.pop(ctx);
+              playItem(context, ref, item);
+            },
+            child: Text(t['resume']!,
+                style: const TextStyle(color: AppColors.inkSoft)),
+          ),
+          TextButton(
+            onPressed: () async {
+              await ref.read(storageProvider).removeProgressForItem(item.id);
+              ref.read(userProvider.notifier).refresh();
+              if (ctx.mounted) Navigator.pop(ctx);
+            },
+            child: Text(t['remove']!,
+                style: const TextStyle(
+                    color: AppColors.primary2, fontWeight: FontWeight.w800)),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: Text(t['cancel']!,
+                style: const TextStyle(color: AppColors.inkSoft)),
+          ),
+        ],
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -86,6 +127,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                   ? t['movie']
                   : '${t['epShort']}${e.episodeNumber}',
               onPressed: () => playItem(context, ref, item),
+              onLongPress: () => _continueWatchingMenu(context, ref, item, t),
             ),
         ],
       ));

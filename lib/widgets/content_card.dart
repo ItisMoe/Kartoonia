@@ -105,6 +105,7 @@ class PosterCard extends StatelessWidget {
   final bool expand; // fill parent (for grid cells) instead of fixed size
   final String movieLabel;
   final String? sourceLabel; // catalog-source badge for cross-source duplicates
+  final VoidCallback? onLongPress; // press-and-hold OK / touch long-press
 
   const PosterCard({
     super.key,
@@ -117,6 +118,7 @@ class PosterCard extends StatelessWidget {
     this.expand = false,
     this.movieLabel = 'فيلم',
     this.sourceLabel,
+    this.onLongPress,
   });
 
   @override
@@ -128,6 +130,7 @@ class PosterCard extends StatelessWidget {
     return Focusable(
       autofocus: autofocus,
       onPressed: onPressed,
+      onLongPress: onLongPress,
       builder: (context, focused) {
         final stack = Stack(clipBehavior: Clip.none, children: [
                 Positioned.fill(
