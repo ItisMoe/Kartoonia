@@ -66,13 +66,6 @@ class PhoneSettingsScreen extends ConsumerWidget {
             ]),
           ),
           _Group(
-            label: t['set_subtitles']!,
-            child: _OnOff(
-                on: settings.prefs['subtitles'] == 'on',
-                t: t,
-                onChanged: (v) => sn.setPref('subtitles', v ? 'on' : 'off')),
-          ),
-          _Group(
             label: t['set_autoplay']!,
             child: _OnOff(
                 on: settings.prefs['autoplay'] != 'off',

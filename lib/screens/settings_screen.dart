@@ -130,12 +130,6 @@ class SettingsScreen extends ConsumerWidget {
                 opt('English', settings.lang == 'en', () => sn.setLang('en')),
                 opt('العربية', settings.lang == 'ar', () => sn.setLang('ar')),
               ]),
-              group(t['set_subtitles']!, [
-                opt(t['on']!, settings.prefs['subtitles'] == 'on',
-                    () => sn.setPref('subtitles', 'on')),
-                opt(t['off']!, settings.prefs['subtitles'] != 'on',
-                    () => sn.setPref('subtitles', 'off')),
-              ]),
               group(t['set_autoplay']!, [
                 opt(t['on']!, settings.prefs['autoplay'] != 'off',
                     () => sn.setPref('autoplay', 'on')),

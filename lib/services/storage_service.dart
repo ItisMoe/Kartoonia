@@ -48,7 +48,7 @@ class StorageService {
   static const _kProgress = 'kt/progress';
   static const _kPreferredServer = 'kt/preferredServer';
   static const _kLang = 'kt/lang';
-  static const _kPrefs = 'kt/prefs'; // motion/autoplay/subtitles
+  static const _kPrefs = 'kt/prefs'; // motion/autoplay
   static const _kYtKey = 'kt/ytKey'; // user-set YouTube Data API key override
   static const _kCatalogSource = 'kt/catalogSource'; // arabicToons | stardima
 
@@ -140,7 +140,7 @@ class StorageService {
 
   Map<String, String> getPrefs() {
     final raw = _prefs.getString(_kPrefs);
-    final defaults = {'motion': 'off', 'autoplay': 'on', 'subtitles': 'off'};
+    final defaults = {'motion': 'off', 'autoplay': 'on'};
     if (raw == null) return defaults;
     try {
       final m = (jsonDecode(raw) as Map).cast<String, dynamic>();

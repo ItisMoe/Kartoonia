@@ -62,7 +62,7 @@ final catalogSourceProvider =
 // ---------------- Settings (language + playback prefs) ----------------
 class SettingsState {
   final String lang; // 'ar' | 'en'
-  final Map<String, String> prefs; // motion / autoplay / subtitles
+  final Map<String, String> prefs; // motion / autoplay
   const SettingsState(this.lang, this.prefs);
   bool get isRtl => lang == 'ar';
 }
