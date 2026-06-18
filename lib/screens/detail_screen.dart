@@ -160,9 +160,10 @@ class _DetailScreenState extends ConsumerState<DetailScreen> {
                     label: item is Movie ? t['trailer_btn']! : t['theme_btn']!,
                     icon: Icons.smart_display_outlined,
                     onPressed: () {
+                      final year = item.year != null ? ' ${item.year}' : '';
                       final query = item is Movie
-                          ? '${item.title} trailer'
-                          : '${item.title} arabic theme song';
+                          ? '${item.title}$year كرتون مدبلج عربي كامل'
+                          : '${item.title} مدبلج عربي مقدمة';
                       AppNav.youtube(context, query, item.title);
                     },
                   ),
