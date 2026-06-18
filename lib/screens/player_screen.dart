@@ -106,6 +106,11 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
   // Captured in initState so dispose can restore the right orientation without
   // touching the provider after the widget tree is torn down.
   late final bool _isTv = ref.read(isTvProvider);
+  bool get _phone => !_isTv;
+
+  // x of the last double-tap-down on the touch surface, used to decide which
+  // half of the screen was tapped (left = rewind, right = forward).
+  double _tapDownX = 0;
 
   @override
   void initState() {
@@ -448,6 +453,32 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
     });
   }
 
+  // ---- touch surface (phones) ----
+  // Single tap toggles the controls: reveal when hidden, hide immediately when
+  // shown. This is the ONLY way touch users can bring the controls back after
+  // auto-hide (the D-pad reveal in [_playerKeys] never fires without keys).
+  void _onSurfaceTap() {
+    if (_serverPanelOpen || _error) return;
+    if (_controlsShown) {
+      _hideTimer?.cancel();
+      setState(() => _controlsShown = false);
+    } else {
+      _flashControls();
+    }
+  }
+
+  void _onSurfaceDoubleTapDown(TapDownDetails d) {
+    _tapDownX = d.localPosition.dx;
+  }
+
+  // Double-tap the left/right half to seek ∓10s (mirrors the on-screen
+  // replay_10 / forward_10 buttons). [_seekBy] re-flashes the controls.
+  void _onSurfaceDoubleTap() {
+    if (_serverPanelOpen || _error) return;
+    final w = MediaQuery.of(context).size.width;
+    _seekBy(_tapDownX < w / 2 ? -_seekStep : _seekStep);
+  }
+
   void _togglePlay() {
     _player.playOrPause();
     _flashControls();
@@ -568,6 +599,21 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
                   fill: Colors.black,
                 ),
               ),
+              // Phone touch layer: sits ABOVE the video but BELOW the controls
+              // overlay. When controls are hidden the overlay is IgnorePointer,
+              // so taps fall through to here and reveal them; when shown, taps on
+              // empty space fall through here and hide them (buttons in the
+              // overlay above absorb their own taps first). TVs never tap, so
+              // this layer is phone-only.
+              if (_phone)
+                Positioned.fill(
+                  child: GestureDetector(
+                    behavior: HitTestBehavior.opaque,
+                    onTap: _onSurfaceTap,
+                    onDoubleTapDown: _onSurfaceDoubleTapDown,
+                    onDoubleTap: _onSurfaceDoubleTap,
+                  ),
+                ),
               // Control overlays on the scaled 1920×1080 design canvas. The
               // backdrop MUST be transparent — an opaque one would paint over
               // (and hide) the video surface stacked beneath it.
@@ -620,6 +666,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
                           upNextLabel: t['playing_in']!,
                           countdown:
                               (_nextTimer?.isActive ?? false) ? _nextCountdown : null,
+                          phone: _phone,
                           onPlay: _playNextFromCard,
                           onCancel: _cancelNextCard,
                         ),
@@ -651,6 +698,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
             label: t['retry'],
             autofocus: true,
             big: true,
+            phone: _phone,
             onPressed: () {
               _retry = 0;
               _load(1);
@@ -678,8 +726,9 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
           child: Row(children: [
             _CtrlButton(
                 icon: Icons.arrow_back,
+                phone: _phone,
                 onPressed: () => Navigator.maybePop(context)),
-            const SizedBox(width: 20),
+            SizedBox(width: _phone ? 24 : 20),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -687,23 +736,23 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
                   Text(widget.args.title,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
+                      style: TextStyle(
                           fontFamily: Fonts.display,
                           fontFamilyFallback: Fonts.fallback,
                           fontWeight: FontWeight.w500,
-                          fontSize: 38,
+                          fontSize: _phone ? 44 : 38,
                           color: AppColors.ink)),
                   Text(_epLabel,
-                      style: const TextStyle(
-                          fontSize: 22,
+                      style: TextStyle(
+                          fontSize: _phone ? 26 : 22,
                           fontWeight: FontWeight.w800,
                           color: AppColors.inkSoft)),
                 ],
               ),
             ),
             Container(
-              padding:
-                  const EdgeInsets.symmetric(horizontal: 20, vertical: 11),
+              padding: EdgeInsets.symmetric(
+                  horizontal: _phone ? 26 : 20, vertical: _phone ? 15 : 11),
               decoration: BoxDecoration(
                   color: Colors.white.withValues(alpha: 0.1),
                   borderRadius: BorderRadius.circular(999)),
@@ -715,8 +764,8 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
                     text: _serverMap[_server]?.label ?? '${t['server']} $_server',
                     style: const TextStyle(color: AppColors.ink)),
               ]),
-                  style: const TextStyle(
-                      fontSize: 20, fontWeight: FontWeight.w800)),
+                  style: TextStyle(
+                      fontSize: _phone ? 24 : 20, fontWeight: FontWeight.w800)),
             ),
           ]),
         ),
@@ -733,11 +782,12 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
               child: _ScrubBar(
                 position: _position,
                 duration: _duration,
+                phone: _phone,
                 onSeekBy: _seekBy,
                 onSeekToFraction: _seekToFraction,
               ),
             ),
-            const SizedBox(height: 26),
+            SizedBox(height: _phone ? 34 : 26),
             Directionality(
               textDirection: TextDirection.ltr,
               child:
@@ -745,26 +795,33 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
               if (widget.args.episodes != null)
                 _CtrlButton(
                     icon: Icons.skip_previous,
+                    phone: _phone,
                     onPressed: _hasPrev ? _prev : null),
               _CtrlButton(
                   icon: Icons.replay_10,
+                  phone: _phone,
                   onPressed: () => _seekBy(-_seekStep)),
               _CtrlButton(
                 icon: _playing ? Icons.pause : Icons.play_arrow,
                 big: true,
+                phone: _phone,
                 focusNode: _playFocus,
                 onPressed: _togglePlay,
               ),
               _CtrlButton(
                   icon: Icons.forward_10,
+                  phone: _phone,
                   onPressed: () => _seekBy(_seekStep)),
               if (widget.args.episodes != null)
                 _CtrlButton(
-                    icon: Icons.skip_next, onPressed: _hasNext ? _next : null),
-              const SizedBox(width: 26),
+                    icon: Icons.skip_next,
+                    phone: _phone,
+                    onPressed: _hasNext ? _next : null),
+              SizedBox(width: _phone ? 34 : 26),
               _CtrlButton(
                 icon: Icons.dns_outlined,
                 label: t['server'],
+                phone: _phone,
                 onPressed: () {
                   setState(() => _serverPanelOpen = true);
                 },
@@ -782,7 +839,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
     return Align(
       alignment: AlignmentDirectional.centerEnd,
       child: Container(
-        width: 560,
+        width: _phone ? 760 : 560,
         height: double.infinity,
         color: AppColors.bg1,
         padding: const EdgeInsets.fromLTRB(44, 80, 44, 28),
@@ -833,6 +890,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
                             '${t['server']} ${servers[i]}',
                         selected: servers[i] == _server,
                         autofocus: servers[i] == _server,
+                        phone: _phone,
                         onPressed: () => _switchServer(servers[i]),
                       ),
                     ),
@@ -843,6 +901,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
             _CtrlButton(
               icon: Icons.close,
               label: t['back'],
+              phone: _phone,
               onPressed: () => setState(() => _serverPanelOpen = false),
             ),
           ],
@@ -862,6 +921,7 @@ class _NextCard extends StatelessWidget {
   final String cancelLabel;
   final String upNextLabel;
   final int? countdown;
+  final bool phone;
   final VoidCallback onPlay;
   final VoidCallback onCancel;
   const _NextCard({
@@ -871,6 +931,7 @@ class _NextCard extends StatelessWidget {
     required this.cancelLabel,
     required this.upNextLabel,
     required this.countdown,
+    required this.phone,
     required this.onPlay,
     required this.onCancel,
   });
@@ -916,10 +977,14 @@ class _NextCard extends StatelessWidget {
                 icon: Icons.play_arrow,
                 label: playLabel,
                 autofocus: true,
+                phone: phone,
                 onPressed: onPlay),
             const SizedBox(width: 12),
             _CtrlButton(
-                icon: Icons.close, label: cancelLabel, onPressed: onCancel),
+                icon: Icons.close,
+                label: cancelLabel,
+                phone: phone,
+                onPressed: onCancel),
           ]),
         ],
       ),
@@ -935,6 +1000,9 @@ class _CtrlButton extends StatelessWidget {
   final bool big;
   final bool autofocus;
   final FocusNode? focusNode;
+  // Enlarges every dimension for comfortable thumb tapping on phones; TVs keep
+  // the compact design sizes (viewed from across the room).
+  final bool phone;
   const _CtrlButton({
     required this.icon,
     this.label,
@@ -942,13 +1010,14 @@ class _CtrlButton extends StatelessWidget {
     this.big = false,
     this.autofocus = false,
     this.focusNode,
+    this.phone = false,
   });
 
   @override
   Widget build(BuildContext context) {
     final disabled = onPressed == null;
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 8),
+      padding: EdgeInsets.symmetric(horizontal: phone ? 10 : 8),
       child: Opacity(
         opacity: disabled ? 0.35 : 1,
         child: Focusable(
@@ -956,7 +1025,12 @@ class _CtrlButton extends StatelessWidget {
           focusNode: focusNode,
           onPressed: onPressed,
           builder: (context, focused) {
-            final size = big ? 80.0 : 64.0;
+            final size = big
+                ? (phone ? 124.0 : 80.0)
+                : (phone ? 96.0 : 64.0);
+            final iconSize = big
+                ? (phone ? 58.0 : 38.0)
+                : (phone ? 44.0 : 30.0);
             final fg = focused ? AppColors.onFocus : AppColors.ink;
             final bg = focused
                 ? Colors.white
@@ -969,19 +1043,19 @@ class _CtrlButton extends StatelessWidget {
                       width: size,
                       height: size,
                       decoration: BoxDecoration(shape: BoxShape.circle, color: bg),
-                      child: Icon(icon, size: big ? 38 : 30, color: fg),
+                      child: Icon(icon, size: iconSize, color: fg),
                     )
                   : Container(
-                      height: 64,
-                      padding: const EdgeInsets.symmetric(horizontal: 24),
+                      height: phone ? 92 : 64,
+                      padding: EdgeInsets.symmetric(horizontal: phone ? 32 : 24),
                       decoration: BoxDecoration(
                           borderRadius: BorderRadius.circular(999), color: bg),
                       child: Row(mainAxisSize: MainAxisSize.min, children: [
-                        Icon(icon, size: 28, color: fg),
-                        const SizedBox(width: 10),
+                        Icon(icon, size: phone ? 40 : 28, color: fg),
+                        SizedBox(width: phone ? 14 : 10),
                         Text(label!,
                             style: TextStyle(
-                                fontSize: 20,
+                                fontSize: phone ? 28 : 20,
                                 fontWeight: FontWeight.w800,
                                 color: fg)),
                       ]),
@@ -1001,11 +1075,13 @@ class _ScrubBar extends StatelessWidget {
   final Duration duration;
   final void Function(Duration) onSeekBy;
   final void Function(double fraction) onSeekToFraction;
+  final bool phone;
   const _ScrubBar({
     required this.position,
     required this.duration,
     required this.onSeekBy,
     required this.onSeekToFraction,
+    this.phone = false,
   });
 
   String _fmt(Duration d) {
@@ -1023,11 +1099,16 @@ class _ScrubBar extends StatelessWidget {
     final frac = duration.inMilliseconds > 0
         ? (position.inMilliseconds / duration.inMilliseconds).clamp(0.0, 1.0)
         : 0.0;
+    final trackH = phone ? 14.0 : 8.0;
+    final thumb = phone ? 36.0 : 26.0;
+    final thumbFocused = phone ? 42.0 : 30.0;
     return Row(children: [
       Text(_fmt(position),
-          style: const TextStyle(
-              fontSize: 22, fontWeight: FontWeight.w800, color: AppColors.inkSoft)),
-      const SizedBox(width: 22),
+          style: TextStyle(
+              fontSize: phone ? 28 : 22,
+              fontWeight: FontWeight.w800,
+              color: AppColors.inkSoft)),
+      SizedBox(width: phone ? 26 : 22),
       Expanded(
         child: Focus(
           onKeyEvent: (node, event) {
@@ -1059,10 +1140,10 @@ class _ScrubBar extends StatelessWidget {
                 onHorizontalDragStart: (d) => seekAt(d.localPosition.dx),
                 onHorizontalDragUpdate: (d) => seekAt(d.localPosition.dx),
                 child: SizedBox(
-                  height: 28,
+                  height: phone ? 60 : 28,
                   child: Stack(alignment: Alignment.centerLeft, children: [
                 Container(
-                  height: 8,
+                  height: trackH,
                   decoration: BoxDecoration(
                       color: Colors.white.withValues(alpha: 0.22),
                       borderRadius: BorderRadius.circular(6)),
@@ -1070,7 +1151,7 @@ class _ScrubBar extends StatelessWidget {
                 FractionallySizedBox(
                   widthFactor: frac,
                   child: Container(
-                    height: 8,
+                    height: trackH,
                     decoration: BoxDecoration(
                         gradient: const LinearGradient(
                             colors: AppColors.primaryGradient),
@@ -1080,8 +1161,8 @@ class _ScrubBar extends StatelessWidget {
                 Align(
                   alignment: Alignment(frac * 2 - 1, 0),
                   child: Container(
-                    width: focused ? 30 : 26,
-                    height: focused ? 30 : 26,
+                    width: focused ? thumbFocused : thumb,
+                    height: focused ? thumbFocused : thumb,
                     decoration: BoxDecoration(
                       shape: BoxShape.circle,
                       color: Colors.white,
@@ -1106,10 +1187,12 @@ class _ScrubBar extends StatelessWidget {
           }),
         ),
       ),
-      const SizedBox(width: 22),
+      SizedBox(width: phone ? 26 : 22),
       Text(_fmt(duration),
-          style: const TextStyle(
-              fontSize: 22, fontWeight: FontWeight.w800, color: AppColors.inkSoft)),
+          style: TextStyle(
+              fontSize: phone ? 28 : 22,
+              fontWeight: FontWeight.w800,
+              color: AppColors.inkSoft)),
     ]);
   }
 }
@@ -1118,12 +1201,14 @@ class _ServerOption extends StatelessWidget {
   final String label;
   final bool selected;
   final bool autofocus;
+  final bool phone;
   final VoidCallback onPressed;
   const _ServerOption({
     required this.label,
     required this.selected,
     required this.autofocus,
     required this.onPressed,
+    this.phone = false,
   });
 
   @override
@@ -1138,7 +1223,8 @@ class _ServerOption extends StatelessWidget {
           scale: focused ? 1.04 : 1,
           duration: const Duration(milliseconds: 150),
           child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 26, vertical: 22),
+            padding: EdgeInsets.symmetric(
+                horizontal: phone ? 32 : 26, vertical: phone ? 30 : 22),
             decoration: BoxDecoration(
               color: bg,
               borderRadius: BorderRadius.circular(16),
@@ -1152,7 +1238,9 @@ class _ServerOption extends StatelessWidget {
             child: Row(children: [
               Text(label,
                   style: TextStyle(
-                      fontSize: 25, fontWeight: FontWeight.w800, color: fg)),
+                      fontSize: phone ? 30 : 25,
+                      fontWeight: FontWeight.w800,
+                      color: fg)),
               const Spacer(),
               if (selected)
                 Icon(Icons.check,
