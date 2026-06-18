@@ -24,9 +24,12 @@ class CatalogService {
   late List<ContentItem> all;
   late Map<String, ContentItem> _byId;
 
-  /// TMDB ids that appear in BOTH catalog sources — used to badge duplicates so
-  /// the two copies of a shared title are distinguishable in the UI.
+  /// TMDB ids that appear in BOTH catalog sources.
   Set<int> _duplicatedTmdbIds = const {};
+
+  /// tmdbId -> {source: item} for ids present in BOTH sources. Drives the
+  /// detail-screen source toggle and the collapsed library.
+  Map<int, Map<CatalogSource, ContentItem>> _groups = const {};
 
   CatalogService._(this.source);
 
@@ -36,10 +39,10 @@ class CatalogService {
     return svc;
   }
 
-  /// Load BOTH bundled catalogs into one merged library. No dedup: a title that
-  /// exists in both sources appears twice (distinguished by a source badge in
-  /// the UI). Items keep their own [ContentItem.source], so playback dispatches
-  /// correctly per item.
+  /// Load BOTH bundled catalogs into one merged library. A title present in
+  /// both sources is collapsed to a single entry (its Arabic Toons primary);
+  /// the Stardima twin stays reachable via [alternateFor] and [getById]. Items
+  /// keep their own [ContentItem.source], so playback dispatches correctly.
   static Future<CatalogService> loadMerged() async {
     final svc = CatalogService._(CatalogSource.arabicToons);
 
@@ -59,33 +62,78 @@ class CatalogService {
     final stData = jsonDecode(stStr) as Map<String, dynamic>;
     final (stShows, stMovies) = StardimaAdapter.parse(stData);
 
-    svc.shows = [...atShows, ...stShows];
-    svc.movies = [...atMovies, ...stMovies];
+    // Index items by tmdbId per source. A tmdbId can map to more than one item
+    // within a source (ambiguous/duplicate TMDB matches), so we count them.
+    final atById = <int, List<ContentItem>>{};
+    final stById = <int, List<ContentItem>>{};
+    for (final i in [...atShows, ...atMovies]) {
+      final id = i.tmdbId;
+      if (id != null) (atById[id] ??= []).add(i);
+    }
+    for (final i in [...stShows, ...stMovies]) {
+      final id = i.tmdbId;
+      if (id != null) (stById[id] ??= []).add(i);
+    }
+
+    // Collapsible groups: a tmdbId present EXACTLY once in each source — a clean
+    // 1:1 cross-source pair. Ambiguous ids (>1 per source) are left as separate
+    // cards to avoid merging distinct titles that share a bad TMDB match.
+    final groups = <int, Map<CatalogSource, ContentItem>>{};
+    for (final entry in atById.entries) {
+      final st = stById[entry.key];
+      if (entry.value.length == 1 && st != null && st.length == 1) {
+        groups[entry.key] = {
+          CatalogSource.arabicToons: entry.value.first,
+          CatalogSource.stardima: st.first,
+        };
+      }
+    }
+    svc._groups = groups;
+    svc._duplicatedTmdbIds = groups.keys.toSet();
+
+    // Collapsed library: keep every Arabic Toons item; drop the Stardima twin
+    // of each clean pair (it stays reachable via alternateFor/_byId).
+    final collapsedStIds = {
+      for (final g in groups.values) g[CatalogSource.stardima]!.id
+    };
+    svc.shows =
+        [...atShows, ...stShows.where((s) => !collapsedStIds.contains(s.id))];
+    svc.movies =
+        [...atMovies, ...stMovies.where((m) => !collapsedStIds.contains(m.id))];
     svc.all = [...svc.shows, ...svc.movies];
-    // First writer wins on id collision so getById stays well-formed; both
-    // copies still live in `all`/lists for rendering.
+
+    // _byId holds BOTH copies so progress/watchlist saved against either id
+    // still resolves.
     svc._byId = {};
-    for (final i in svc.all) {
+    for (final i in [...atShows, ...atMovies, ...stShows, ...stMovies]) {
       svc._byId.putIfAbsent(i.id, () => i);
     }
-    // Duplicate tmdbIds = ids present in BOTH sources.
-    final atIds = {
-      for (final i in [...atShows, ...atMovies])
-        if (i.tmdbId != null) i.tmdbId!
-    };
-    final stIds = {
-      for (final i in [...stShows, ...stMovies])
-        if (i.tmdbId != null) i.tmdbId!
-    };
-    svc._duplicatedTmdbIds = atIds.intersection(stIds);
     return svc;
   }
 
-  /// True when this item's title exists in BOTH catalog sources (so the UI
-  /// badges it to disambiguate the two copies).
-  bool isDuplicated(ContentItem item) {
+  /// True when this title exists in BOTH sources (so the detail screen offers a
+  /// source toggle).
+  bool isDuplicated(ContentItem item) => alternateFor(item) != null;
+
+  /// The other-source twin of [item] (Arabic Toons <-> Stardima), or null when
+  /// the title exists in only one source.
+  ContentItem? alternateFor(ContentItem item) {
     final id = item.tmdbId;
-    return id != null && _duplicatedTmdbIds.contains(id);
+    if (id == null) return null;
+    final g = _groups[id];
+    if (g == null) return null;
+    final other = item.source == CatalogSource.arabicToons
+        ? CatalogSource.stardima
+        : CatalogSource.arabicToons;
+    return g[other];
+  }
+
+  /// The Arabic Toons primary of [item]'s group, or [item] when it is not part
+  /// of a cross-source group.
+  ContentItem primaryFor(ContentItem item) {
+    final id = item.tmdbId;
+    if (id == null) return item;
+    return _groups[id]?[CatalogSource.arabicToons] ?? item;
   }
 
   /// Swap the active catalog in place (re-fetch asset, re-parse, re-index) so
