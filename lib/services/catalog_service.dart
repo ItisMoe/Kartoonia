@@ -24,12 +24,68 @@ class CatalogService {
   late List<ContentItem> all;
   late Map<String, ContentItem> _byId;
 
+  /// TMDB ids that appear in BOTH catalog sources — used to badge duplicates so
+  /// the two copies of a shared title are distinguishable in the UI.
+  Set<int> _duplicatedTmdbIds = const {};
+
   CatalogService._(this.source);
 
   static Future<CatalogService> load(CatalogSource source) async {
     final svc = CatalogService._(source);
     await svc._loadSource(source);
     return svc;
+  }
+
+  /// Load BOTH bundled catalogs into one merged library. No dedup: a title that
+  /// exists in both sources appears twice (distinguished by a source badge in
+  /// the UI). Items keep their own [ContentItem.source], so playback dispatches
+  /// correctly per item.
+  static Future<CatalogService> loadMerged() async {
+    final svc = CatalogService._(CatalogSource.arabicToons);
+
+    // Arabic Toons (legacy schema).
+    final atStr =
+        await rootBundle.loadString(CatalogSource.arabicToons.assetPath);
+    final atData = jsonDecode(atStr) as Map<String, dynamic>;
+    final atShows = ((atData['shows'] as List?) ?? const [])
+        .map((e) => Show.fromJson((e as Map).cast<String, dynamic>()))
+        .toList();
+    final atMovies = ((atData['movies'] as List?) ?? const [])
+        .map((e) => Movie.fromJson((e as Map).cast<String, dynamic>()))
+        .toList();
+
+    // Stardima (adapter).
+    final stStr = await rootBundle.loadString(CatalogSource.stardima.assetPath);
+    final stData = jsonDecode(stStr) as Map<String, dynamic>;
+    final (stShows, stMovies) = StardimaAdapter.parse(stData);
+
+    svc.shows = [...atShows, ...stShows];
+    svc.movies = [...atMovies, ...stMovies];
+    svc.all = [...svc.shows, ...svc.movies];
+    // First writer wins on id collision so getById stays well-formed; both
+    // copies still live in `all`/lists for rendering.
+    svc._byId = {};
+    for (final i in svc.all) {
+      svc._byId.putIfAbsent(i.id, () => i);
+    }
+    // Duplicate tmdbIds = ids present in BOTH sources.
+    final atIds = {
+      for (final i in [...atShows, ...atMovies])
+        if (i.tmdbId != null) i.tmdbId!
+    };
+    final stIds = {
+      for (final i in [...stShows, ...stMovies])
+        if (i.tmdbId != null) i.tmdbId!
+    };
+    svc._duplicatedTmdbIds = atIds.intersection(stIds);
+    return svc;
+  }
+
+  /// True when this item's title exists in BOTH catalog sources (so the UI
+  /// badges it to disambiguate the two copies).
+  bool isDuplicated(ContentItem item) {
+    final id = item.tmdbId;
+    return id != null && _duplicatedTmdbIds.contains(id);
   }
 
   /// Swap the active catalog in place (re-fetch asset, re-parse, re-index) so
