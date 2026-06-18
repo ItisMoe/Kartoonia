@@ -134,6 +134,9 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
     _load(_server);
     _flashControls();
     _saveTimer = Timer.periodic(_saveInterval, (_) => _saveProgress());
+    // Suppress the ambient screensaver while the player is on screen.
+    WidgetsBinding.instance.addPostFrameCallback(
+        (_) => ref.read(playerActiveProvider.notifier).state = true);
     // land focus on play/pause once the controls are mounted
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) _playFocus.requestFocus();
@@ -492,6 +495,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    ref.read(playerActiveProvider.notifier).state = false;
     _saveProgress();
     _hideTimer?.cancel();
     _saveTimer?.cancel();

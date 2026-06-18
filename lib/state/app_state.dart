@@ -20,6 +20,10 @@ final catalogProvider = Provider<CatalogService>(
 /// catalog mutates in place).
 final catalogRevProvider = StateProvider<int>((ref) => 0);
 
+/// True while the full-screen player is mounted — suppresses the screensaver so
+/// it never covers playback.
+final playerActiveProvider = StateProvider<bool>((ref) => false);
+
 /// Selected bottom-tab index for the phone shell (0=Home, 1=Browse, 2=Search,
 /// 3=My List). A provider so screens can switch tabs programmatically (e.g. the
 /// Home search affordance or an empty My-List CTA).
