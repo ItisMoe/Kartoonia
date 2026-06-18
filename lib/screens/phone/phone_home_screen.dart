@@ -49,10 +49,16 @@ class _PhoneHomeScreenState extends ConsumerState<PhoneHomeScreen> {
     final rows = <Widget>[];
 
     // Keep Watching
+    // Entries are most-recent first, so the first occurrence of a cross-source
+    // group wins; the rest of the group is dropped so a title watched on either
+    // source surfaces as one card.
     final continueItems = <(ContentItem, ProgressEntry)>[];
+    final seenGroups = <String>{};
     for (final e in user.continueWatching) {
       final item = catalog.getById(e.itemId);
-      if (item != null) continueItems.add((item, e));
+      if (item == null) continue;
+      if (!seenGroups.add(catalog.primaryFor(item).id)) continue;
+      continueItems.add((item, e));
     }
     if (continueItems.isNotEmpty) {
       rows.add(PhoneRow(

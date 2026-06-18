@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import '../models/catalog_source.dart';
 import '../models/content_item.dart';
 import '../navigation.dart';
 import '../playback.dart';
@@ -97,20 +96,19 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
 
     void open(ContentItem i) => AppNav.detail(context, i);
 
-    // Source badge for titles present in BOTH catalogs (else null = no badge).
-    String? badge(ContentItem i) => catalog.isDuplicated(i)
-        ? (i.source == CatalogSource.stardima
-            ? t['source_badge_st']
-            : t['source_badge_at'])
-        : null;
-
     final rows = <Widget>[];
 
     // Keep Watching
+    // Entries are most-recent first, so the first occurrence of a cross-source
+    // group wins; the rest of the group is dropped so a title watched on either
+    // source surfaces as one card.
     final continueItems = <(ContentItem, ProgressEntry)>[];
+    final seenGroups = <String>{};
     for (final e in user.continueWatching) {
       final item = catalog.getById(e.itemId);
-      if (item != null) continueItems.add((item, e));
+      if (item == null) continue;
+      if (!seenGroups.add(catalog.primaryFor(item).id)) continue;
+      continueItems.add((item, e));
     }
     if (continueItems.isNotEmpty) {
       rows.add(ContentRow(
@@ -122,7 +120,6 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
               wide: true,
               progress: e.fraction,
               movieLabel: t['movie']!,
-              sourceLabel: badge(item),
               caption: item is Movie
                   ? t['movie']
                   : '${t['epShort']}${e.episodeNumber}',
@@ -147,7 +144,6 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
             PosterCard(
                 item: i,
                 movieLabel: t['movie']!,
-                sourceLabel: badge(i),
                 onPressed: () => open(i)),
         ],
       ));
@@ -167,7 +163,6 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
           PosterCard(
               item: i,
               movieLabel: t['movie']!,
-              sourceLabel: badge(i),
               onPressed: () => open(i)),
       ],
     ));
@@ -185,7 +180,6 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
           PosterCard(
               item: i,
               movieLabel: t['movie']!,
-              sourceLabel: badge(i),
               onPressed: () => open(i)),
       ],
     ));
@@ -246,7 +240,6 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
             PosterCard(
               item: i,
               movieLabel: t['movie']!,
-              sourceLabel: badge(i),
               onPressed: () => open(i)),
         ],
       ));
