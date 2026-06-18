@@ -12,7 +12,10 @@ import '../widgets/screen_shell.dart';
 import '../widgets/selectable_chip.dart';
 
 const _kbEn = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
-const _kbAr = 'ابتثجحخدذرزسشصضطظعغفقكلمنهوي';
+// Base 28 letters plus the hamza/alef variants, taa marbuta and alef maqsura
+// that titles actually use. Search normalizes these (see CatalogService), so
+// every variant still matches its plain form.
+const _kbAr = 'اأإآءبتةثجحخدذرزسشصضطظعغفقكلمنهوؤيئى';
 
 class SearchScreen extends ConsumerWidget {
   const SearchScreen({super.key});

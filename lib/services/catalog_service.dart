@@ -200,14 +200,15 @@ class CatalogService {
 
   // ---- Search: title + description + overviews ----
   List<ContentItem> search(String query) {
-    final q = query.toLowerCase().trim();
+    final q = normalizeArSearch(query.toLowerCase().trim());
     if (q.isEmpty) return const [];
+    bool has(String s) => normalizeArSearch(s.toLowerCase()).contains(q);
     return all.where((i) {
       final t = i.tmdb;
-      return i.title.toLowerCase().contains(q) ||
-          i.description.toLowerCase().contains(q) ||
-          (t?.overviewEn ?? '').toLowerCase().contains(q) ||
-          (t?.overviewAr ?? '').toLowerCase().contains(q);
+      return has(i.title) ||
+          has(i.description) ||
+          has(t?.overviewEn ?? '') ||
+          has(t?.overviewAr ?? '');
     }).toList();
   }
 
@@ -249,6 +250,19 @@ String firstLetterFor(String title, String script) {
   }
   return ch.toUpperCase();
 }
+
+/// Fold Arabic letter variants to a single canonical form so search matches
+/// regardless of which form the user typed or the title stored: every alef
+/// variant -> ا, taa marbuta -> ه, alef maqsura -> ي, waw/yaa-hamza -> و/ي,
+/// and the bare hamza is dropped. Also strips tashkeel (diacritics).
+String normalizeArSearch(String s) => s
+    .replaceAll(RegExp('[آأإٱ]'), 'ا')
+    .replaceAll('ى', 'ي')
+    .replaceAll('ئ', 'ي')
+    .replaceAll('ة', 'ه')
+    .replaceAll('ؤ', 'و')
+    .replaceAll('ء', '')
+    .replaceAll(RegExp('[ً-ْٰ]'), '');
 
 const alphaEn = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
 const alphaAr = 'ابتثجحخدذرزسشصضطظعغفقكلمنهوي';
