@@ -4,6 +4,7 @@ import '../state/app_state.dart';
 import '../theme/theme.dart';
 import '../theme/layout.dart';
 import '../navigation.dart';
+import '../playback.dart';
 import 'focusable.dart';
 import 'kartoonia_brand.dart';
 
@@ -55,28 +56,56 @@ class TopBar extends ConsumerWidget {
               active: current == 'mylist',
               onPressed: () => AppNav.browse(context, 'mylist')),
           const Spacer(),
-          Focusable(
+          // "Surprise me" — play a random cartoon from anywhere in the app.
+          _CircleAction(
+            icon: Icons.shuffle,
+            tooltip: t['shuffle']!,
+            onPressed: () => playRandom(context, ref),
+          ),
+          const SizedBox(width: 12),
+          _CircleAction(
+            icon: Icons.settings,
+            tooltip: t['settings']!,
             onPressed: () => AppNav.settings(context),
-            builder: (context, focused) => AnimatedScale(
-              scale: focused ? 1.06 : 1,
-              duration: const Duration(milliseconds: 160),
-              child: Container(
-                width: 50,
-                height: 50,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  color: focused
-                      ? Colors.white
-                      : Colors.white.withValues(alpha: 0.07),
-                ),
-                child: Icon(Icons.settings,
-                    size: 27,
-                    color: focused ? AppColors.onFocus : AppColors.inkSoft),
-              ),
-            ),
           ),
         ],
       ),
+      ),
+    );
+  }
+}
+
+/// Circular icon action on the right of the top bar (shuffle / settings).
+class _CircleAction extends StatelessWidget {
+  final IconData icon;
+  final String tooltip;
+  final VoidCallback onPressed;
+  const _CircleAction(
+      {required this.icon, required this.tooltip, required this.onPressed});
+
+  @override
+  Widget build(BuildContext context) {
+    return Focusable(
+      onPressed: onPressed,
+      builder: (context, focused) => AnimatedScale(
+        scale: focused ? 1.06 : 1,
+        duration: const Duration(milliseconds: 160),
+        child: Semantics(
+          label: tooltip,
+          button: true,
+          child: Container(
+            width: 50,
+            height: 50,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color:
+                  focused ? Colors.white : Colors.white.withValues(alpha: 0.07),
+            ),
+            child: Icon(icon,
+                size: 27,
+                color: focused ? AppColors.onFocus : AppColors.inkSoft),
+          ),
+        ),
       ),
     );
   }

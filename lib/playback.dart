@@ -1,8 +1,10 @@
+import 'dart:math';
 import 'package:flutter/widgets.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'models/content_item.dart';
 import 'navigation.dart';
 import 'screens/player_screen.dart';
+import 'services/resume.dart';
 import 'state/app_state.dart';
 
 /// Resolves what to play for an item and opens the player.
@@ -28,22 +30,11 @@ void playItem(BuildContext context, WidgetRef ref, ContentItem item,
 
   final show = item as Show;
   if (show.episodes.isEmpty) return;
-  Episode target = episode ?? show.episodes.first;
-  if (episode == null) {
-    // resume the most recently watched, still-unfinished episode if any
-    final storage = ref.read(storageProvider);
-    final cw = storage
-        .getContinueWatching()
-        .where((e) => e.itemId == show.id)
-        .toList();
-    if (cw.isNotEmpty) {
-      final match = show.episodes.firstWhere(
-        (ep) => ep.episodeUrl == cw.first.episodeUrl,
-        orElse: () => show.episodes.first,
-      );
-      target = match;
-    }
-  }
+  // When no explicit episode is given, smart-resume: continue the in-progress
+  // episode, else jump to the next unwatched one (see [resumeTarget]).
+  final storage = ref.read(storageProvider);
+  final Episode target = episode ??
+      resumeTarget(show.episodes, (url) => storage.getProgress(url));
 
   AppNav.player(
     context,
@@ -57,4 +48,17 @@ void playItem(BuildContext context, WidgetRef ref, ContentItem item,
       source: show.source,
     ),
   );
+}
+
+final _rng = Random();
+
+/// "Surprise me": play a random well-known cartoon straight away. Picks from the
+/// curated famous pool (animation/family, deduped) for quality, falling back to
+/// the full catalog. Shows smart-resume to their in-progress/next episode.
+void playRandom(BuildContext context, WidgetRef ref) {
+  final catalog = ref.read(catalogProvider);
+  final pool = catalog.popularPool();
+  final items = pool.isNotEmpty ? pool : catalog.all;
+  if (items.isEmpty) return;
+  playItem(context, ref, items[_rng.nextInt(items.length)]);
 }

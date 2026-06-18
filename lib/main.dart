@@ -13,6 +13,14 @@ Future<void> main() async {
   MediaKit.ensureInitialized();
   await SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
 
+  // A TV catalog scrolls past many posters/backdrops; lift the image cache
+  // above the 100 MB / 1000-object default so freshly scrolled-away rows aren't
+  // evicted and re-fetched the instant the user scrolls back. Kept moderate so
+  // a low-power dongle doesn't trade smoothness for memory pressure.
+  PaintingBinding.instance.imageCache
+    ..maximumSizeBytes = 192 << 20 // 192 MB
+    ..maximumSize = 1500;
+
   // Detect the form factor up front so the right UI (TV D-pad canvas vs. the
   // portrait touch phone UI) and the right orientation lock are chosen before
   // the first frame. Defaults to phone if the native check is unavailable.

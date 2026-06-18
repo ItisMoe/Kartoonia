@@ -4,6 +4,7 @@ import '../models/catalog_source.dart';
 import '../models/content_item.dart';
 import '../navigation.dart';
 import '../playback.dart';
+import '../services/resume.dart';
 import '../services/storage_service.dart';
 import '../state/app_state.dart';
 import '../theme/theme.dart';
@@ -23,7 +24,10 @@ class DetailScreen extends ConsumerStatefulWidget {
 }
 
 class _DetailScreenState extends ConsumerState<DetailScreen> {
-  int _seasonIdx = 0;
+  // Null until the user picks a season chip; until then the screen defaults to
+  // the season holding the smart-resume episode. Reset to null on a source
+  // switch so the default recomputes against the new source's seasons.
+  int? _seasonIdx;
   CatalogSource? _selectedSource;
 
   /// Default to whichever twin has stored progress (so Resume works), else the
@@ -36,6 +40,19 @@ class _DetailScreenState extends ConsumerState<DetailScreen> {
       return alt.source;
     }
     return base.source;
+  }
+
+  /// Play-button label. For a started show it names the resume episode
+  /// ("Resume · S2·E3"); otherwise a plain Play/Resume.
+  String _playLabel(ContentItem item, Episode? ep, bool hasProgress,
+      Map<String, String> t) {
+    if (item is Show && ep != null && hasProgress) {
+      final season = item.seasonCount > 1 && ep.seasonNumber != null
+          ? '${t['seasonShort']}${ep.seasonNumber}·'
+          : '';
+      return '${t['resume']!} · $season${t['epShort']}${ep.episodeNumber}';
+    }
+    return hasProgress ? t['resume']! : t['play']!;
   }
 
   @override
@@ -70,6 +87,12 @@ class _DetailScreenState extends ConsumerState<DetailScreen> {
     final inList = user.watchlistIds.contains(primary.id) ||
         (alt != null && user.watchlistIds.contains(alt.id));
     final hasProgress = storage.progressForItem(item.id) > 0;
+
+    // Smart resume: the episode the Play/Resume button jumps to (the in-progress
+    // one, else the next unwatched). Null for movies.
+    final resumeEp = (item is Show && item.episodes.isNotEmpty)
+        ? resumeTarget(item.episodes, (url) => storage.getProgress(url))
+        : null;
 
     // meta chiplets
     final chips = <Widget>[];
@@ -170,11 +193,12 @@ class _DetailScreenState extends ConsumerState<DetailScreen> {
                 const SizedBox(height: 26),
                 Row(mainAxisSize: MainAxisSize.min, children: [
                   Pill(
-                    label: hasProgress ? t['resume']! : t['play']!,
+                    label: _playLabel(item, resumeEp, hasProgress, t),
                     icon: Icons.play_arrow,
                     variant: PillVariant.primary,
                     autofocus: true,
-                    onPressed: () => playItem(context, ref, item),
+                    onPressed: () =>
+                        playItem(context, ref, item, episode: resumeEp),
                   ),
                   const SizedBox(width: 16),
                   // Trailer (movies) / theme-song (shows) via YouTube search.
@@ -216,9 +240,21 @@ class _DetailScreenState extends ConsumerState<DetailScreen> {
 
   Widget _episodes(Show show, Map<String, String> t) {
     if (show.seasons.isEmpty) return const SizedBox.shrink();
-    final idx = _seasonIdx.clamp(0, show.seasons.length - 1);
-    final season = show.seasons[idx];
     final storage = ref.read(storageProvider);
+    ProgressEntry? progressOf(String url) => storage.getProgress(url);
+
+    // Default to the season holding the smart-resume episode, and mark
+    // unwatched episodes only once the show has actually been started.
+    final target = show.episodes.isNotEmpty
+        ? resumeTarget(show.episodes, progressOf)
+        : null;
+    final showStarted = hasAnyProgress(show.episodes, progressOf);
+    final defaultIdx = target?.seasonNumber != null
+        ? show.seasons.indexWhere((s) => s.seasonNumber == target!.seasonNumber)
+        : 0;
+    final idx = (_seasonIdx ?? (defaultIdx < 0 ? 0 : defaultIdx))
+        .clamp(0, show.seasons.length - 1);
+    final season = show.seasons[idx];
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -269,16 +305,18 @@ class _DetailScreenState extends ConsumerState<DetailScreen> {
             separatorBuilder: (_, _) => const SizedBox(width: 16),
             itemBuilder: (context, i) {
               final ep = season.episodes[i];
-              final prog = storage.getProgress(ep.episodeUrl);
+              final prog = progressOf(ep.episodeUrl);
               return EnsureVisibleOnFocus(
                 child: _EpisodeCard(
                   episode: ep,
                   progress: prog != null && prog.duration > 0
                       ? prog.fraction
                       : null,
+                  watchState: episodeWatchState(prog),
+                  showUnwatchedDot: showStarted,
                   epLabel: '${t['epShort']}${ep.episodeNumber}',
                   seasonLabel: '${t['season']} ${season.seasonNumber}',
-                  autofocus: i == 0,
+                  autofocus: target != null && ep.episodeUrl == target.episodeUrl,
                   onPressed: () => playItem(context, ref, show, episode: ep),
                 ),
               );
@@ -301,7 +339,10 @@ class _DetailScreenState extends ConsumerState<DetailScreen> {
                 : t['source_badge_at']!,
             selected: src == selected,
             radius: 13,
-            onPressed: () => setState(() => _selectedSource = src),
+            onPressed: () => setState(() {
+              _selectedSource = src;
+              _seasonIdx = null; // recompute default season for the new source
+            }),
           ),
         );
     return Row(mainAxisSize: MainAxisSize.min, children: [
@@ -350,6 +391,8 @@ class _DetailScreenState extends ConsumerState<DetailScreen> {
 class _EpisodeCard extends StatelessWidget {
   final Episode episode;
   final double? progress;
+  final EpisodeWatchState watchState;
+  final bool showUnwatchedDot;
   final String epLabel;
   final String seasonLabel;
   final bool autofocus;
@@ -358,6 +401,8 @@ class _EpisodeCard extends StatelessWidget {
   const _EpisodeCard({
     required this.episode,
     required this.progress,
+    required this.watchState,
+    required this.showUnwatchedDot,
     required this.epLabel,
     required this.seasonLabel,
     required this.autofocus,
@@ -370,15 +415,21 @@ class _EpisodeCard extends StatelessWidget {
       autofocus: autofocus,
       onPressed: onPressed,
       builder: (context, focused) {
+        final watched = watchState == EpisodeWatchState.watched;
         final bg = focused ? Colors.white : AppColors.bg2;
         final titleColor = focused ? AppColors.onFocus : AppColors.ink;
         final metaColor = focused ? const Color(0xB311142E) : AppColors.inkMute;
-        final numColor = focused ? AppColors.onFocus : AppColors.primary2;
+        final numColor = focused
+            ? AppColors.onFocus
+            : (watched ? AppColors.inkMute : AppColors.primary2);
+        final showDot =
+            showUnwatchedDot && watchState == EpisodeWatchState.unwatched;
         return AnimatedScale(
           scale: focused ? 1.04 : 1,
           duration: const Duration(milliseconds: 160),
           curve: ease,
-          child: Container(
+          child: Stack(clipBehavior: Clip.none, children: [
+          Container(
             width: 360,
             padding: const EdgeInsets.fromLTRB(20, 16, 20, 16),
             decoration: BoxDecoration(
@@ -463,12 +514,32 @@ class _EpisodeCard extends StatelessWidget {
                     ],
                   ),
                 ),
-                Icon(Icons.play_arrow,
+                Icon(
+                    watched ? Icons.check_circle : Icons.play_arrow,
                     size: 28,
-                    color: focused ? AppColors.onFocus : AppColors.inkSoft),
+                    color: focused
+                        ? AppColors.onFocus
+                        : (watched ? AppColors.accent : AppColors.inkSoft)),
               ],
             ),
           ),
+          // Unwatched marker: a small accent dot, shown only on shows the user
+          // has already started so a fresh series isn't covered in dots.
+          if (showDot)
+            Positioned(
+              top: -3,
+              right: -3,
+              child: Container(
+                width: 16,
+                height: 16,
+                decoration: BoxDecoration(
+                  color: AppColors.accent,
+                  shape: BoxShape.circle,
+                  border: Border.all(color: AppColors.bg1, width: 3),
+                ),
+              ),
+            ),
+          ]),
         );
       },
     );

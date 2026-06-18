@@ -9,11 +9,16 @@ import '../state/app_state.dart';
 import '../theme/theme.dart';
 import '../utils/daily_shuffle.dart';
 import '../utils/genre_translations.dart';
+import '../utils/image_prefetch.dart';
 import '../widgets/content_card.dart';
 import '../widgets/content_row.dart';
 import '../widgets/ensure_visible.dart';
 import '../widgets/hero_carousel.dart';
 import '../widgets/screen_shell.dart';
+
+/// Shown at most once per app launch: the "pick up where you left off" prompt
+/// only fires the first time Home mounts, not on every tab return.
+bool _resumePromptShownThisSession = false;
 
 class HomeScreen extends ConsumerStatefulWidget {
   const HomeScreen({super.key});
@@ -29,7 +34,63 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       ref.read(userProvider.notifier).refresh();
       _setupRecommendations();
+      // Warm the famous-pool posters so the rows reveal smoothly as the user
+      // scrolls (best-effort; covers most Home rows' art).
+      if (mounted) prefetchPosters(context, ref.read(catalogProvider).popularPool());
+      _maybeShowResumePrompt();
     });
+  }
+
+  /// On the first Home mount of the session, offer to resume the most recently
+  /// watched title if there is one.
+  void _maybeShowResumePrompt() {
+    if (_resumePromptShownThisSession) return;
+    final catalog = ref.read(catalogProvider);
+    final cw = ref.read(userProvider).continueWatching;
+    ContentItem? item;
+    for (final e in cw) {
+      final found = catalog.getById(e.itemId);
+      if (found != null) {
+        item = found;
+        break;
+      }
+    }
+    if (item == null) return;
+    _resumePromptShownThisSession = true;
+    final t = ref.read(stringsProvider);
+    final resumeItem = item;
+    showDialog<void>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: AppColors.bg2,
+        title: Text(t['resume_prompt']!,
+            style: const TextStyle(color: AppColors.ink)),
+        content: Text(resumeItem.title,
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(
+                color: AppColors.inkSoft,
+                fontSize: 22,
+                fontWeight: FontWeight.w800)),
+        actions: [
+          TextButton(
+            autofocus: true,
+            onPressed: () {
+              Navigator.pop(ctx);
+              playItem(context, ref, resumeItem);
+            },
+            child: Text(t['resume']!,
+                style: const TextStyle(
+                    color: AppColors.primary2, fontWeight: FontWeight.w800)),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: Text(t['dismiss']!,
+                style: const TextStyle(color: AppColors.inkSoft)),
+          ),
+        ],
+      ),
+    );
   }
 
   /// Publish the Google TV home-screen channel + wire deep links (best-effort,
