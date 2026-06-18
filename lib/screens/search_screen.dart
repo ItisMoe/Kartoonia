@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../models/catalog_source.dart';
 import '../models/content_item.dart';
 import '../navigation.dart';
 import '../state/app_state.dart';
@@ -32,6 +33,13 @@ class SearchScreen extends ConsumerWidget {
       if (s.filter == 'movies') return x is Movie;
       return true;
     }
+
+    // Source badge for titles present in BOTH catalogs (else null = no badge).
+    String? badge(ContentItem i) => catalog.isDuplicated(i)
+        ? (i.source == CatalogSource.stardima
+            ? t['source_badge_st']
+            : t['source_badge_at'])
+        : null;
 
     final q = s.query.trim();
     final List<ContentItem> results = q.isEmpty
@@ -170,6 +178,7 @@ class SearchScreen extends ConsumerWidget {
                                 item: results[i],
                                 expand: true,
                                 movieLabel: t['movie']!,
+                                sourceLabel: badge(results[i]),
                                 onPressed: () =>
                                     AppNav.detail(context, results[i]),
                               ),

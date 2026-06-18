@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../models/catalog_source.dart';
 import '../models/content_item.dart';
 import '../navigation.dart';
 import '../playback.dart';
@@ -55,6 +56,13 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
 
     void open(ContentItem i) => AppNav.detail(context, i);
 
+    // Source badge for titles present in BOTH catalogs (else null = no badge).
+    String? badge(ContentItem i) => catalog.isDuplicated(i)
+        ? (i.source == CatalogSource.stardima
+            ? t['source_badge_st']
+            : t['source_badge_at'])
+        : null;
+
     final rows = <Widget>[];
 
     // Keep Watching
@@ -73,6 +81,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
               wide: true,
               progress: e.fraction,
               movieLabel: t['movie']!,
+              sourceLabel: badge(item),
               caption: item is Movie
                   ? t['movie']
                   : '${t['epShort']}${e.episodeNumber}',
@@ -93,7 +102,11 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       count: mostPopular.length,
       cards: [
         for (final i in mostPopular)
-          PosterCard(item: i, movieLabel: t['movie']!, onPressed: () => open(i)),
+          PosterCard(
+              item: i,
+              movieLabel: t['movie']!,
+              sourceLabel: badge(i),
+              onPressed: () => open(i)),
       ],
     ));
 
@@ -107,7 +120,11 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       count: popular.length,
       cards: [
         for (final i in popular)
-          PosterCard(item: i, movieLabel: t['movie']!, onPressed: () => open(i)),
+          PosterCard(
+              item: i,
+              movieLabel: t['movie']!,
+              sourceLabel: badge(i),
+              onPressed: () => open(i)),
       ],
     ));
 
@@ -164,7 +181,11 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         cards: [
           for (final i
               in dailyShuffled(byPop.take(24).toList(), salt: entry.key).take(20))
-            PosterCard(item: i, movieLabel: t['movie']!, onPressed: () => open(i)),
+            PosterCard(
+              item: i,
+              movieLabel: t['movie']!,
+              sourceLabel: badge(i),
+              onPressed: () => open(i)),
         ],
       ));
     }

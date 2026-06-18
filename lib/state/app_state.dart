@@ -1,5 +1,4 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import '../models/catalog_source.dart';
 import '../services/storage_service.dart';
 import '../services/catalog_service.dart';
 import '../services/voice_search_service.dart';
@@ -25,39 +24,6 @@ final catalogRevProvider = StateProvider<int>((ref) => 0);
 /// 3=My List). A provider so screens can switch tabs programmatically (e.g. the
 /// Home search affordance or an empty My-List CTA).
 final phoneTabProvider = StateProvider<int>((ref) => 0);
-
-// ---------------- Catalog source (Arabic Toons | Stardima) ----------------
-/// True while a source switch is loading/parsing the new catalog asset.
-final catalogSwitchingProvider = StateProvider<bool>((ref) => false);
-
-/// The active catalog source, persisted across restarts. Changing it reloads the
-/// catalog in place and bumps [catalogRevProvider] so the whole UI re-renders
-/// from the newly selected source.
-class CatalogSourceNotifier extends Notifier<CatalogSource> {
-  @override
-  CatalogSource build() => ref.read(storageProvider).getCatalogSource();
-
-  Future<void> setSource(CatalogSource next) async {
-    if (next == state) return;
-    ref.read(catalogSwitchingProvider.notifier).state = true;
-    try {
-      await ref.read(storageProvider).setCatalogSource(next);
-      await ref.read(catalogProvider).switchTo(next);
-      state = next;
-      // Reset transient browse/search filters that may not exist in the new
-      // source, then force every catalog-bound screen to rebuild.
-      ref.read(browseProvider.notifier).reset();
-      ref.read(searchProvider.notifier).clear();
-      ref.read(catalogRevProvider.notifier).state++;
-    } finally {
-      ref.read(catalogSwitchingProvider.notifier).state = false;
-    }
-  }
-}
-
-final catalogSourceProvider =
-    NotifierProvider<CatalogSourceNotifier, CatalogSource>(
-        CatalogSourceNotifier.new);
 
 // ---------------- Settings (language + playback prefs) ----------------
 class SettingsState {

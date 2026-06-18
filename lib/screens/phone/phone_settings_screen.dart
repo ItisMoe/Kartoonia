@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import '../../models/catalog_source.dart';
 import '../../state/app_state.dart';
 import '../../theme/theme.dart';
 
@@ -15,8 +14,6 @@ class PhoneSettingsScreen extends ConsumerWidget {
     final settings = ref.watch(settingsProvider);
     final sn = ref.read(settingsProvider.notifier);
     final ytKey = ref.watch(ytKeyProvider);
-    final source = ref.watch(catalogSourceProvider);
-    final switching = ref.watch(catalogSwitchingProvider);
 
     return Scaffold(
       backgroundColor: AppColors.bg1,
@@ -34,29 +31,6 @@ class PhoneSettingsScreen extends ConsumerWidget {
       body: ListView(
         padding: const EdgeInsets.fromLTRB(16, 16, 16, 40),
         children: [
-          _Group(
-            label: t['set_source']!,
-            hint: t['set_source_hint']!,
-            child: Row(children: [
-              _Opt(t['source_arabictoons']!, source == CatalogSource.arabicToons,
-                  () => ref
-                      .read(catalogSourceProvider.notifier)
-                      .setSource(CatalogSource.arabicToons)),
-              const SizedBox(width: 12),
-              _Opt(t['source_stardima']!, source == CatalogSource.stardima,
-                  () => ref
-                      .read(catalogSourceProvider.notifier)
-                      .setSource(CatalogSource.stardima)),
-              if (switching) ...[
-                const SizedBox(width: 14),
-                const SizedBox(
-                    width: 22,
-                    height: 22,
-                    child: CircularProgressIndicator(
-                        strokeWidth: 3, color: AppColors.primary)),
-              ],
-            ]),
-          ),
           _Group(
             label: t['set_language']!,
             child: Row(children: [
