@@ -261,11 +261,20 @@ class _YoutubeScreenState extends ConsumerState<YoutubeScreen>
     // re-acquired) — same lifecycle rule as the main player.
     PlayerService.instance.stop();
     _playFocus.dispose();
+    // Safety net; the back path restores orientation in onPopInvokedWithResult.
+    _restorePhoneOrientation();
+    super.dispose();
+  }
+
+  /// Restore edge-to-edge UI and (on phones) portrait after the landscape
+  /// trailer. Issued on back press (reliable) and again in dispose (fallback) —
+  /// see the main player for why dispose-only is flaky on Android.
+  void _restorePhoneOrientation() {
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
     if (!_isTv) {
-      SystemChrome.setPreferredOrientations(const [DeviceOrientation.portraitUp]);
+      SystemChrome.setPreferredOrientations(
+          const [DeviceOrientation.portraitUp]);
     }
-    super.dispose();
   }
 
   /// Any key reveals the controls (and resets the auto-hide timer) when hidden.
@@ -287,8 +296,12 @@ class _YoutubeScreenState extends ConsumerState<YoutubeScreen>
     final t = ref.watch(stringsProvider);
     final ready = !_loading && !_failed;
     return PopScope(
-      // Stop audio the instant back is pressed — before the fade-out + dispose.
-      onPopInvokedWithResult: (didPop, _) => _player.pause(),
+      // Stop audio the instant back is pressed — before the fade-out + dispose
+      // — and restore portrait while the activity is still resumed.
+      onPopInvokedWithResult: (didPop, _) {
+        _player.pause();
+        if (didPop) _restorePhoneOrientation();
+      },
       child: Focus(
       autofocus: true,
       skipTraversal: true,

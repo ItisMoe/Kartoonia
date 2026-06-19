@@ -27,20 +27,26 @@ class TvScaler extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return ColoredBox(
-      color: background,
-      child: SafeArea(
-        child: Center(
-          child: FittedBox(
-            fit: BoxFit.contain,
-            child: SizedBox(
-              width: kCanvasW,
-              height: kCanvasH,
-              child: child,
-            ),
+    final canvas = SafeArea(
+      child: Center(
+        child: FittedBox(
+          fit: BoxFit.contain,
+          child: SizedBox(
+            width: kCanvasW,
+            height: kCanvasH,
+            child: child,
           ),
         ),
       ),
     );
+    // ColoredBox is hit-test OPAQUE — even when its colour is fully transparent
+    // it absorbs every pointer event inside its bounds. That is correct for an
+    // opaque full screen (the letterbox bars shouldn't leak taps through), but
+    // fatal for an *overlay*: it would eat taps meant for the layer beneath
+    // (e.g. the phone player's touch surface), so single-tap/double-tap and
+    // bring-back-after-auto-hide all silently die. So skip the box entirely in
+    // overlay mode and let taps fall through.
+    if (background == Colors.transparent) return canvas;
+    return ColoredBox(color: background, child: canvas);
   }
 }

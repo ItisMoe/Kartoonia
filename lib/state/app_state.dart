@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../services/storage_service.dart';
 import '../services/catalog_service.dart';
@@ -196,50 +198,137 @@ final recentSearchesProvider = StateProvider<List<String>>(
     (ref) => ref.read(storageProvider).getRecentSearches());
 
 // ---------------- Voice search ----------------
-/// idle: not listening. listening: actively transcribing into the search box.
+/// idle: not listening. listening: a session is live (the overlay is shown).
 /// unavailable: no recognizer / mic permission denied (button hides itself).
-enum VoiceStatus { idle, listening, unavailable }
+enum VoicePhase { idle, listening, unavailable }
+
+/// Live state of the in-app voice session, consumed by the listening overlay.
+class VoiceState {
+  final VoicePhase phase;
+
+  /// Latest non-final transcript, shown live in the overlay (NOT in the search
+  /// box — see [VoiceNotifier.start]).
+  final String partial;
+
+  /// Microphone loudness 0..1, drives the overlay's reactive mic rings.
+  final double level;
+
+  const VoiceState({
+    this.phase = VoicePhase.idle,
+    this.partial = '',
+    this.level = 0,
+  });
+
+  bool get listening => phase == VoicePhase.listening;
+  bool get unavailable => phase == VoicePhase.unavailable;
+
+  VoiceState copyWith({VoicePhase? phase, String? partial, double? level}) =>
+      VoiceState(
+        phase: phase ?? this.phase,
+        partial: partial ?? this.partial,
+        level: level ?? this.level,
+      );
+}
 
 /// Single recognizer wrapper for the app's lifetime.
 final voiceServiceProvider =
     Provider<VoiceSearchService>((ref) => VoiceSearchService());
 
-class VoiceNotifier extends Notifier<VoiceStatus> {
+class VoiceNotifier extends Notifier<VoiceState> {
+  StreamSubscription? _sub;
+  Completer<String?>? _completer;
+
   @override
-  VoiceStatus build() {
+  VoiceState build() {
     _checkAvailability();
-    return VoiceStatus.idle;
+    ref.onDispose(() => _sub?.cancel());
+    return const VoiceState();
   }
 
-  /// Reflects "no recognizer" as the muted mic-off icon, without blocking the
-  /// button — a press still attempts recognition in case the check was wrong.
+  /// Reflects "no recognizer" as the muted mic-off icon, without permanently
+  /// blocking the button — a later press still attempts a session.
   Future<void> _checkAvailability() async {
     final ok = await ref.read(voiceServiceProvider).isAvailable();
-    if (!ok && state == VoiceStatus.idle) state = VoiceStatus.unavailable;
+    if (!ok && state.phase == VoicePhase.idle) {
+      state = state.copyWith(phase: VoicePhase.unavailable);
+    }
   }
 
-  /// Opens the system voice dialog, then drops the final transcript into the
-  /// search box. The dialog owns the listening session, so there is nothing to
-  /// stop — a press while already listening is ignored.
-  Future<void> toggle() async {
-    if (state == VoiceStatus.listening) return;
+  /// Begin a listening session. Completes with the final transcript, or null if
+  /// the user cancelled / nothing was recognized / recognition failed.
+  ///
+  /// Live partial results drive the overlay ONLY — they are deliberately NOT
+  /// pushed into the search box. Re-running the O(N) catalog search and
+  /// rebuilding the grid on every partial transcript was the lag the previous
+  /// continuous-recognition approach suffered; only the final transcript is
+  /// committed (by the caller).
+  Future<String?> start() async {
+    if (state.phase == VoicePhase.listening) return null;
 
     final svc = ref.read(voiceServiceProvider);
-    final search = ref.read(searchProvider.notifier);
-    final kbScript = ref.read(searchProvider).kbScript;
-    final prompt = ref.read(stringsProvider)['voiceSpeak'];
+    final localeId = voiceLocaleFor(ref.read(searchProvider).kbScript);
+    final completer = Completer<String?>();
+    _completer = completer;
+    state = const VoiceState(phase: VoicePhase.listening);
 
-    state = VoiceStatus.listening;
+    _sub?.cancel();
+    _sub = svc.events().listen(
+      (e) {
+        if (e is! Map) return;
+        final map = e.cast<String, dynamic>();
+        switch (map['type']) {
+          case 'rms':
+            state = state.copyWith(
+                level: ((map['level'] as num?)?.toDouble() ?? 0).clamp(0, 1));
+            break;
+          case 'partial':
+            final txt = (map['text'] as String?)?.trim() ?? '';
+            if (txt.isNotEmpty) state = state.copyWith(partial: txt);
+            break;
+          case 'final':
+            final txt = (map['text'] as String?)?.trim();
+            _finish(txt == null || txt.isEmpty ? null : txt);
+            break;
+          case 'error':
+            // 9 = ERROR_INSUFFICIENT_PERMISSIONS → mic denied, hide the button.
+            _finish(null, unavailable: (map['code'] as int?) == 9);
+            break;
+        }
+      },
+      onError: (_) => _finish(null),
+    );
+
     try {
-      final text = await svc.recognize(kbScript: kbScript, prompt: prompt);
-      if (text != null) search.setQuery(text);
+      await svc.start(localeId);
     } catch (_) {
-      // Swallow: an unavailable recognizer just yields no transcript.
-    } finally {
-      state = VoiceStatus.idle;
+      _finish(null);
     }
+    return completer.future;
+  }
+
+  /// Stop capturing and let the recognizer finalize; a `final` event follows.
+  Future<void> stop() async {
+    if (state.phase != VoicePhase.listening) return;
+    await ref.read(voiceServiceProvider).stop();
+  }
+
+  /// User dismissed the overlay — abort the native session with no result.
+  Future<void> cancel() async {
+    if (state.phase != VoicePhase.listening) return;
+    await ref.read(voiceServiceProvider).cancel();
+    _finish(null);
+  }
+
+  void _finish(String? result, {bool unavailable = false}) {
+    _sub?.cancel();
+    _sub = null;
+    final c = _completer;
+    _completer = null;
+    state = VoiceState(
+        phase: unavailable ? VoicePhase.unavailable : VoicePhase.idle);
+    if (c != null && !c.isCompleted) c.complete(result);
   }
 }
 
 final voiceProvider =
-    NotifierProvider<VoiceNotifier, VoiceStatus>(VoiceNotifier.new);
+    NotifierProvider<VoiceNotifier, VoiceState>(VoiceNotifier.new);

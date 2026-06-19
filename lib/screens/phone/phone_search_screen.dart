@@ -4,6 +4,7 @@ import '../../models/content_item.dart';
 import '../../state/app_state.dart';
 import '../../theme/theme.dart';
 import '../../widgets/phone/phone_poster_card.dart';
+import '../../widgets/voice_search_sheet.dart';
 import 'phone_nav.dart';
 
 /// Portrait search: a native text field (the OS keyboard), a voice button and a
@@ -104,13 +105,13 @@ class _PhoneSearchScreenState extends ConsumerState<PhoneSearchScreen> {
                   child: const Icon(Icons.close,
                       size: 20, color: AppColors.inkMute),
                 ),
-              if (voice != VoiceStatus.unavailable) ...[
+              if (!voice.unavailable) ...[
                 const SizedBox(width: 10),
                 GestureDetector(
-                  onTap: () => ref.read(voiceProvider.notifier).toggle(),
+                  onTap: () => startVoiceSearch(context),
                   child: Icon(Icons.mic,
                       size: 22,
-                      color: voice == VoiceStatus.listening
+                      color: voice.listening
                           ? AppColors.primary
                           : AppColors.inkSoft),
                 ),

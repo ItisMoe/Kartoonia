@@ -80,7 +80,7 @@ The code `6954638` is issued by the free [aftv.news](https://aftv.news/code) ser
 | Networking | [`http`](https://pub.dev/packages/http) `^1.2.2` |
 | Image loading | [`cached_network_image`](https://pub.dev/packages/cached_network_image) `^3.4.1` |
 | Persistence | [`shared_preferences`](https://pub.dev/packages/shared_preferences) `^2.3.3` |
-| Voice search | [`speech_to_text`](https://pub.dev/packages/speech_to_text) `^7.4.0` |
+| Voice search | In-app Android `SpeechRecognizer` via a platform channel (no plugin) |
 | YouTube stream extraction | [`youtube_explode_dart`](https://pub.dev/packages/youtube_explode_dart) `^3.1.0` |
 | Launcher icon | [`flutter_launcher_icons`](https://pub.dev/packages/flutter_launcher_icons) `^0.14.4` (dev) |
 | Native (Android) | Kotlin, `androidx.tvprovider:1.0.0`, Java 17, `minSdk 30` (Android 11), `compileSdk 36` |

@@ -5,23 +5,32 @@ import 'package:flutter/services.dart';
 /// speech recognizer. 'ar' → Arabic (Saudi), anything else → US English.
 String voiceLocaleFor(String kbScript) => kbScript == 'ar' ? 'ar-SA' : 'en-US';
 
-/// Voice search backed by the platform's system speech dialog (Android's
-/// `RecognizerIntent`), bridged through the `kartoonia/voice` method channel.
+/// In-app voice search backed by Android's `SpeechRecognizer` service — the same
+/// approach the YouTube TV app uses, and the reason it behaves identically on
+/// every TV. We DO NOT launch the system `RecognizerIntent` dialog: that dialog
+/// is provided by a different component on each device (a Google voice panel on
+/// some, an on-screen keyboard on others, nothing at all on a few), which is
+/// exactly why the old implementation "worked on some TVs and not others".
 ///
-/// On Android TV / Google TV this is the only reliable path. The continuous
-/// `SpeechRecognizer` API the old `speech_to_text` plugin used gets no audio on
-/// a Chromecast dongle — it has no built-in microphone, and the remote's mic is
-/// reserved for the system Assistant — so it would report "listening" forever
-/// without ever capturing a word. The system dialog instead uses the remote's
-/// mic and returns a single final transcript, which also removes the
-/// partial-result re-search lag the old approach caused.
+/// Instead the app owns the whole session: it binds the device's recognition
+/// service, drives the remote/built-in microphone itself, and renders its own
+/// listening overlay from the streamed events below. One consistent experience
+/// everywhere.
+///
+/// Events are delivered on the [events] broadcast stream as maps:
+///   {type: 'status', value: 'ready'|'speech'|'end'}
+///   {type: 'rms',    level: double 0..1}   // mic loudness, for the animation
+///   {type: 'partial', text: String}        // live (non-final) transcript
+///   {type: 'final',   text: String}        // the committed transcript
+///   {type: 'error',   code: int}           // recognizer error (see Android docs)
 class VoiceSearchService {
-  static const _channel = MethodChannel('kartoonia/voice');
+  static const _method = MethodChannel('kartoonia/voice');
+  static const _events = EventChannel('kartoonia/voice_events');
 
-  /// Whether the device exposes a usable speech-recognition path.
+  /// Whether the device exposes a usable on-device recognition service.
   Future<bool> isAvailable() async {
     try {
-      return await _channel.invokeMethod<bool>('isAvailable') ?? false;
+      return await _method.invokeMethod<bool>('isAvailable') ?? false;
     } on PlatformException catch (e) {
       debugPrint('VoiceSearch isAvailable failed: $e');
       return false;
@@ -30,22 +39,31 @@ class VoiceSearchService {
     }
   }
 
-  /// Launches the system voice dialog for [kbScript] and resolves with the
-  /// recognized text, or null when the user cancelled, nothing was heard, or
-  /// recognition is unavailable. [prompt] is shown in the system UI.
-  Future<String?> recognize({required String kbScript, String? prompt}) async {
+  /// The single broadcast stream of recognition events for the active session.
+  Stream<dynamic> events() => _events.receiveBroadcastStream();
+
+  /// Begin a listening session in [localeId]. Events flow on [events]; finish by
+  /// waiting for a `final`/`error` event, or call [stop]/[cancel].
+  Future<void> start(String localeId) async {
+    await _method.invokeMethod('start', {'localeId': localeId});
+  }
+
+  /// Stop capturing and let the recognizer finalize what it already heard (a
+  /// `final` event follows). Mirrors releasing the mic button.
+  Future<void> stop() async {
     try {
-      final text = await _channel.invokeMethod<String>('recognize', {
-        'localeId': voiceLocaleFor(kbScript),
-        'prompt': prompt,
-      });
-      final trimmed = text?.trim();
-      return (trimmed == null || trimmed.isEmpty) ? null : trimmed;
+      await _method.invokeMethod('stop');
     } on PlatformException catch (e) {
-      debugPrint('VoiceSearch recognize failed: $e');
-      return null;
-    } on MissingPluginException {
-      return null;
+      debugPrint('VoiceSearch stop failed: $e');
+    }
+  }
+
+  /// Abort the session immediately with no result (user dismissed the overlay).
+  Future<void> cancel() async {
+    try {
+      await _method.invokeMethod('cancel');
+    } on PlatformException catch (e) {
+      debugPrint('VoiceSearch cancel failed: $e');
     }
   }
 }

@@ -10,6 +10,7 @@ import '../widgets/ensure_visible.dart';
 import '../widgets/focusable.dart';
 import '../widgets/screen_shell.dart';
 import '../widgets/selectable_chip.dart';
+import '../widgets/voice_search_sheet.dart';
 
 const _kbEn = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
 // Base 28 letters plus the hamza/alef variants, taa marbuta and alef maqsura
@@ -29,7 +30,7 @@ class SearchScreen extends ConsumerWidget {
     final notifier = ref.read(searchProvider.notifier);
     final recent = ref.watch(recentSearchesProvider);
     final voice = ref.watch(voiceProvider);
-    final listening = voice == VoiceStatus.listening;
+    final listening = voice.listening;
 
     bool passFilter(ContentItem x) {
       if (s.filter == 'tv') return x is Show;
@@ -90,8 +91,7 @@ class SearchScreen extends ConsumerWidget {
                       const SizedBox(width: 14),
                       _MicButton(
                         status: voice,
-                        onPressed: () =>
-                            ref.read(voiceProvider.notifier).toggle(),
+                        onPressed: () => startVoiceSearch(context),
                       ),
                     ]),
                   ),
@@ -345,14 +345,14 @@ class _KeyTile extends StatelessWidget {
 /// Voice-search trigger inside the search field. Pulses while listening and
 /// shows a muted mic-off icon when speech recognition is unavailable.
 class _MicButton extends StatelessWidget {
-  final VoiceStatus status;
+  final VoiceState status;
   final VoidCallback onPressed;
   const _MicButton({required this.status, required this.onPressed});
 
   @override
   Widget build(BuildContext context) {
-    final listening = status == VoiceStatus.listening;
-    final unavailable = status == VoiceStatus.unavailable;
+    final listening = status.listening;
+    final unavailable = status.unavailable;
     return Focusable(
       onPressed: onPressed,
       builder: (context, focused) {

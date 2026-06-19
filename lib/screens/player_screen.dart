@@ -227,6 +227,12 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
 
       setState(() => _loading = false);
       _retry = 0;
+      // Re-arm the auto-hide timer now that playback is actually ready. Without
+      // this, a slow resolve (Stardima's multi-request pipeline routinely
+      // outlasts the initial _flashControls timer) leaves the timer already
+      // expired when playback finally starts, so the controls stay on screen
+      // until the user presses a key. Flashing here makes them hide on their own.
+      _flashControls();
     } catch (_) {
       // Resolve/open/init failed or timed out. The shared player keeps its
       // decoder — nothing to release — so just decide what to try next.
@@ -541,11 +547,20 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
     PlayerService.instance.stop();
     _playFocus.dispose();
     _playerScope.dispose();
+    // Safety net for non-back-button disposal (e.g. route replaced); the normal
+    // back path already restored orientation in onPopInvokedWithResult.
+    _restorePhoneOrientation();
+    super.dispose();
+  }
+
+  /// Restore the edge-to-edge system UI and (on phones) lock back to portrait
+  /// after the landscape player. No-op orientation change on TVs.
+  void _restorePhoneOrientation() {
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
     if (!_isTv) {
-      SystemChrome.setPreferredOrientations(const [DeviceOrientation.portraitUp]);
+      SystemChrome.setPreferredOrientations(
+          const [DeviceOrientation.portraitUp]);
     }
-    super.dispose();
   }
 
   /// Catches every remote key so the user is never locked out: when the
@@ -578,6 +593,12 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
       onPopInvokedWithResult: (didPop, _) {
         _player.pause();
         _saveProgress();
+        // Restore portrait HERE (while the activity is still resumed), not only
+        // in dispose. setPreferredOrientations issued during dispose/route
+        // teardown is unreliable on Android — the platform request can land
+        // after the activity has lost focus and simply be ignored, leaving the
+        // phone stuck in landscape. Doing it on the back press fixes that.
+        if (didPop) _restorePhoneOrientation();
       },
       child: FocusScope(
         node: _playerScope,

@@ -1,25 +1,34 @@
 package com.kartoonia.kartoonia
 
-import android.app.Activity
+import android.Manifest
 import android.app.UiModeManager
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.content.res.Configuration
 import android.net.Uri
+import android.os.Bundle
+import android.speech.RecognitionListener
 import android.speech.RecognizerIntent
 import android.speech.SpeechRecognizer
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
+import io.flutter.plugin.common.EventChannel
 import io.flutter.plugin.common.MethodChannel
 
 class MainActivity : FlutterActivity() {
     private val channelName = "kartoonia/reco"
     private val voiceChannelName = "kartoonia/voice"
-    private val voiceRequestCode = 0x5643 // 'VC'
+    private val voiceEventsName = "kartoonia/voice_events"
+    private val audioPermCode = 0x5641 // 'VA'
     private var methodChannel: MethodChannel? = null
     private var pendingDeepLink: String? = null
-    // The Flutter call awaiting the system voice dialog's result, if any.
-    private var pendingVoiceResult: MethodChannel.Result? = null
+
+    // ---- voice search (in-app SpeechRecognizer, YouTube-style) ----
+    private var voiceEvents: EventChannel.EventSink? = null
+    private var speech: SpeechRecognizer? = null
+    // Locale to resume with once the RECORD_AUDIO prompt is answered.
+    private var pendingLocale: String? = null
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
@@ -51,23 +60,43 @@ class MainActivity : FlutterActivity() {
             }
         }
 
-        // Voice search via the system speech dialog (RecognizerIntent). This is
-        // the reliable path on Android TV / Google TV: it uses the remote's
-        // microphone (the Chromecast dongle has no built-in mic and the
-        // continuous SpeechRecognizer API gets no audio there) and returns one
-        // final transcript.
+        // Voice search bridged as an in-app SpeechRecognizer session. The app
+        // owns the microphone and renders its own listening overlay (from the
+        // events on voiceEventsName) instead of launching the system speech
+        // dialog — that dialog is a different component on every device, which is
+        // why the old approach worked on some TVs and not others. This path is
+        // consistent everywhere, the same way the YouTube TV app does it.
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, voiceChannelName)
             .setMethodCallHandler { call, result ->
                 when (call.method) {
-                    "isAvailable" -> result.success(voiceRecognitionAvailable())
-                    "recognize" -> startVoiceRecognition(
-                        call.argument<String>("localeId"),
-                        call.argument<String>("prompt"),
-                        result
-                    )
+                    "isAvailable" ->
+                        result.success(SpeechRecognizer.isRecognitionAvailable(this))
+                    "start" -> {
+                        startVoice(call.argument<String>("localeId"))
+                        result.success(true)
+                    }
+                    "stop" -> {
+                        speech?.stopListening()
+                        result.success(true)
+                    }
+                    "cancel" -> {
+                        destroySpeech()
+                        result.success(true)
+                    }
                     else -> result.notImplemented()
                 }
             }
+
+        EventChannel(flutterEngine.dartExecutor.binaryMessenger, voiceEventsName)
+            .setStreamHandler(object : EventChannel.StreamHandler {
+                override fun onListen(args: Any?, sink: EventChannel.EventSink?) {
+                    voiceEvents = sink
+                }
+
+                override fun onCancel(args: Any?) {
+                    voiceEvents = null
+                }
+            })
 
         // capture the deep link the app may have been launched with
         pendingDeepLink = linkFrom(intent)
@@ -84,67 +113,133 @@ class MainActivity : FlutterActivity() {
         }
     }
 
-    private fun voiceRecognitionAvailable(): Boolean {
-        return try {
-            if (SpeechRecognizer.isRecognitionAvailable(this)) return true
-            val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH)
-            intent.resolveActivity(packageManager) != null
-        } catch (e: Throwable) {
-            false
+    // ---- voice recognition ----
+
+    /// Begin a session, requesting RECORD_AUDIO first if it isn't granted yet.
+    /// Results/errors are streamed back over [voiceEvents]; nothing is returned
+    /// synchronously beyond acknowledging the call.
+    private fun startVoice(localeId: String?) {
+        pendingLocale = localeId
+        // minSdk is 30, so the Activity permission APIs (API 23+) are always
+        // present — no androidx.core shim needed.
+        if (checkSelfPermission(Manifest.permission.RECORD_AUDIO)
+            == PackageManager.PERMISSION_GRANTED
+        ) {
+            beginListening(localeId)
+        } else {
+            requestPermissions(arrayOf(Manifest.permission.RECORD_AUDIO), audioPermCode)
         }
     }
 
-    private fun startVoiceRecognition(
-        localeId: String?,
-        prompt: String?,
-        result: MethodChannel.Result
+    private fun beginListening(localeId: String?) {
+        if (!SpeechRecognizer.isRecognitionAvailable(this)) {
+            // 9 = ERROR_INSUFFICIENT_PERMISSIONS; reused here as "no recognizer",
+            // which the Dart side maps to the unavailable (muted) state.
+            emit(mapOf("type" to "error", "code" to 9))
+            return
+        }
+        destroySpeech()
+        val recognizer = SpeechRecognizer.createSpeechRecognizer(this)
+        recognizer.setRecognitionListener(voiceListener)
+        val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
+            putExtra(
+                RecognizerIntent.EXTRA_LANGUAGE_MODEL,
+                RecognizerIntent.LANGUAGE_MODEL_FREE_FORM
+            )
+            putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true)
+            putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 1)
+            // Some recognizers refuse to start without the calling package.
+            putExtra(RecognizerIntent.EXTRA_CALLING_PACKAGE, packageName)
+            if (!localeId.isNullOrEmpty()) {
+                putExtra(RecognizerIntent.EXTRA_LANGUAGE, localeId)
+                putExtra(RecognizerIntent.EXTRA_LANGUAGE_PREFERENCE, localeId)
+            }
+        }
+        speech = recognizer
+        recognizer.startListening(intent)
+    }
+
+    private val voiceListener = object : RecognitionListener {
+        override fun onReadyForSpeech(params: Bundle?) =
+            emit(mapOf("type" to "status", "value" to "ready"))
+
+        override fun onBeginningOfSpeech() =
+            emit(mapOf("type" to "status", "value" to "speech"))
+
+        override fun onRmsChanged(rmsdB: Float) {
+            // rmsdB is roughly -2..10 dB; normalize to 0..1 for the mic rings.
+            val level = ((rmsdB + 2f) / 12f).coerceIn(0f, 1f)
+            emit(mapOf("type" to "rms", "level" to level.toDouble()))
+        }
+
+        override fun onBufferReceived(buffer: ByteArray?) {}
+
+        override fun onEndOfSpeech() =
+            emit(mapOf("type" to "status", "value" to "end"))
+
+        override fun onError(error: Int) {
+            emit(mapOf("type" to "error", "code" to error))
+            destroySpeech()
+        }
+
+        override fun onResults(results: Bundle?) {
+            val text = results
+                ?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
+                ?.firstOrNull { it.isNotBlank() }
+            emit(mapOf("type" to "final", "text" to (text ?: "")))
+            destroySpeech()
+        }
+
+        override fun onPartialResults(partialResults: Bundle?) {
+            val text = partialResults
+                ?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
+                ?.firstOrNull { it.isNotBlank() }
+            if (!text.isNullOrBlank()) {
+                emit(mapOf("type" to "partial", "text" to text))
+            }
+        }
+
+        override fun onEvent(eventType: Int, params: Bundle?) {}
+    }
+
+    private fun emit(event: Map<String, Any?>) {
+        // RecognitionListener callbacks fire on the main thread, so the sink can
+        // be used directly.
+        voiceEvents?.success(event)
+    }
+
+    private fun destroySpeech() {
+        speech?.let {
+            try {
+                it.cancel()
+                it.destroy()
+            } catch (_: Throwable) {
+            }
+        }
+        speech = null
+    }
+
+    override fun onRequestPermissionsResult(
+        requestCode: Int,
+        permissions: Array<out String>,
+        grantResults: IntArray
     ) {
-        // Only one dialog at a time; resolve a second request as "no input".
-        if (pendingVoiceResult != null) {
-            result.success(null)
+        if (requestCode == audioPermCode) {
+            if (grantResults.isNotEmpty() &&
+                grantResults[0] == PackageManager.PERMISSION_GRANTED
+            ) {
+                beginListening(pendingLocale)
+            } else {
+                emit(mapOf("type" to "error", "code" to 9))
+            }
             return
         }
-        try {
-            val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
-                putExtra(
-                    RecognizerIntent.EXTRA_LANGUAGE_MODEL,
-                    RecognizerIntent.LANGUAGE_MODEL_FREE_FORM
-                )
-                putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 1)
-                if (!localeId.isNullOrEmpty()) {
-                    putExtra(RecognizerIntent.EXTRA_LANGUAGE, localeId)
-                    putExtra(RecognizerIntent.EXTRA_LANGUAGE_PREFERENCE, localeId)
-                }
-                if (!prompt.isNullOrEmpty()) {
-                    putExtra(RecognizerIntent.EXTRA_PROMPT, prompt)
-                }
-            }
-            if (intent.resolveActivity(packageManager) == null) {
-                result.success(null)
-                return
-            }
-            pendingVoiceResult = result
-            startActivityForResult(intent, voiceRequestCode)
-        } catch (e: Throwable) {
-            pendingVoiceResult = null
-            result.success(null)
-        }
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
     }
 
-    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
-        if (requestCode == voiceRequestCode) {
-            val cb = pendingVoiceResult
-            pendingVoiceResult = null
-            val text = if (resultCode == Activity.RESULT_OK && data != null) {
-                data.getStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS)
-                    ?.firstOrNull { it.isNotBlank() }
-            } else {
-                null
-            }
-            cb?.success(text)
-            return
-        }
-        super.onActivityResult(requestCode, resultCode, data)
+    override fun onDestroy() {
+        destroySpeech()
+        super.onDestroy()
     }
 
     override fun onNewIntent(intent: Intent) {
