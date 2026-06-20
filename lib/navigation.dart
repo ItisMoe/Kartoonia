@@ -5,11 +5,18 @@ import 'screens/detail_screen.dart';
 import 'screens/player_screen.dart';
 import 'screens/search_screen.dart';
 import 'screens/settings_screen.dart';
+import 'screens/shaarat_screen.dart';
 import 'screens/youtube_screen.dart';
 
 /// Global navigator key — lets deep links (home-screen recommendations) push
 /// routes without a BuildContext.
 final GlobalKey<NavigatorState> appNavigatorKey = GlobalKey<NavigatorState>();
+
+/// Observes route pushes/pops so the شارات reel feed can pause its playback
+/// whenever a screen (detail / player) is pushed on top of it, and resume on
+/// return. Registered on the [MaterialApp] in app.dart.
+final RouteObserver<PageRoute<dynamic>> routeObserver =
+    RouteObserver<PageRoute<dynamic>>();
 
 /// Handle a `kartoonia://item/<id>` (or `kartoonia://home`) deep link.
 void handleDeepLink(String link) {
@@ -40,6 +47,7 @@ class AppNav {
       Navigator.pushAndRemoveUntil(c, _fade(w), (r) => r.isFirst);
 
   static void search(BuildContext c) => _tab(c, const SearchScreen());
+  static void shaarat(BuildContext c) => _tab(c, const ShaaratScreen());
   static void browse(BuildContext c, String kind) =>
       _tab(c, BrowseScreen(kind: kind));
 

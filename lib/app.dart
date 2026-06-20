@@ -15,6 +15,7 @@ class KartooniaApp extends ConsumerWidget {
     return MaterialApp(
       title: 'Kartoonia',
       navigatorKey: appNavigatorKey,
+      navigatorObservers: [routeObserver],
       debugShowCheckedModeBanner: false,
       theme: buildAppTheme(),
       home: const SplashScreen(),

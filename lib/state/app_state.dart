@@ -72,6 +72,11 @@ final stringsProvider = Provider<Map<String, String>>((ref) {
 final ytKeyProvider = StateProvider<String>(
     (ref) => ref.read(storageProvider).getYoutubeKey());
 
+/// Liked شارات show ids (boost the reel feed ordering). Seeded from storage;
+/// toggled by the reel heart.
+final shaaratLikesProvider = StateProvider<Set<String>>(
+    (ref) => ref.read(storageProvider).getShaaratLikes().toSet());
+
 // ---------------- User library (watchlist + continue watching) ----------------
 class UserState {
   final Set<String> watchlistIds;
