@@ -1,0 +1,34 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:aapt="http://schemas.android.com/aapt"
+    android:width="320dp"
+    android:height="180dp"
+    android:viewportWidth="320"
+    android:viewportHeight="180">
+
+    <!-- gradient background (matches AppColors.primaryGradient) -->
+    <path android:pathData="M0,0 h320 v180 h-320 z">
+        <aapt:attr name="android:fillColor">
+            <gradient
+                android:type="linear"
+                android:startX="0" android:startY="0"
+                android:endX="320" android:endY="180">
+                <item android:offset="0.0" android:color="#FFFF4E79"/>
+                <item android:offset="1.0" android:color="#FFFFA23A"/>
+            </gradient>
+        </aapt:attr>
+    </path>
+
+    <!-- play glyph -->
+    <path
+        android:pathData="M132,64 L132,116 L176,90 Z"
+        android:fillColor="#FFFFFFFF"
+        android:strokeColor="#FFFFFFFF"
+        android:strokeWidth="10"
+        android:strokeLineJoin="round"/>
+
+    <!-- spark -->
+    <path
+        android:pathData="M196,58 m-9,0 a9,9 0 1,0 18,0 a9,9 0 1,0 -18,0"
+        android:fillColor="#FFFFFFFF"
+        android:fillAlpha="0.92"/>
+</vector>

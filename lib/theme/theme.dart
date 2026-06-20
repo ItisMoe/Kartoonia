@@ -11,8 +11,8 @@ class AppColors {
   static const ink = Color(0xFFFFFFFF);
   static const inkSoft = Color(0xFFC4CBE8);
   static const inkMute = Color(0xFF8B93BD);
-  static const primary = Color(0xFFFF6A4D); // coral
-  static const primary2 = Color(0xFFFFB03A); // warm amber
+  static const primary = Color(0xFFFF4E79); // vivid rose
+  static const primary2 = Color(0xFFFFA23A); // warm amber
   static const accent = Color(0xFF4AD6C8); // teal pop
   static const gold = Color(0xFFFFD56B);
   static const onPrimary = Color(0xFF2A0E06); // dark text on coral/amber

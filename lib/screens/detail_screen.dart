@@ -9,6 +9,7 @@ import '../services/storage_service.dart';
 import '../state/app_state.dart';
 import '../theme/theme.dart';
 import '../utils/genre_translations.dart';
+import '../utils/youtube_query.dart';
 import '../widgets/catalog_image.dart';
 import '../widgets/ensure_visible.dart';
 import '../widgets/focusable.dart';
@@ -205,13 +206,8 @@ class _DetailScreenState extends ConsumerState<DetailScreen> {
                   Pill(
                     label: item is Movie ? t['trailer_btn']! : t['theme_btn']!,
                     icon: Icons.smart_display_outlined,
-                    onPressed: () {
-                      final year = item.year != null ? ' ${item.year}' : '';
-                      final query = item is Movie
-                          ? '${item.title}$year كرتون مدبلج عربي كامل'
-                          : '${item.title} مدبلج عربي مقدمة';
-                      AppNav.youtube(context, query, item.title);
-                    },
+                    onPressed: () => AppNav.youtube(
+                        context, youtubeSearchQuery(item), item.title),
                   ),
                   const SizedBox(width: 16),
                   Pill(
