@@ -4,6 +4,7 @@ const Map<String, Map<String, String>> kStrings = {
   'en': {
     'appName': 'Kartoonia',
     'brandA': 'Kartoon', 'brandB': 'ia',
+    'splashTagline': 'Your cartoon world',
     'nav_search': 'Search',
     'nav_home': 'Home',
     'nav_tv': 'TV Shows',
@@ -120,6 +121,7 @@ const Map<String, Map<String, String>> kStrings = {
   'ar': {
     'appName': 'كرتونيا',
     'brandA': 'كرتون', 'brandB': 'يا',
+    'splashTagline': 'عالم الكرتون بين يديك',
     'nav_search': 'بحث',
     'nav_home': 'الرئيسية',
     'nav_tv': 'مسلسلات',
