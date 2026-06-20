@@ -7,10 +7,6 @@ import android.content.Intent
 import android.content.pm.PackageManager
 import android.content.res.Configuration
 import android.net.Uri
-import android.os.Bundle
-import android.speech.RecognitionListener
-import android.speech.RecognizerIntent
-import android.speech.SpeechRecognizer
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.EventChannel
@@ -26,9 +22,11 @@ class MainActivity : FlutterActivity() {
 
     // ---- voice search (in-app SpeechRecognizer, YouTube-style) ----
     private var voiceEvents: EventChannel.EventSink? = null
-    private var speech: SpeechRecognizer? = null
-    // Locale to resume with once the RECORD_AUDIO prompt is answered.
+    private val voice by lazy { VoiceRecognizer(this) { emitVoice(it) } }
+    // Locale to resume with once the RECORD_AUDIO prompt is answered, and whether
+    // a start (not just a prepare) was waiting on that grant.
     private var pendingLocale: String? = null
+    private var pendingStart = false
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
@@ -69,18 +67,30 @@ class MainActivity : FlutterActivity() {
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, voiceChannelName)
             .setMethodCallHandler { call, result ->
                 when (call.method) {
-                    "isAvailable" ->
-                        result.success(SpeechRecognizer.isRecognitionAvailable(this))
+                    "isAvailable" -> result.success(voice.isAvailable())
+                    // Warm the recognizer + request the mic permission ahead of the
+                    // first tap, so listening starts instantly and is never blocked.
+                    "prepare" -> {
+                        if (!hasAudioPermission()) requestAudio()
+                        voice.prepare()
+                        result.success(true)
+                    }
                     "start" -> {
-                        startVoice(call.argument<String>("localeId"))
+                        pendingLocale = call.argument<String>("localeId")
+                        if (hasAudioPermission()) {
+                            voice.start(pendingLocale)
+                        } else {
+                            pendingStart = true
+                            requestAudio()
+                        }
                         result.success(true)
                     }
                     "stop" -> {
-                        speech?.stopListening()
+                        voice.stop()
                         result.success(true)
                     }
                     "cancel" -> {
-                        destroySpeech()
+                        voice.cancel()
                         result.success(true)
                     }
                     else -> result.notImplemented()
@@ -113,110 +123,21 @@ class MainActivity : FlutterActivity() {
         }
     }
 
-    // ---- voice recognition ----
+    // ---- voice recognition (delegated to [VoiceRecognizer]) ----
 
-    /// Begin a session, requesting RECORD_AUDIO first if it isn't granted yet.
-    /// Results/errors are streamed back over [voiceEvents]; nothing is returned
-    /// synchronously beyond acknowledging the call.
-    private fun startVoice(localeId: String?) {
-        pendingLocale = localeId
+    private fun hasAudioPermission(): Boolean =
         // minSdk is 30, so the Activity permission APIs (API 23+) are always
         // present — no androidx.core shim needed.
-        if (checkSelfPermission(Manifest.permission.RECORD_AUDIO)
-            == PackageManager.PERMISSION_GRANTED
-        ) {
-            beginListening(localeId)
-        } else {
-            requestPermissions(arrayOf(Manifest.permission.RECORD_AUDIO), audioPermCode)
-        }
-    }
+        checkSelfPermission(Manifest.permission.RECORD_AUDIO) ==
+            PackageManager.PERMISSION_GRANTED
 
-    private fun beginListening(localeId: String?) {
-        if (!SpeechRecognizer.isRecognitionAvailable(this)) {
-            // 9 = ERROR_INSUFFICIENT_PERMISSIONS; reused here as "no recognizer",
-            // which the Dart side maps to the unavailable (muted) state.
-            emit(mapOf("type" to "error", "code" to 9))
-            return
-        }
-        destroySpeech()
-        val recognizer = SpeechRecognizer.createSpeechRecognizer(this)
-        recognizer.setRecognitionListener(voiceListener)
-        val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
-            putExtra(
-                RecognizerIntent.EXTRA_LANGUAGE_MODEL,
-                RecognizerIntent.LANGUAGE_MODEL_FREE_FORM
-            )
-            putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true)
-            putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 1)
-            // Some recognizers refuse to start without the calling package.
-            putExtra(RecognizerIntent.EXTRA_CALLING_PACKAGE, packageName)
-            if (!localeId.isNullOrEmpty()) {
-                putExtra(RecognizerIntent.EXTRA_LANGUAGE, localeId)
-                putExtra(RecognizerIntent.EXTRA_LANGUAGE_PREFERENCE, localeId)
-            }
-        }
-        speech = recognizer
-        recognizer.startListening(intent)
-    }
+    private fun requestAudio() =
+        requestPermissions(arrayOf(Manifest.permission.RECORD_AUDIO), audioPermCode)
 
-    private val voiceListener = object : RecognitionListener {
-        override fun onReadyForSpeech(params: Bundle?) =
-            emit(mapOf("type" to "status", "value" to "ready"))
-
-        override fun onBeginningOfSpeech() =
-            emit(mapOf("type" to "status", "value" to "speech"))
-
-        override fun onRmsChanged(rmsdB: Float) {
-            // rmsdB is roughly -2..10 dB; normalize to 0..1 for the mic rings.
-            val level = ((rmsdB + 2f) / 12f).coerceIn(0f, 1f)
-            emit(mapOf("type" to "rms", "level" to level.toDouble()))
-        }
-
-        override fun onBufferReceived(buffer: ByteArray?) {}
-
-        override fun onEndOfSpeech() =
-            emit(mapOf("type" to "status", "value" to "end"))
-
-        override fun onError(error: Int) {
-            emit(mapOf("type" to "error", "code" to error))
-            destroySpeech()
-        }
-
-        override fun onResults(results: Bundle?) {
-            val text = results
-                ?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
-                ?.firstOrNull { it.isNotBlank() }
-            emit(mapOf("type" to "final", "text" to (text ?: "")))
-            destroySpeech()
-        }
-
-        override fun onPartialResults(partialResults: Bundle?) {
-            val text = partialResults
-                ?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
-                ?.firstOrNull { it.isNotBlank() }
-            if (!text.isNullOrBlank()) {
-                emit(mapOf("type" to "partial", "text" to text))
-            }
-        }
-
-        override fun onEvent(eventType: Int, params: Bundle?) {}
-    }
-
-    private fun emit(event: Map<String, Any?>) {
-        // RecognitionListener callbacks fire on the main thread, so the sink can
-        // be used directly.
+    /// RecognitionListener callbacks fire on the main thread, so the sink can be
+    /// used directly.
+    private fun emitVoice(event: Map<String, Any?>) {
         voiceEvents?.success(event)
-    }
-
-    private fun destroySpeech() {
-        speech?.let {
-            try {
-                it.cancel()
-                it.destroy()
-            } catch (_: Throwable) {
-            }
-        }
-        speech = null
     }
 
     override fun onRequestPermissionsResult(
@@ -225,20 +146,23 @@ class MainActivity : FlutterActivity() {
         grantResults: IntArray
     ) {
         if (requestCode == audioPermCode) {
-            if (grantResults.isNotEmpty() &&
+            val granted = grantResults.isNotEmpty() &&
                 grantResults[0] == PackageManager.PERMISSION_GRANTED
-            ) {
-                beginListening(pendingLocale)
-            } else {
-                emit(mapOf("type" to "error", "code" to 9))
+            if (granted) {
+                voice.prepare()
+                if (pendingStart) voice.start(pendingLocale)
+            } else if (pendingStart) {
+                // 9 → Dart maps this to the muted mic-off state.
+                emitVoice(mapOf("type" to "error", "code" to 9))
             }
+            pendingStart = false
             return
         }
         super.onRequestPermissionsResult(requestCode, permissions, grantResults)
     }
 
     override fun onDestroy() {
-        destroySpeech()
+        voice.destroy()
         super.onDestroy()
     }
 

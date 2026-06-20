@@ -198,9 +198,11 @@ final recentSearchesProvider = StateProvider<List<String>>(
     (ref) => ref.read(storageProvider).getRecentSearches());
 
 // ---------------- Voice search ----------------
-/// idle: not listening. listening: a session is live (the overlay is shown).
-/// unavailable: no recognizer / mic permission denied (button hides itself).
-enum VoicePhase { idle, listening, unavailable }
+/// idle: not listening. listening: capturing speech. processing: speech ended,
+/// recognizer is finalizing. error: a session failed to recognize anything
+/// (e.g. no match) — the overlay shows a brief "didn't catch that". unavailable:
+/// no recognizer / mic permission denied (button shows the muted icon).
+enum VoicePhase { idle, listening, processing, error, unavailable }
 
 /// Live state of the in-app voice session, consumed by the listening overlay.
 class VoiceState {
@@ -220,6 +222,8 @@ class VoiceState {
   });
 
   bool get listening => phase == VoicePhase.listening;
+  bool get processing => phase == VoicePhase.processing;
+  bool get errored => phase == VoicePhase.error;
   bool get unavailable => phase == VoicePhase.unavailable;
 
   VoiceState copyWith({VoicePhase? phase, String? partial, double? level}) =>
@@ -237,12 +241,22 @@ final voiceServiceProvider =
 class VoiceNotifier extends Notifier<VoiceState> {
   StreamSubscription? _sub;
   Completer<String?>? _completer;
+  bool _prepared = false;
 
   @override
   VoiceState build() {
     _checkAvailability();
     ref.onDispose(() => _sub?.cancel());
     return const VoiceState();
+  }
+
+  /// Warm the native recognizer + request the mic permission once, ahead of the
+  /// first tap, so listening starts instantly. Safe to call repeatedly (e.g. on
+  /// every search-screen build) — it only reaches the platform once.
+  Future<void> prepare() async {
+    if (_prepared) return;
+    _prepared = true;
+    await ref.read(voiceServiceProvider).prepare();
   }
 
   /// Reflects "no recognizer" as the muted mic-off icon, without permanently
@@ -285,13 +299,25 @@ class VoiceNotifier extends Notifier<VoiceState> {
             final txt = (map['text'] as String?)?.trim() ?? '';
             if (txt.isNotEmpty) state = state.copyWith(partial: txt);
             break;
+          case 'status':
+            // End-of-speech: keep the overlay up in a "processing" state while
+            // the recognizer finalizes (a final/error event follows).
+            if (map['value'] == 'end' && state.phase == VoicePhase.listening) {
+              state = state.copyWith(phase: VoicePhase.processing);
+            }
+            break;
           case 'final':
             final txt = (map['text'] as String?)?.trim();
-            _finish(txt == null || txt.isEmpty ? null : txt);
+            // An empty final = nothing recognized → surface as an error so the
+            // overlay can say "didn't catch that" instead of silently closing.
+            _finish(txt == null || txt.isEmpty ? null : txt,
+                errored: txt == null || txt.isEmpty);
             break;
           case 'error':
-            // 9 = ERROR_INSUFFICIENT_PERMISSIONS → mic denied, hide the button.
-            _finish(null, unavailable: (map['code'] as int?) == 9);
+            // 9 = ERROR_INSUFFICIENT_PERMISSIONS → mic denied / no recognizer.
+            // Any other code = recognition failed (e.g. no match): surface it.
+            final code = map['code'] as int?;
+            _finish(null, unavailable: code == 9, errored: code != 9);
             break;
         }
       },
@@ -319,13 +345,17 @@ class VoiceNotifier extends Notifier<VoiceState> {
     _finish(null);
   }
 
-  void _finish(String? result, {bool unavailable = false}) {
+  void _finish(String? result, {bool unavailable = false, bool errored = false}) {
     _sub?.cancel();
     _sub = null;
     final c = _completer;
     _completer = null;
     state = VoiceState(
-        phase: unavailable ? VoicePhase.unavailable : VoicePhase.idle);
+        phase: unavailable
+            ? VoicePhase.unavailable
+            : errored
+                ? VoicePhase.error
+                : VoicePhase.idle);
     if (c != null && !c.isCompleted) c.complete(result);
   }
 }

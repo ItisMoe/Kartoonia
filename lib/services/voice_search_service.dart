@@ -39,6 +39,19 @@ class VoiceSearchService {
     }
   }
 
+  /// Warm the native recognizer (create it + bind the RecognitionService, and
+  /// request the mic permission) ahead of the first [start], so listening begins
+  /// instantly instead of paying the cold-bind latency on tap. Best-effort.
+  Future<void> prepare() async {
+    try {
+      await _method.invokeMethod('prepare');
+    } on PlatformException catch (e) {
+      debugPrint('VoiceSearch prepare failed: $e');
+    } on MissingPluginException {
+      // older host without the prepare method — start() still works.
+    }
+  }
+
   /// The single broadcast stream of recognition events for the active session.
   Stream<dynamic> events() => _events.receiveBroadcastStream();
 

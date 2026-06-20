@@ -31,6 +31,8 @@ class SearchScreen extends ConsumerWidget {
     final recent = ref.watch(recentSearchesProvider);
     final voice = ref.watch(voiceProvider);
     final listening = voice.listening;
+    // Warm the recognizer + mic permission once, so the first tap is instant.
+    ref.read(voiceProvider.notifier).prepare();
 
     bool passFilter(ContentItem x) {
       if (s.filter == 'tv') return x is Show;

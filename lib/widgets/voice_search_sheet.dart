@@ -1,28 +1,28 @@
-import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../state/app_state.dart';
 import '../theme/theme.dart';
 
-/// Push the full-screen voice listening overlay and run one recognition session.
+/// Push the compact voice listening overlay and run one recognition session.
 /// The overlay owns the session lifecycle: it starts listening on open, shows
 /// live partial text + a mic that reacts to loudness, commits the final
 /// transcript into the search box, and dismisses itself. Back / tapping cancels.
 void startVoiceSearch(BuildContext context) {
   Navigator.of(context).push(PageRouteBuilder<void>(
     opaque: false,
-    barrierColor: Colors.black.withValues(alpha: 0.82),
+    barrierColor: Colors.black.withValues(alpha: 0.78),
     pageBuilder: (_, _, _) => const VoiceSearchSheet(),
     transitionsBuilder: (_, anim, _, child) =>
         FadeTransition(opacity: anim, child: child),
-    transitionDuration: const Duration(milliseconds: 180),
-    reverseTransitionDuration: const Duration(milliseconds: 140),
+    transitionDuration: const Duration(milliseconds: 160),
+    reverseTransitionDuration: const Duration(milliseconds: 120),
   ));
 }
 
-/// The listening overlay. Mirrors the YouTube-app experience: an in-app mic
-/// that pulses with your voice and shows the words as they are recognized,
-/// rather than handing off to an inconsistent system dialog.
+/// The listening overlay — a single compact bar near the bottom of the screen,
+/// the way the YouTube TV app does it (no giant full-screen panel). Shows
+/// "Listening…" instantly, the words as they are recognized, and a brief
+/// "didn't catch that" when nothing is understood.
 class VoiceSearchSheet extends ConsumerStatefulWidget {
   const VoiceSearchSheet({super.key});
   @override
@@ -46,6 +46,14 @@ class _VoiceSearchSheetState extends ConsumerState<VoiceSearchSheet> {
     if (!mounted) return;
     if (text != null && text.isNotEmpty) {
       ref.read(searchProvider.notifier).setQuery(text);
+      _close();
+      return;
+    }
+    // No transcript. If recognition failed (not a user cancel), linger briefly
+    // so the "didn't catch that" message is readable before we dismiss.
+    if (ref.read(voiceProvider).errored) {
+      await Future.delayed(const Duration(milliseconds: 1500));
+      if (!mounted) return;
     }
     _close();
   }
@@ -67,7 +75,17 @@ class _VoiceSearchSheetState extends ConsumerState<VoiceSearchSheet> {
   Widget build(BuildContext context) {
     final t = ref.watch(stringsProvider);
     final voice = ref.watch(voiceProvider);
-    final hasPartial = voice.partial.isNotEmpty;
+    final partial = voice.partial;
+
+    final header = voice.errored
+        ? t['voiceNoMatch']!
+        : voice.processing
+            ? t['voiceProcessing']!
+            : t['voiceListening']!;
+    final body = partial.isNotEmpty
+        ? partial
+        : (voice.errored ? '' : t['voiceSpeak']!);
+
     return PopScope(
       // Back press cancels the session before the route pops.
       onPopInvokedWithResult: (didPop, _) {
@@ -79,45 +97,85 @@ class _VoiceSearchSheetState extends ConsumerState<VoiceSearchSheet> {
         child: GestureDetector(
           behavior: HitTestBehavior.opaque,
           onTap: _cancel,
-          child: Center(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                _MicOrb(level: voice.level),
-                const SizedBox(height: 48),
-                Text(
-                  t['voiceListening']!,
-                  style: const TextStyle(
-                      fontSize: 26,
-                      fontWeight: FontWeight.w800,
-                      color: AppColors.inkSoft),
-                ),
-                const SizedBox(height: 20),
-                ConstrainedBox(
-                  constraints: const BoxConstraints(maxWidth: 900),
-                  child: Text(
-                    hasPartial ? voice.partial : t['voiceSpeak']!,
-                    textAlign: TextAlign.center,
-                    maxLines: 3,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                      fontFamily: Fonts.display,
-                      fontFamilyFallback: Fonts.fallback,
-                      fontWeight: FontWeight.w600,
-                      fontSize: hasPartial ? 46 : 32,
-                      color: hasPartial ? AppColors.ink : AppColors.inkMute,
-                    ),
+          child: Align(
+            alignment: const Alignment(0, 0.84),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 64),
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 1040),
+                child: Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 28, vertical: 22),
+                  decoration: BoxDecoration(
+                    color: AppColors.bg2.withValues(alpha: 0.97),
+                    borderRadius: BorderRadius.circular(28),
+                    border: Border.all(
+                        color: Colors.white.withValues(alpha: 0.06), width: 1.5),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withValues(alpha: 0.5),
+                        blurRadius: 40,
+                        offset: const Offset(0, 18),
+                      ),
+                    ],
+                  ),
+                  child: Row(
+                    children: [
+                      _MicDot(level: voice.level, phase: voice.phase),
+                      const SizedBox(width: 24),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Text(
+                              header,
+                              style: TextStyle(
+                                fontSize: 18,
+                                fontWeight: FontWeight.w900,
+                                letterSpacing: 1.2,
+                                color: voice.errored
+                                    ? AppColors.gold
+                                    : AppColors.primary2,
+                              ),
+                            ),
+                            if (body.isNotEmpty) ...[
+                              const SizedBox(height: 8),
+                              Text(
+                                body,
+                                maxLines: 2,
+                                overflow: TextOverflow.ellipsis,
+                                style: TextStyle(
+                                  fontFamily: Fonts.display,
+                                  fontFamilyFallback: Fonts.fallback,
+                                  fontWeight: FontWeight.w600,
+                                  fontSize: partial.isNotEmpty ? 34 : 26,
+                                  height: 1.1,
+                                  color: partial.isNotEmpty
+                                      ? AppColors.ink
+                                      : AppColors.inkMute,
+                                ),
+                              ),
+                            ],
+                          ],
+                        ),
+                      ),
+                      const SizedBox(width: 20),
+                      if (voice.listening)
+                        _Wave(level: voice.level)
+                      else
+                        Text(
+                          t['voiceCancel']!,
+                          style: const TextStyle(
+                            fontSize: 15,
+                            fontWeight: FontWeight.w700,
+                            color: AppColors.inkMute,
+                          ),
+                        ),
+                    ],
                   ),
                 ),
-                const SizedBox(height: 56),
-                Text(
-                  t['voiceCancel']!,
-                  style: const TextStyle(
-                      fontSize: 18,
-                      fontWeight: FontWeight.w700,
-                      color: AppColors.inkMute),
-                ),
-              ],
+              ),
             ),
           ),
         ),
@@ -126,50 +184,97 @@ class _VoiceSearchSheetState extends ConsumerState<VoiceSearchSheet> {
   }
 }
 
-/// A microphone disc with two concentric rings that swell with the live mic
-/// [level] (0..1). Gives immediate "it's hearing me" feedback on every device.
-class _MicOrb extends StatelessWidget {
+/// Compact gradient mic that swells gently with the live [level]. Swaps to a
+/// spinner while processing and a muted icon on error.
+class _MicDot extends StatelessWidget {
   final double level;
-  const _MicOrb({required this.level});
+  final VoicePhase phase;
+  const _MicDot({required this.level, required this.phase});
 
   @override
   Widget build(BuildContext context) {
-    // Ease the raw loudness so quiet speech still visibly moves the rings.
-    final l = math.pow(level.clamp(0.0, 1.0), 0.6).toDouble();
-    const base = 150.0;
+    final processing = phase == VoicePhase.processing;
+    final errored = phase == VoicePhase.error;
+    final pulse = 1.0 + 0.12 * level.clamp(0.0, 1.0);
     return SizedBox(
-      width: 360,
-      height: 360,
+      width: 76,
+      height: 76,
       child: Stack(
         alignment: Alignment.center,
         children: [
-          _ring(base + 150 * l, 0.10 + 0.06 * l),
-          _ring(base + 80 * l, 0.16 + 0.10 * l),
-          Container(
-            width: base,
-            height: base,
-            decoration: const BoxDecoration(
-              shape: BoxShape.circle,
-              gradient: LinearGradient(
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-                colors: AppColors.primaryGradient,
+          // reactive halo
+          if (phase == VoicePhase.listening)
+            AnimatedContainer(
+              duration: const Duration(milliseconds: 90),
+              width: 56 + 22 * level.clamp(0.0, 1.0),
+              height: 56 + 22 * level.clamp(0.0, 1.0),
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: AppColors.primary
+                    .withValues(alpha: 0.18 + 0.12 * level.clamp(0.0, 1.0)),
               ),
             ),
-            child: const Icon(Icons.mic, size: 72, color: AppColors.onPrimary),
+          Transform.scale(
+            scale: phase == VoicePhase.listening ? pulse : 1,
+            child: Container(
+              width: 56,
+              height: 56,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                gradient: errored
+                    ? null
+                    : const LinearGradient(
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
+                        colors: AppColors.primaryGradient,
+                      ),
+                color: errored ? AppColors.bg3 : null,
+              ),
+              child: processing
+                  ? const Padding(
+                      padding: EdgeInsets.all(16),
+                      child: CircularProgressIndicator(
+                          strokeWidth: 3, color: AppColors.onPrimary),
+                    )
+                  : Icon(errored ? Icons.mic_off : Icons.mic,
+                      size: 30,
+                      color: errored ? AppColors.inkMute : AppColors.onPrimary),
+            ),
           ),
         ],
       ),
     );
   }
+}
 
-  Widget _ring(double size, double alpha) => AnimatedContainer(
-        duration: const Duration(milliseconds: 90),
-        width: size,
-        height: size,
-        decoration: BoxDecoration(
-          shape: BoxShape.circle,
-          color: AppColors.primary.withValues(alpha: alpha),
-        ),
-      );
+/// A small equalizer of bars that ride the live mic [level]. Purely reactive
+/// (no controller) — the rms stream updates [level] often enough to feel alive.
+class _Wave extends StatelessWidget {
+  final double level;
+  const _Wave({required this.level});
+
+  static const _factors = [0.45, 0.75, 1.0, 0.7, 0.5];
+
+  @override
+  Widget build(BuildContext context) {
+    final l = level.clamp(0.0, 1.0);
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.center,
+      children: [
+        for (final f in _factors) ...[
+          AnimatedContainer(
+            duration: const Duration(milliseconds: 110),
+            width: 6,
+            height: 8 + 34 * l * f,
+            decoration: BoxDecoration(
+              color: AppColors.primary2,
+              borderRadius: BorderRadius.circular(3),
+            ),
+          ),
+          const SizedBox(width: 5),
+        ],
+      ],
+    );
+  }
 }

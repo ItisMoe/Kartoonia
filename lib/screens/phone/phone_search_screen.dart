@@ -48,6 +48,8 @@ class _PhoneSearchScreenState extends ConsumerState<PhoneSearchScreen> {
     final s = ref.watch(searchProvider);
     final notifier = ref.read(searchProvider.notifier);
     final voice = ref.watch(voiceProvider);
+    // Warm the recognizer + mic permission once, so the first tap is instant.
+    ref.read(voiceProvider.notifier).prepare();
 
     bool passFilter(ContentItem x) {
       if (s.filter == 'tv') return x is Show;
