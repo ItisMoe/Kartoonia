@@ -52,6 +52,8 @@ class StorageService {
   static const _kYtKey = 'kt/ytKey'; // user-set YouTube Data API key override
   static const _kCatalogSource = 'kt/catalogSource'; // arabicToons | stardima
   static const _kRecentSearches = 'kt/recentSearches';
+  static const _kShaaratLikes = 'kt/shaaratLikes';
+  static const _kShaaratVideoIds = 'kt/shaaratVideoIds';
 
   final SharedPreferences _prefs;
   StorageService(this._prefs);
@@ -151,6 +153,42 @@ class StorageService {
 
   Future<void> clearRecentSearches() => _prefs.remove(_kRecentSearches);
 
+  // ---- شارات likes (boost feed ordering) ----
+  List<String> getShaaratLikes() =>
+      _prefs.getStringList(_kShaaratLikes) ?? const [];
+
+  bool isShaaratLiked(String showId) => getShaaratLikes().contains(showId);
+
+  /// Toggle a show's like; returns the NEW liked state.
+  Future<bool> toggleShaaratLike(String showId) async {
+    final ids = [...getShaaratLikes()];
+    final present = ids.contains(showId);
+    present ? ids.remove(showId) : ids.insert(0, showId);
+    await _prefs.setStringList(_kShaaratLikes, ids);
+    return !present;
+  }
+
+  // ---- شارات videoId cache ----
+  // showId -> videoId, or '' as the "searched, none found" sentinel. Permanent:
+  // each show costs at most one YouTube API search ever.
+  Map<String, String> _readShaaratVideoIds() {
+    final raw = _prefs.getString(_kShaaratVideoIds);
+    if (raw == null) return {};
+    try {
+      return (jsonDecode(raw) as Map).map((k, v) => MapEntry('$k', '$v'));
+    } catch (_) {
+      return {};
+    }
+  }
+
+  /// null = never searched, '' = searched/none, non-empty = the cached videoId.
+  String? getShaaratVideoId(String showId) => _readShaaratVideoIds()[showId];
+
+  Future<void> setShaaratVideoId(String showId, String videoIdOrEmpty) async {
+    final m = _readShaaratVideoIds()..[showId] = videoIdOrEmpty;
+    await _prefs.setString(_kShaaratVideoIds, jsonEncode(m));
+  }
+
   // ---- Preferences ----
   int getPreferredServer() => _prefs.getInt(_kPreferredServer) ?? 1;
   Future<void> setPreferredServer(int n) =>
@@ -174,7 +212,7 @@ class StorageService {
 
   Map<String, String> getPrefs() {
     final raw = _prefs.getString(_kPrefs);
-    final defaults = {'motion': 'off', 'autoplay': 'on'};
+    final defaults = {'motion': 'off', 'autoplay': 'on', 'shaarat': 'video'};
     if (raw == null) return defaults;
     try {
       final m = (jsonDecode(raw) as Map).cast<String, dynamic>();
