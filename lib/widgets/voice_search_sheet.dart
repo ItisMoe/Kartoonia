@@ -77,6 +77,12 @@ class _VoiceSearchSheetState extends ConsumerState<VoiceSearchSheet> {
     final voice = ref.watch(voiceProvider);
     final partial = voice.partial;
 
+    // The overlay is reused on phone and TV. On a narrow (phone) screen the
+    // TV-sized paddings + mic + wave eat almost the whole row, crushing the
+    // text column to a few dp wide — which makes each glyph wrap onto its own
+    // line (the "vertical letters" bug). Scale the chrome down when narrow.
+    final compact = MediaQuery.of(context).size.width < 600;
+
     final header = voice.errored
         ? t['voiceNoMatch']!
         : voice.processing
@@ -100,12 +106,12 @@ class _VoiceSearchSheetState extends ConsumerState<VoiceSearchSheet> {
           child: Align(
             alignment: const Alignment(0, 0.84),
             child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 64),
+              padding: EdgeInsets.symmetric(horizontal: compact ? 16 : 64),
               child: ConstrainedBox(
                 constraints: const BoxConstraints(maxWidth: 1040),
                 child: Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 28, vertical: 22),
+                  padding: EdgeInsets.symmetric(
+                      horizontal: compact ? 18 : 28, vertical: 22),
                   decoration: BoxDecoration(
                     color: AppColors.bg2.withValues(alpha: 0.97),
                     borderRadius: BorderRadius.circular(28),
@@ -121,8 +127,11 @@ class _VoiceSearchSheetState extends ConsumerState<VoiceSearchSheet> {
                   ),
                   child: Row(
                     children: [
-                      _MicDot(level: voice.level, phase: voice.phase),
-                      const SizedBox(width: 24),
+                      _MicDot(
+                          level: voice.level,
+                          phase: voice.phase,
+                          compact: compact),
+                      SizedBox(width: compact ? 14 : 24),
                       Expanded(
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
@@ -131,7 +140,7 @@ class _VoiceSearchSheetState extends ConsumerState<VoiceSearchSheet> {
                             Text(
                               header,
                               style: TextStyle(
-                                fontSize: 18,
+                                fontSize: compact ? 15 : 18,
                                 fontWeight: FontWeight.w900,
                                 letterSpacing: 1.2,
                                 color: voice.errored
@@ -149,7 +158,9 @@ class _VoiceSearchSheetState extends ConsumerState<VoiceSearchSheet> {
                                   fontFamily: Fonts.display,
                                   fontFamilyFallback: Fonts.fallback,
                                   fontWeight: FontWeight.w600,
-                                  fontSize: partial.isNotEmpty ? 34 : 26,
+                                  fontSize: partial.isNotEmpty
+                                      ? (compact ? 26 : 34)
+                                      : (compact ? 20 : 26),
                                   height: 1.1,
                                   color: partial.isNotEmpty
                                       ? AppColors.ink
@@ -160,7 +171,7 @@ class _VoiceSearchSheetState extends ConsumerState<VoiceSearchSheet> {
                           ],
                         ),
                       ),
-                      const SizedBox(width: 20),
+                      SizedBox(width: compact ? 12 : 20),
                       if (voice.listening)
                         _Wave(level: voice.level)
                       else
@@ -189,16 +200,20 @@ class _VoiceSearchSheetState extends ConsumerState<VoiceSearchSheet> {
 class _MicDot extends StatelessWidget {
   final double level;
   final VoicePhase phase;
-  const _MicDot({required this.level, required this.phase});
+  final bool compact;
+  const _MicDot(
+      {required this.level, required this.phase, this.compact = false});
 
   @override
   Widget build(BuildContext context) {
     final processing = phase == VoicePhase.processing;
     final errored = phase == VoicePhase.error;
     final pulse = 1.0 + 0.12 * level.clamp(0.0, 1.0);
+    final box = compact ? 58.0 : 76.0;
+    final dot = compact ? 44.0 : 56.0;
     return SizedBox(
-      width: 76,
-      height: 76,
+      width: box,
+      height: box,
       child: Stack(
         alignment: Alignment.center,
         children: [
@@ -206,8 +221,8 @@ class _MicDot extends StatelessWidget {
           if (phase == VoicePhase.listening)
             AnimatedContainer(
               duration: const Duration(milliseconds: 90),
-              width: 56 + 22 * level.clamp(0.0, 1.0),
-              height: 56 + 22 * level.clamp(0.0, 1.0),
+              width: dot + 22 * level.clamp(0.0, 1.0),
+              height: dot + 22 * level.clamp(0.0, 1.0),
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
                 color: AppColors.primary
@@ -217,8 +232,8 @@ class _MicDot extends StatelessWidget {
           Transform.scale(
             scale: phase == VoicePhase.listening ? pulse : 1,
             child: Container(
-              width: 56,
-              height: 56,
+              width: dot,
+              height: dot,
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
                 gradient: errored
