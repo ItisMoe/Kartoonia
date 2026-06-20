@@ -104,6 +104,13 @@ class _ShaaratFeedViewState extends ConsumerState<ShaaratFeedView>
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    // Make sure the shared player + its render controller exist before ANYTHING
+    // touches them — `_subscribe` (in `_syncPlayback`), the `Video(controller:)`
+    // in build, and the lifecycle pause all read the non-null getters. On a
+    // fresh launch (opening شارات before any other video has played) the player
+    // would otherwise still be null and the null-check would crash the tab to a
+    // blank screen. ensureCreated() is idempotent.
+    PlayerService.instance.ensureCreated();
     _resolver = ShaaratResolver(ref.read(storageProvider));
     _buildQueue();
   }
