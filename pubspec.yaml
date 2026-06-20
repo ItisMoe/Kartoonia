@@ -2,7 +2,7 @@ name: kartoonia
 description: "Kartoonia - Arabic cartoons for Android TV"
 publish_to: 'none'
 
-version: 1.9.2+3
+version: 1.9.3+4
 
 environment:
   sdk: ^3.12.1
@@ -58,6 +58,8 @@ flutter:
   assets:
     - assets/arabictoons_catalog.json
     - assets/stardima_catalog.json
+    - assets/tv-clean.png
+    - assets/phone-clean.png
 
   fonts:
     - family: Fredoka

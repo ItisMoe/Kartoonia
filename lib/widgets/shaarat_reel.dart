@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -17,18 +16,31 @@ import '../services/youtube_stream_resolver.dart';
 import '../state/app_state.dart';
 import '../theme/theme.dart';
 import 'focusable.dart';
+import 'tv_room_stage.dart';
 
-const Color _kHeart = Color(0xFFFF5D7A);
+/// Boost points awarded per engagement signal (graduated, stacking). Each is
+/// granted at most once per reel-view; stronger intent earns more.
+const double _kDwellBoost = 1; // stayed on the reel past [_kDwell]
+const double _kCompleteBoost = 2; // theme played all the way to its end
+const double _kEnterBoost = 4; // tapped "Enter show" from the reel
+const Duration _kDwell = Duration(seconds: 8);
 
 /// The شارات reels feed, shared by the TV screen and the phone tab. A vertical
 /// `PageView` of famous animated shows; the active reel plays its Arabic theme
 /// song on the app's ONE shared [PlayerService] (same one-decoder rule as the
-/// trailer/main players). The footer is an overlay (stable focus across pages):
-/// a now-playing pill, the title, an "Enter show" button and a like heart.
+/// trailer/main players), framed inside the illustrated "boy watching an old TV"
+/// room ([TvRoomStage]) — the live theme video sits inside the CRT. The footer
+/// overlays a now-playing pill, a playback-status line, the title and a small
+/// "Enter show" button.
 ///
-/// Two play modes (Settings `shaarat` pref): `video` shows the 16:9 theme video
-/// intact over a blurred backdrop; `audio` shows the poster (phone) / backdrop
-/// (TV) and plays only the theme audio.
+/// The theme plays once and the feed auto-advances to the next reel; the end of
+/// the queue re-rolls for an endless feed. Engagement is tracked implicitly:
+/// dwelling on, finishing, or entering a show's reel boosts how often it
+/// resurfaces (see [_kDwellBoost]/[_kCompleteBoost]/[_kEnterBoost]).
+///
+/// Two play modes (Settings `shaarat` pref) only change what's on the CRT:
+/// `video` plays the theme video inside the TV; `audio` shows the show's poster
+/// on the TV and plays only the theme audio.
 class ShaaratFeedView extends ConsumerStatefulWidget {
   /// Drives input (D-pad vs. swipe) and audio-mode framing (backdrop vs poster).
   final bool isTv;
@@ -62,9 +74,19 @@ class _ShaaratFeedViewState extends ConsumerState<ShaaratFeedView>
 
   bool _started = false; // whether playback is currently driven by this view
   bool _loading = false;
+  bool _playing = false; // shared player's playing state (for the status line)
   bool _allFailed = false;
   bool _appResumed = true;
   bool _covered = false; // a route is pushed on top of us
+
+  /// Engagement signals already awarded for the CURRENT reel-view, so each
+  /// (dwell/complete/enter) boosts a show at most once per visit to its page.
+  final Set<String> _awarded = {};
+  Timer? _dwellTimer; // fires [_kDwellBoost] after lingering on a reel
+
+  /// Live subscriptions to the shared player (completion → auto-advance; playing
+  /// → status line). Cancelled whenever this view stops driving playback.
+  final List<StreamSubscription> _subs = [];
 
   final FocusNode _enterFocus = FocusNode(debugLabel: 'shaaratEnter');
 
@@ -83,8 +105,8 @@ class _ShaaratFeedViewState extends ConsumerState<ShaaratFeedView>
 
   void _buildQueue() {
     final shows = ref.read(catalogProvider).shows;
-    final likes = ref.read(shaaratLikesProvider);
-    _queue = shaaratQueue(shows, likes);
+    final boosts = ref.read(shaaratBoostsProvider);
+    _queue = shaaratQueue(shows, boosts);
   }
 
   @override
@@ -120,6 +142,7 @@ class _ShaaratFeedViewState extends ConsumerState<ShaaratFeedView>
       if (!_started) {
         _started = true;
         SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
+        _subscribe();
         _restart();
         WidgetsBinding.instance.addPostFrameCallback((_) {
           if (mounted && widget.isTv) _enterFocus.requestFocus();
@@ -132,6 +155,59 @@ class _ShaaratFeedViewState extends ConsumerState<ShaaratFeedView>
         SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
       }
     }
+  }
+
+  /// Subscribe to the shared player: completion auto-advances the feed (and
+  /// awards the completion boost); playing-state drives the status line.
+  void _subscribe() {
+    if (_subs.isNotEmpty) return;
+    final p = _player;
+    _subs.addAll([
+      p.stream.completed.listen((done) {
+        if (done && _shouldPlay && _started && !_loading) {
+          _award(_kCompleteBoost);
+          _advance();
+        }
+      }),
+      p.stream.playing.listen((pl) {
+        if (mounted && _playing != pl) setState(() => _playing = pl);
+      }),
+    ]);
+  }
+
+  Future<void> _unsubscribe() async {
+    for (final s in _subs) {
+      await s.cancel();
+    }
+    _subs.clear();
+  }
+
+  /// Move to the next reel, or re-roll into a fresh order at the end so the feed
+  /// is endless.
+  void _advance() {
+    final next = _active + 1;
+    next < _queue.length ? _goTo(next) : _restart();
+  }
+
+  /// Award [points] to the active show, but only once per signal per reel-view.
+  void _award(double points) {
+    if (_queue.isEmpty) return;
+    final show = _queue[_active];
+    final key = '${show.id}:$points';
+    if (!_awarded.add(key)) return;
+    ref.read(storageProvider).addShaaratBoost(show.id, points);
+    final next = {...ref.read(shaaratBoostsProvider)};
+    next[show.id] = (next[show.id] ?? 0) + points;
+    ref.read(shaaratBoostsProvider.notifier).state = next;
+  }
+
+  /// (Re)start the dwell timer for the active reel; fires the small dwell boost
+  /// if the user lingers past [_kDwell].
+  void _armDwell() {
+    _dwellTimer?.cancel();
+    _dwellTimer = Timer(_kDwell, () {
+      if (_shouldPlay && _started) _award(_kDwellBoost);
+    });
   }
 
   /// Re-roll the queue and jump back to the top. Called every time the feed
@@ -154,6 +230,8 @@ class _ShaaratFeedViewState extends ConsumerState<ShaaratFeedView>
   Future<void> _activate(int index) async {
     if (_queue.isEmpty) return;
     final token = ++_loadToken;
+    _awarded.clear(); // a new reel-view: engagement signals start fresh
+    _dwellTimer?.cancel();
     if (mounted) setState(() => _loading = true);
     PlayerService.instance.ensureCreated();
     await PlayerService.instance.stop();
@@ -163,8 +241,19 @@ class _ShaaratFeedViewState extends ConsumerState<ShaaratFeedView>
     if (token != _loadToken || !mounted) return;
     if (id == null) return _skip(index);
 
-    final pb = await _playbackFor(id); // reuses a prefetched resolve when warm
-    if (token != _loadToken || !mounted) return;
+    // Resolve the playable streams, retrying a couple of times before giving up
+    // on this reel — a transient extraction miss usually succeeds on a retry
+    // (a failed resolve is evicted from [_pbCache], so each attempt re-extracts).
+    YoutubePlayback? pb;
+    for (var attempt = 0; attempt < 3; attempt++) {
+      if (attempt > 0) {
+        await Future.delayed(Duration(milliseconds: 500 * attempt));
+        if (token != _loadToken || !mounted) return;
+      }
+      pb = await _playbackFor(id); // reuses a prefetched resolve when warm
+      if (token != _loadToken || !mounted) return;
+      if (pb != null) break;
+    }
     if (pb == null) return _skip(index);
 
     final audioOnly = ref.read(settingsProvider).prefs['shaarat'] == 'audio';
@@ -175,17 +264,29 @@ class _ShaaratFeedViewState extends ConsumerState<ShaaratFeedView>
       return;
     }
     if (token != _loadToken || !mounted) return;
-    _player.setPlaylistMode(PlaylistMode.loop); // loop the theme while lingering
+    // Play the theme ONCE; completion auto-advances (see [_subscribe]).
+    _player.setPlaylistMode(PlaylistMode.none);
     _skips = 0;
     setState(() => _loading = false);
+    _armDwell();
     _prefetch(index);
   }
 
+  /// Open the active reel. The CRT screen is small, so reels prefer the MUXED
+  /// (combined audio+video, ~360-480p AVC) stream: it needs no external-audio
+  /// attach (the play-order reload that made video restart mid-reel can't
+  /// happen) and avoids the heavy VP9/AV1 variants that stutter on weak TV
+  /// decoders. Adaptive video+audio is only a fallback when no muxed exists.
   Future<void> _playActive(YoutubePlayback pb, bool audioOnly) async {
     if (audioOnly) {
       final url = pb.audioUrl ?? pb.muxedFallbackUrl;
       if (url == null) throw Exception('no audio stream');
       await PlayerService.instance.open(url);
+      return;
+    }
+    final muxed = pb.muxedFallbackUrl;
+    if (muxed != null) {
+      await PlayerService.instance.open(muxed);
       return;
     }
     if (pb.videos.isNotEmpty) {
@@ -194,9 +295,7 @@ class _ShaaratFeedViewState extends ConsumerState<ShaaratFeedView>
           .openWithAudio(v.url, audioUrl: v.muxed ? null : pb.audioUrl);
       return;
     }
-    final muxed = pb.muxedFallbackUrl;
-    if (muxed == null) throw Exception('no playable stream');
-    await PlayerService.instance.open(muxed);
+    throw Exception('no playable stream');
   }
 
   /// Resolve a videoId's playback options, deduped + cached. Failed/empty
@@ -254,18 +353,14 @@ class _ShaaratFeedViewState extends ConsumerState<ShaaratFeedView>
 
   Future<void> _stopPlayer() async {
     _loadToken++; // cancel any in-flight resolve
+    _dwellTimer?.cancel();
+    await _unsubscribe();
     _player.setPlaylistMode(PlaylistMode.none);
     await PlayerService.instance.stop();
   }
 
-  Future<void> _toggleLike(Show show) async {
-    final liked = await ref.read(storageProvider).toggleShaaratLike(show.id);
-    final next = {...ref.read(shaaratLikesProvider)};
-    liked ? next.add(show.id) : next.remove(show.id);
-    ref.read(shaaratLikesProvider.notifier).state = next;
-  }
-
   void _enterShow(Show show) {
+    _award(_kEnterBoost); // strongest intent signal
     widget.isTv
         ? AppNav.detail(context, show)
         : openPhoneDetail(context, show);
@@ -287,6 +382,8 @@ class _ShaaratFeedViewState extends ConsumerState<ShaaratFeedView>
     WidgetsBinding.instance.removeObserver(this);
     routeObserver.unsubscribe(this);
     _loadToken++;
+    _dwellTimer?.cancel();
+    _unsubscribe();
     if (_started) {
       _player.setPlaylistMode(PlaylistMode.none);
       PlayerService.instance.stop();
@@ -300,8 +397,6 @@ class _ShaaratFeedViewState extends ConsumerState<ShaaratFeedView>
   @override
   Widget build(BuildContext context) {
     final t = ref.watch(stringsProvider);
-    // Keep the live like-set reflected on the heart.
-    ref.watch(shaaratLikesProvider);
 
     if (_queue.isEmpty || _allFailed) {
       return _MessageScreen(
@@ -312,54 +407,54 @@ class _ShaaratFeedViewState extends ConsumerState<ShaaratFeedView>
     }
 
     final audioMode = ref.watch(settingsProvider).prefs['shaarat'] == 'audio';
+
+    // What plays inside the CRT: the ONE shared video surface (mounted once and
+    // reused across pages — re-creating a `Video` per page detaches the shared
+    // decoder's texture), or the active show's poster in audio mode.
+    final Widget crtChild = audioMode
+        ? Image.network(_queue[_active].posterUrl,
+            fit: BoxFit.cover,
+            errorBuilder: (_, _, _) => const ColoredBox(color: AppColors.bg2))
+        : Video(
+            controller: PlayerService.instance.controller,
+            controls: NoVideoControls,
+            fit: BoxFit.cover,
+            fill: Colors.black,
+          );
+
     final feed = Stack(
       children: [
-        PageView.builder(
-          controller: _pc,
-          scrollDirection: Axis.vertical,
-          physics: widget.isTv
-              ? const NeverScrollableScrollPhysics()
-              : const BouncingScrollPhysics(),
-          onPageChanged: _onPageChanged,
-          itemCount: _queue.length,
-          itemBuilder: (context, i) => _ReelBackground(
-            show: _queue[i],
-            isTv: widget.isTv,
-            audioMode: audioMode,
-          ),
-        ),
-        // ONE persistent video surface for the whole feed. It is mounted once
-        // and reused across page changes — re-creating a `Video` per page (the
-        // old approach) detached the shared decoder's texture every time you
-        // swiped, so every reel after the first stayed stuck on its blurred
-        // backdrop. We just swap the media on the shared player and fade this
-        // surface in. `IgnorePointer` lets swipes reach the PageView beneath it.
-        if (!audioMode)
-          Positioned.fill(
-            child: IgnorePointer(
-              child: AnimatedOpacity(
-                opacity: _loading ? 0 : 1,
-                duration: const Duration(milliseconds: 200),
-                child: Video(
-                  controller: PlayerService.instance.controller,
-                  controls: NoVideoControls,
-                  fit: BoxFit.contain,
-                  fill: Colors.transparent,
-                ),
-              ),
+        // The illustrated room + CRT, a single static overlay for the whole
+        // feed (the art is fixed; only the CRT content changes). The PageView
+        // below is a transparent gesture/index source. `IgnorePointer` lets
+        // phone swipes reach it.
+        Positioned.fill(
+          child: IgnorePointer(
+            child: TvRoomStage(
+              isTv: widget.isTv,
+              loading: _loading,
+              crtChild: crtChild,
             ),
           ),
-        if (_loading)
-          const Center(
-            child: CircularProgressIndicator(color: AppColors.primary),
+        ),
+        Positioned.fill(
+          child: PageView.builder(
+            controller: _pc,
+            scrollDirection: Axis.vertical,
+            physics: widget.isTv
+                ? const NeverScrollableScrollPhysics()
+                : const BouncingScrollPhysics(),
+            onPageChanged: _onPageChanged,
+            itemCount: _queue.length,
+            itemBuilder: (context, i) => const SizedBox.expand(),
           ),
+        ),
         _Footer(
           show: _queue[_active],
           t: t,
-          liked: ref.watch(shaaratLikesProvider).contains(_queue[_active].id),
+          statusLabel: _loading ? t['shaarat_loading']! : t['shaarat_playing']!,
           enterFocus: _enterFocus,
           onEnter: () => _enterShow(_queue[_active]),
-          onLike: () => _toggleLike(_queue[_active]),
         ),
         if (widget.isTv)
           Positioned(
@@ -411,72 +506,24 @@ class _ShaaratFeedViewState extends ConsumerState<ShaaratFeedView>
   }
 }
 
-/// One reel's background: a blurred, dimmed backdrop (video mode) or a full-cover
-/// poster/backdrop (audio mode). The playing video itself is a single shared
-/// surface layered above the PageView, not part of this per-page background.
-class _ReelBackground extends StatelessWidget {
-  final Show show;
-  final bool isTv;
-  final bool audioMode;
-  const _ReelBackground({
-    required this.show,
-    required this.isTv,
-    required this.audioMode,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final coverUrl = audioMode && !isTv ? show.posterUrl : show.backdropUrl;
-    return Stack(
-      fit: StackFit.expand,
-      children: [
-        // Cover image (blurred behind the video, sharp in audio mode).
-        _NetImage(url: coverUrl, blur: !audioMode),
-        Container(color: Colors.black.withValues(alpha: audioMode ? 0.25 : 0.45)),
-      ],
-    );
-  }
-}
-
-class _NetImage extends StatelessWidget {
-  final String url;
-  final bool blur;
-  const _NetImage({required this.url, required this.blur});
-
-  @override
-  Widget build(BuildContext context) {
-    Widget img = Image.network(
-      url,
-      fit: BoxFit.cover,
-      errorBuilder: (_, _, _) => const ColoredBox(color: AppColors.bg2),
-      loadingBuilder: (context, child, progress) =>
-          progress == null ? child : const ColoredBox(color: AppColors.bg2),
-    );
-    if (blur) {
-      img = ImageFiltered(
-        imageFilter: ui.ImageFilter.blur(sigmaX: 28, sigmaY: 28),
-        child: img,
-      );
-    }
-    return img;
-  }
-}
-
-/// Bottom-anchored overlay: now-playing pill, title, and the Enter + heart row.
+/// Bottom-anchored overlay: now-playing pill, a tiny playback-status line, the
+/// title, and a small "Enter show" button. No like control — engagement is
+/// implicit (see the boost signals on [_ShaaratFeedViewState]).
 class _Footer extends StatelessWidget {
   final Show show;
   final Map<String, String> t;
-  final bool liked;
+
+  /// "Loading…" / "Playing" — small text so the user can tell, especially in
+  /// audio mode, why it's silent (still resolving) vs. actually playing.
+  final String statusLabel;
   final FocusNode enterFocus;
   final VoidCallback onEnter;
-  final VoidCallback onLike;
   const _Footer({
     required this.show,
     required this.t,
-    required this.liked,
+    required this.statusLabel,
     required this.enterFocus,
     required this.onEnter,
-    required this.onLike,
   });
 
   @override
@@ -490,104 +537,93 @@ class _Footer extends StatelessWidget {
           gradient: LinearGradient(
             begin: Alignment.bottomCenter,
             end: Alignment.topCenter,
-            colors: [Colors.black.withValues(alpha: 0.88), Colors.transparent],
+            colors: [Colors.black.withValues(alpha: 0.9), Colors.transparent],
             stops: const [0, 1],
           ),
         ),
         child: Padding(
-          padding: const EdgeInsets.fromLTRB(22, 60, 22, 34),
+          padding: const EdgeInsets.fromLTRB(22, 54, 22, 26),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // now-playing pill
-              Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                decoration: BoxDecoration(
-                  color: Colors.black.withValues(alpha: 0.5),
-                  borderRadius: BorderRadius.circular(13),
-                ),
-                child: Row(mainAxisSize: MainAxisSize.min, children: [
-                  const Icon(Icons.music_note, size: 14, color: AppColors.primary2),
-                  const SizedBox(width: 6),
-                  Flexible(
-                    child: Text('${show.title} — ${t['shaarat_now']}',
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(
-                            fontSize: 13,
-                            fontWeight: FontWeight.w700,
-                            color: AppColors.inkSoft)),
+              // now-playing pill + status
+              Row(mainAxisSize: MainAxisSize.min, children: [
+                Flexible(
+                  child: Container(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 11, vertical: 5),
+                    decoration: BoxDecoration(
+                      color: Colors.black.withValues(alpha: 0.5),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Row(mainAxisSize: MainAxisSize.min, children: [
+                      const Icon(Icons.music_note,
+                          size: 13, color: AppColors.primary2),
+                      const SizedBox(width: 5),
+                      Flexible(
+                        child: Text('${show.title} — ${t['shaarat_now']}',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                                fontSize: 12,
+                                fontWeight: FontWeight.w700,
+                                color: AppColors.inkSoft)),
+                      ),
+                    ]),
                   ),
-                ]),
-              ),
-              const SizedBox(height: 12),
+                ),
+                const SizedBox(width: 8),
+                Text(statusLabel,
+                    style: TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w600,
+                        color: Colors.white.withValues(alpha: 0.6))),
+              ]),
+              const SizedBox(height: 10),
               Text(show.title,
                   maxLines: 2,
                   overflow: TextOverflow.ellipsis,
                   style: const TextStyle(
-                      fontSize: 26,
+                      fontSize: 22,
                       fontWeight: FontWeight.w900,
                       color: Colors.white)),
-              const SizedBox(height: 16),
-              Row(children: [
-                Expanded(
-                  child: Focusable(
-                    focusNode: enterFocus,
-                    onPressed: onEnter,
-                    builder: (context, focused) => Container(
-                      height: 50,
-                      alignment: Alignment.center,
-                      decoration: BoxDecoration(
-                        color: focused ? Colors.white : AppColors.primary,
-                        borderRadius: BorderRadius.circular(25),
-                      ),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Icon(Icons.play_arrow,
-                              size: 22,
-                              color: focused
-                                  ? AppColors.onFocus
-                                  : AppColors.onPrimary),
-                          const SizedBox(width: 6),
-                          Text(t['shaarat_enter']!,
-                              style: TextStyle(
-                                  fontSize: 18,
-                                  fontWeight: FontWeight.w800,
-                                  color: focused
-                                      ? AppColors.onFocus
-                                      : AppColors.onPrimary)),
-                        ],
-                      ),
-                    ),
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Focusable(
-                  onPressed: onLike,
+              const SizedBox(height: 12),
+              // Small intrinsic-width "Enter show" pill (no longer full-width).
+              Align(
+                alignment: AlignmentDirectional.centerStart,
+                child: Focusable(
+                  focusNode: enterFocus,
+                  onPressed: onEnter,
                   builder: (context, focused) => Container(
-                    width: 50,
-                    height: 50,
+                    height: 34,
+                    padding: const EdgeInsets.symmetric(horizontal: 14),
+                    alignment: Alignment.center,
                     decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      color: liked
-                          ? _kHeart
-                          : (focused
-                              ? Colors.white
-                              : Colors.white.withValues(alpha: 0.14)),
+                      color: focused ? Colors.white : AppColors.primary,
+                      borderRadius: BorderRadius.circular(17),
                     ),
-                    child: Icon(
-                      liked ? Icons.favorite : Icons.favorite_border,
-                      size: 24,
-                      color: liked
-                          ? Colors.white
-                          : (focused ? _kHeart : AppColors.inkSoft),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(Icons.play_arrow,
+                            size: 16,
+                            color: focused
+                                ? AppColors.onFocus
+                                : AppColors.onPrimary),
+                        const SizedBox(width: 4),
+                        Text(t['shaarat_enter']!,
+                            style: TextStyle(
+                                fontSize: 13,
+                                fontWeight: FontWeight.w800,
+                                color: focused
+                                    ? AppColors.onFocus
+                                    : AppColors.onPrimary)),
+                      ],
                     ),
                   ),
                 ),
-              ]),
+              ),
             ],
           ),
         ),

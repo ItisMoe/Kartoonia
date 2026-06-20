@@ -41,17 +41,29 @@ void main() {
     expect(a.map((s) => s.id).toList(), b.map((s) => s.id).toList());
   });
 
-  test('liked shows trend earlier across many runs', () {
-    // Equal votes so the like-boost is the only signal in play.
+  test('boosted shows trend earlier across many runs', () {
+    // Equal votes so the engagement boost is the only signal in play.
     final shows = [for (var i = 0; i < 20; i++) _show('s$i', tmdbId: i)];
-    var likedAvg = 0.0, baseAvg = 0.0;
+    var boostedAvg = 0.0, baseAvg = 0.0;
     const runs = 40;
     for (var r = 0; r < runs; r++) {
-      final q = shaaratQueue(shows, {'s0'}, rng: Random(r));
-      likedAvg += q.indexWhere((s) => s.id == 's0');
+      final q = shaaratQueue(shows, {'s0': 7.0}, rng: Random(r));
+      boostedAvg += q.indexWhere((s) => s.id == 's0');
       baseAvg += q.indexWhere((s) => s.id == 's1');
     }
-    expect(likedAvg / runs, lessThan(baseAvg / runs));
+    expect(boostedAvg / runs, lessThan(baseAvg / runs));
+  });
+
+  test('a bigger boost trends earlier than a smaller boost', () {
+    final shows = [for (var i = 0; i < 20; i++) _show('s$i', tmdbId: i)];
+    var bigAvg = 0.0, smallAvg = 0.0;
+    const runs = 50;
+    for (var r = 0; r < runs; r++) {
+      final q = shaaratQueue(shows, {'s0': 8.0, 's1': 1.0}, rng: Random(r));
+      bigAvg += q.indexWhere((s) => s.id == 's0');
+      smallAvg += q.indexWhere((s) => s.id == 's1');
+    }
+    expect(bigAvg / runs, lessThan(smallAvg / runs));
   });
 
   test('more popular shows trend earlier across many runs', () {

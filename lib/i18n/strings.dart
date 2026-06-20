@@ -123,6 +123,8 @@ const Map<String, Map<String, String>> kStrings = {
     'shaarat_mode': 'شارات Playback',
     'shaarat_mode_video': 'Video',
     'shaarat_mode_audio': 'Audio only',
+    'shaarat_loading': 'Loading…',
+    'shaarat_playing': 'Playing',
     'shaarat_empty': 'No theme songs available yet.',
   },
   'ar': {
@@ -247,6 +249,8 @@ const Map<String, Map<String, String>> kStrings = {
     'shaarat_mode': 'تشغيل الشارات',
     'shaarat_mode_video': 'فيديو',
     'shaarat_mode_audio': 'صوت فقط',
+    'shaarat_loading': 'جارٍ التحميل…',
+    'shaarat_playing': 'قيد التشغيل',
     'shaarat_empty': 'لا توجد شارات متاحة بعد.',
   },
 };

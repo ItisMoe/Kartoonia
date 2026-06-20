@@ -91,55 +91,72 @@ class _YoutubeScreenState extends ConsumerState<YoutubeScreen>
     ]);
   }
 
+  /// Search → resolve → play, retried up to [_kMaxAttempts] times before giving
+  /// up. A transient extraction/network miss commonly succeeds on a second try
+  /// (the same reason a manual retry works), so we do it automatically. Quota
+  /// errors won't recover on retry, so they fail fast.
+  static const _kMaxAttempts = 3;
+
   Future<void> _start() async {
-    try {
-      final userKey = ref.read(storageProvider).getYoutubeKey();
-      final ids =
-          await YoutubeService.searchVideoIds(widget.query, apiKey: userKey);
-      if (!mounted) return;
-      if (ids.isEmpty) return _fail();
-
-      // Try each candidate in relevance order until one resolves to playable
-      // streams — the top hit is often age/geo-restricted or has no usable
-      // streams, and one failure shouldn't sink the whole open.
-      YoutubePlayback? playback;
-      for (final id in ids) {
-        try {
-          playback = await YoutubeStreamResolver.resolvePlayback(id);
-        } catch (e) {
-          debugPrint('YouTube resolve failed for $id: $e');
-          playback = null;
-        }
-        if (!mounted) return;
-        if (playback != null) break;
-      }
-      if (playback == null) return _fail();
-      _playback = playback;
-
-      // Play Auto (best <=720 + audio); _playQuality falls back to muxed 360p.
+    var failKey = 'yt_none';
+    for (var attempt = 1; attempt <= _kMaxAttempts; attempt++) {
       try {
-        await _playQuality(null);
+        if (await _attemptOpen()) return; // playing
+      } on YoutubeException catch (e) {
+        if (!mounted) return;
+        if (e.kind == YoutubeErrorKind.quota) return _fail('yt_quota');
+        failKey = e.kind == YoutubeErrorKind.network ? 'yt_network' : 'yt_error';
+        debugPrint('YouTube attempt $attempt failed: $e');
       } catch (e) {
-        debugPrint('YouTube playback failed: $e');
-        return _fail();
+        if (!mounted) return;
+        debugPrint('YouTube attempt $attempt failed: $e');
       }
       if (!mounted) return;
-      setState(() => _loading = false);
-      // Now that playback is actually ready (and _playing has flipped true),
-      // start the auto-hide countdown. Flashing during loading was a no-op:
-      // the timer's `_playing` guard skipped hiding, so controls stuck on.
-      _flashControls();
-    } on YoutubeException catch (e) {
-      debugPrint('YouTube trailer failed: $e');
-      _fail(e.kind == YoutubeErrorKind.quota
-          ? 'yt_quota'
-          : e.kind == YoutubeErrorKind.network
-              ? 'yt_network'
-              : 'yt_error');
-    } catch (e) {
-      debugPrint('YouTube trailer failed: $e');
-      _fail();
+      if (attempt < _kMaxAttempts) {
+        await Future.delayed(Duration(milliseconds: 600 * attempt));
+        if (!mounted) return;
+      }
     }
+    _fail(failKey);
+  }
+
+  /// One open attempt. Returns true once playback has started; false on a
+  /// retryable miss (no search hits / nothing playable). Throws YoutubeException
+  /// and other errors up to [_start]'s retry loop.
+  Future<bool> _attemptOpen() async {
+    final userKey = ref.read(storageProvider).getYoutubeKey();
+    final ids =
+        await YoutubeService.searchVideoIds(widget.query, apiKey: userKey);
+    if (!mounted) return false;
+    if (ids.isEmpty) return false;
+
+    // Try each candidate in relevance order until one resolves to playable
+    // streams — the top hit is often age/geo-restricted or has no usable
+    // streams, and one failure shouldn't sink the whole open.
+    YoutubePlayback? playback;
+    for (final id in ids) {
+      try {
+        playback = await YoutubeStreamResolver.resolvePlayback(id);
+      } catch (e) {
+        debugPrint('YouTube resolve failed for $id: $e');
+        playback = null;
+      }
+      if (!mounted) return false;
+      if (playback != null) break;
+    }
+    if (playback == null) return false;
+    _playback = playback;
+
+    // Play Auto (best <=720 + audio); _playQuality falls back to muxed 360p.
+    // Throws on failure → retried by [_start].
+    await _playQuality(null);
+    if (!mounted) return false;
+    setState(() => _loading = false);
+    // Now that playback is actually ready (and _playing has flipped true),
+    // start the auto-hide countdown. Flashing during loading was a no-op:
+    // the timer's `_playing` guard skipped hiding, so controls stuck on.
+    _flashControls();
+    return true;
   }
 
   /// The video option for [height] (null = Auto = best), or null if none exist.

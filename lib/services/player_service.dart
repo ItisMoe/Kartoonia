@@ -73,10 +73,16 @@ class PlayerService {
     Map<String, String> headers = const {},
   }) async {
     ensureCreated();
-    await _player!.open(Media(videoUrl, httpHeaders: headers));
+    // Open WITHOUT auto-playing, attach the external audio, THEN play — so the
+    // full graph exists before playback starts. Opening with play:true lets the
+    // video run for ~1-2s and then attaching the audio track forces libmpv to
+    // rebuild and re-seek the video to 0 (audio starts from its own 0), which
+    // looked like the video "replaying from the start" while audio kept going.
+    await _player!.open(Media(videoUrl, httpHeaders: headers), play: false);
     if (audioUrl != null) {
       await _player!.setAudioTrack(AudioTrack.uri(audioUrl));
     }
+    await _player!.play();
   }
 
   /// Stop playback and unload the current media WITHOUT disposing the player, so

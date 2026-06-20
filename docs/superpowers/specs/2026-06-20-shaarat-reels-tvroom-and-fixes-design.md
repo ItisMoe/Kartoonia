@@ -252,6 +252,24 @@ comfortably over the room art's bottom gradient.
   auto-advances; end-of-queue re-rolls; no mid-reel restart; trailer (720p)
   still starts cleanly after the play-order fix.
 
+## 7b. Automatic playback retries (added)
+
+Failed opens very often succeed on a retry (a fresh resolve / re-extraction),
+which is what a manual retry does. So every open path now retries automatically
+before surfacing an error:
+
+- **Stardima / Arabic Toons (`player_screen.dart`):** after every server has
+  failed, the cached resolution is dropped and the whole resolver pipeline is
+  re-run up to `_maxAutoRetries` (3) times (loading spinner stays up) before the
+  "all servers failed" overlay appears. The counter resets on a successful load,
+  manual Retry, server switch, and episode change.
+- **YouTube trailer/theme (`youtube_screen.dart`):** `_start` runs an
+  `_attemptOpen` (search → resolve → play) loop up to 3 attempts with backoff.
+  Quota errors fail fast (won't recover); network/extraction misses retry.
+- **Reels (`shaarat_reel.dart`):** the per-reel stream resolve retries up to 3
+  times (failed resolves are evicted from `_pbCache`, so each attempt
+  re-extracts) before skipping to the next reel.
+
 ## 8. Out of scope / YAGNI
 
 - No per-character art work — the room art is a fixed illustration.

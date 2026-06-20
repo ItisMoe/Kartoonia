@@ -52,7 +52,7 @@ class StorageService {
   static const _kYtKey = 'kt/ytKey'; // user-set YouTube Data API key override
   static const _kCatalogSource = 'kt/catalogSource'; // arabicToons | stardima
   static const _kRecentSearches = 'kt/recentSearches';
-  static const _kShaaratLikes = 'kt/shaaratLikes';
+  static const _kShaaratBoosts = 'kt/shaaratBoosts';
   static const _kShaaratVideoIds = 'kt/shaaratVideoIds';
 
   final SharedPreferences _prefs;
@@ -153,19 +153,25 @@ class StorageService {
 
   Future<void> clearRecentSearches() => _prefs.remove(_kRecentSearches);
 
-  // ---- شارات likes (boost feed ordering) ----
-  List<String> getShaaratLikes() =>
-      _prefs.getStringList(_kShaaratLikes) ?? const [];
+  // ---- شارات engagement boost (implicit; orders the reel feed) ----
+  // showId -> accumulated boost points. Earned from dwell/completion/entering a
+  // show's reel (graduated), it raises the show's weight in `shaaratQueue`.
+  Map<String, double> getShaaratBoosts() {
+    final raw = _prefs.getString(_kShaaratBoosts);
+    if (raw == null) return {};
+    try {
+      return (jsonDecode(raw) as Map)
+          .map((k, v) => MapEntry('$k', (v as num).toDouble()));
+    } catch (_) {
+      return {};
+    }
+  }
 
-  bool isShaaratLiked(String showId) => getShaaratLikes().contains(showId);
-
-  /// Toggle a show's like; returns the NEW liked state.
-  Future<bool> toggleShaaratLike(String showId) async {
-    final ids = [...getShaaratLikes()];
-    final present = ids.contains(showId);
-    present ? ids.remove(showId) : ids.insert(0, showId);
-    await _prefs.setStringList(_kShaaratLikes, ids);
-    return !present;
+  /// Add [points] to a show's accumulated boost score.
+  Future<void> addShaaratBoost(String showId, double points) async {
+    final m = getShaaratBoosts();
+    m[showId] = (m[showId] ?? 0) + points;
+    await _prefs.setString(_kShaaratBoosts, jsonEncode(m));
   }
 
   // ---- شارات videoId cache ----

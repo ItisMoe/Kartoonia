@@ -42,6 +42,12 @@ const _controlsTimeout = Duration(milliseconds: 4200);
 const _seekStep = Duration(seconds: 10);
 const _saveInterval = Duration(seconds: 5);
 
+/// How many times, after EVERY server has failed, to silently re-run the whole
+/// resolver pipeline before surfacing the error overlay. A fresh resolve very
+/// often succeeds (stale links/tokens), which is exactly what a manual Retry
+/// does — so we do it automatically first.
+const _maxAutoRetries = 3;
+
 class PlayerScreen extends ConsumerStatefulWidget {
   final PlayerArgs args;
   const PlayerScreen({super.key, required this.args});
@@ -69,6 +75,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
   List<int> _available = const [1];
   Map<int, PlayableServer> _serverMap = const {};
   int _retry = 0;
+  int _autoRetries = 0; // full-pipeline re-resolves after all servers failed
   int _reqId = 0;
 
   // Stardima resolution is expensive (multi-request pipeline), so cache the
@@ -227,6 +234,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
 
       setState(() => _loading = false);
       _retry = 0;
+      _autoRetries = 0;
       // Re-arm the auto-hide timer now that playback is actually ready. Without
       // this, a slow resolve (Stardima's multi-request pipeline routinely
       // outlasts the initial _flashControls timer) leaves the timer already
@@ -327,11 +335,20 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
       _load(_available[idx + 1]);
       return;
     }
-    // Every link failed. Drop the cached resolution so the manual Retry re-runs
-    // the full resolver pipeline (the links may simply have gone stale).
-    if (widget.args.source == CatalogSource.stardima) {
-      _resolvedCache = null;
-      _resolvedFor = null;
+    // Every link failed. Drop any cached resolution so the next pass re-runs the
+    // full resolver pipeline (links/tokens may simply have gone stale).
+    _resolvedCache = null;
+    _resolvedFor = null;
+    // Auto-retry the WHOLE pipeline a few times before surfacing the error — a
+    // fresh resolve very often succeeds (exactly what a manual Retry does). The
+    // loading spinner stays up meanwhile, so the user just sees it keep trying.
+    if (_autoRetries < _maxAutoRetries) {
+      _autoRetries++;
+      _retry = 0;
+      Future.delayed(Duration(milliseconds: 800 * _autoRetries), () {
+        if (mounted) _load(1);
+      });
+      return;
     }
     setState(() {
       _error = true;
@@ -388,6 +405,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
       _position = Duration.zero;
       _duration = Duration.zero;
       _retry = 0;
+      _autoRetries = 0;
     });
     _load(_server);
     _flashControls();
@@ -515,6 +533,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
     setState(() {
       _serverPanelOpen = false;
       _retry = 0;
+      _autoRetries = 0;
     });
     _load(n);
     _flashControls();
@@ -722,6 +741,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
             phone: _phone,
             onPressed: () {
               _retry = 0;
+              _autoRetries = 0;
               _load(1);
             },
           ),
