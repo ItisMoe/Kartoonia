@@ -1,3 +1,8 @@
+import 'dart:async';
+import 'dart:math' as math;
+import 'dart:typed_data';
+import 'dart:ui' as ui;
+
 import 'package:flutter/material.dart';
 
 import '../theme/theme.dart';
@@ -57,21 +62,17 @@ class TvRoomStage extends StatelessWidget {
               child: Stack(
                 fit: StackFit.expand,
                 children: [
+                  crtChild,
+                  // CRT "snow" while the next theme resolves: it covers the
+                  // media swap, then crossfades away to reveal the new video —
+                  // like changing channels on an old TV. Doubles as the loading
+                  // state (no spinner needed).
                   AnimatedOpacity(
-                    opacity: loading ? 0 : 1,
+                    opacity: loading ? 1 : 0,
                     duration: const Duration(milliseconds: 220),
-                    child: crtChild,
+                    child: _CrtStatic(active: loading),
                   ),
                   const IgnorePointer(child: _CrtOverlay()),
-                  if (loading)
-                    const Center(
-                      child: SizedBox(
-                        width: 26,
-                        height: 26,
-                        child: CircularProgressIndicator(
-                            strokeWidth: 2.4, color: Colors.white70),
-                      ),
-                    ),
                 ],
               ),
             ),
@@ -101,6 +102,125 @@ class TvRoomStage extends StatelessWidget {
       frac.height * dispH,
     );
   }
+}
+
+/// Animated CRT "snow" / static — the between-reels loading state inside the TV
+/// screen. A handful of grey-noise frames are generated ONCE and cycled on a
+/// timer (no per-frame CPU noise generation, no shader compile), so it stays
+/// smooth on weak Android-TV GPUs. Drawn unfiltered and scaled up for chunky,
+/// authentic static. The timer only runs while [active].
+class _CrtStatic extends StatefulWidget {
+  final bool active;
+  const _CrtStatic({required this.active});
+
+  @override
+  State<_CrtStatic> createState() => _CrtStaticState();
+}
+
+class _CrtStaticState extends State<_CrtStatic> {
+  static const _frameCount = 8;
+  static const _w = 120;
+  static const _h = 90;
+
+  final List<ui.Image> _frames = [];
+  int _i = 0;
+  Timer? _timer;
+
+  @override
+  void initState() {
+    super.initState();
+    _generate();
+    if (widget.active) _start();
+  }
+
+  @override
+  void didUpdateWidget(covariant _CrtStatic old) {
+    super.didUpdateWidget(old);
+    if (widget.active && !old.active) _start();
+    if (!widget.active && old.active) _stop();
+  }
+
+  Future<void> _generate() async {
+    final rnd = math.Random();
+    final imgs = <ui.Image>[];
+    for (var f = 0; f < _frameCount; f++) {
+      final bytes = Uint8List(_w * _h * 4);
+      for (var p = 0; p < _w * _h; p++) {
+        final v = rnd.nextInt(256); // grey snow
+        final o = p * 4;
+        bytes[o] = v;
+        bytes[o + 1] = v;
+        bytes[o + 2] = v;
+        bytes[o + 3] = 255;
+      }
+      imgs.add(await _decode(bytes));
+      if (!mounted) {
+        for (final im in imgs) {
+          im.dispose();
+        }
+        return;
+      }
+    }
+    setState(() => _frames
+      ..clear()
+      ..addAll(imgs));
+  }
+
+  Future<ui.Image> _decode(Uint8List bytes) {
+    final c = Completer<ui.Image>();
+    ui.decodeImageFromPixels(bytes, _w, _h, ui.PixelFormat.rgba8888, c.complete);
+    return c.future;
+  }
+
+  void _start() {
+    _timer ??= Timer.periodic(const Duration(milliseconds: 60), (_) {
+      if (_frames.isEmpty) return;
+      setState(() => _i = (_i + 1) % _frames.length);
+    });
+  }
+
+  void _stop() {
+    _timer?.cancel();
+    _timer = null;
+  }
+
+  @override
+  void dispose() {
+    _stop();
+    for (final im in _frames) {
+      im.dispose();
+    }
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_frames.isEmpty) return const ColoredBox(color: Color(0xFF0B0B0B));
+    return CustomPaint(
+      painter: _NoisePainter(_frames[_i % _frames.length]),
+      willChange: true,
+      size: Size.infinite,
+    );
+  }
+}
+
+class _NoisePainter extends CustomPainter {
+  final ui.Image image;
+  _NoisePainter(this.image);
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint = Paint()..filterQuality = FilterQuality.none;
+    canvas.drawImageRect(
+      image,
+      Rect.fromLTWH(0, 0, image.width.toDouble(), image.height.toDouble()),
+      Offset.zero & size,
+      paint,
+    );
+  }
+
+  @override
+  bool shouldRepaint(covariant _NoisePainter old) => old.image != image;
 }
 
 /// Faint CRT treatment confined to the screen rect: a soft inner vignette, a

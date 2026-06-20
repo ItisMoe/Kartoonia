@@ -270,6 +270,21 @@ before surfacing an error:
   times (failed resolves are evicted from `_pbCache`, so each attempt
   re-extracts) before skipping to the next reel.
 
+## 7c. CRT static + integrated Enter button (added)
+
+- **Between-reels CRT "snow":** while the next theme resolves, the TV screen
+  shows animated grey static (`_CrtStatic` in `tv_room_stage.dart`) that covers
+  the media swap, then crossfades away to reveal the new video — a "changing
+  channels" feel. It replaces the loading spinner. Implementation: 8 grey-noise
+  frames generated once via `decodeImageFromPixels`, cycled on a 60ms timer and
+  drawn unfiltered/scaled-up for chunky static; the timer only runs while
+  loading, so it costs nothing during playback. The room art itself never
+  changes — only the CRT content does.
+- **Integrated "Enter show" button:** restyled from the flat primary pill to
+  frosted dark glass with a warm amber edge + glow (`_kCrtGlow`) that echoes the
+  CRT light, so it reads as part of the room. Focus (TV) brightens it to a clear
+  white target for the D-pad.
+
 ## 8. Out of scope / YAGNI
 
 - No per-character art work — the room art is a fixed illustration.

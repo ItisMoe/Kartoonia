@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -24,6 +25,10 @@ const double _kDwellBoost = 1; // stayed on the reel past [_kDwell]
 const double _kCompleteBoost = 2; // theme played all the way to its end
 const double _kEnterBoost = 4; // tapped "Enter show" from the reel
 const Duration _kDwell = Duration(seconds: 8);
+
+/// Warm amber accent echoing the CRT's glow, used to tint the "Enter show" pill
+/// so it reads as part of the room scene.
+const Color _kCrtGlow = Color(0xFFFFC46B);
 
 /// The شارات reels feed, shared by the TV screen and the phone tab. A vertical
 /// `PageView` of famous animated shows; the active reel plays its Arabic theme
@@ -589,37 +594,60 @@ class _Footer extends StatelessWidget {
                       fontWeight: FontWeight.w900,
                       color: Colors.white)),
               const SizedBox(height: 12),
-              // Small intrinsic-width "Enter show" pill (no longer full-width).
+              // Small "Enter show" pill, styled to belong to the room: frosted
+              // dark glass with a warm amber edge + glow echoing the CRT light.
+              // Focus (TV) brightens it to a clear white target.
               Align(
                 alignment: AlignmentDirectional.centerStart,
                 child: Focusable(
                   focusNode: enterFocus,
                   onPressed: onEnter,
-                  builder: (context, focused) => Container(
-                    height: 34,
-                    padding: const EdgeInsets.symmetric(horizontal: 14),
-                    alignment: Alignment.center,
-                    decoration: BoxDecoration(
-                      color: focused ? Colors.white : AppColors.primary,
-                      borderRadius: BorderRadius.circular(17),
-                    ),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Icon(Icons.play_arrow,
-                            size: 16,
+                  builder: (context, focused) => ClipRRect(
+                    borderRadius: BorderRadius.circular(18),
+                    child: BackdropFilter(
+                      filter: ui.ImageFilter.blur(sigmaX: 8, sigmaY: 8),
+                      child: AnimatedContainer(
+                        duration: const Duration(milliseconds: 150),
+                        height: 36,
+                        padding: const EdgeInsets.symmetric(horizontal: 16),
+                        alignment: Alignment.center,
+                        decoration: BoxDecoration(
+                          color: focused
+                              ? Colors.white.withValues(alpha: 0.92)
+                              : Colors.black.withValues(alpha: 0.42),
+                          borderRadius: BorderRadius.circular(18),
+                          border: Border.all(
                             color: focused
-                                ? AppColors.onFocus
-                                : AppColors.onPrimary),
-                        const SizedBox(width: 4),
-                        Text(t['shaarat_enter']!,
-                            style: TextStyle(
-                                fontSize: 13,
-                                fontWeight: FontWeight.w800,
-                                color: focused
-                                    ? AppColors.onFocus
-                                    : AppColors.onPrimary)),
-                      ],
+                                ? Colors.white
+                                : _kCrtGlow.withValues(alpha: 0.7),
+                            width: 1.4,
+                          ),
+                          boxShadow: [
+                            BoxShadow(
+                              color: _kCrtGlow
+                                  .withValues(alpha: focused ? 0.55 : 0.3),
+                              blurRadius: focused ? 18 : 12,
+                              spreadRadius: focused ? 1 : 0,
+                            ),
+                          ],
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(Icons.play_arrow,
+                                size: 17,
+                                color: focused ? AppColors.onFocus : _kCrtGlow),
+                            const SizedBox(width: 5),
+                            Text(t['shaarat_enter']!,
+                                style: TextStyle(
+                                    fontSize: 13,
+                                    fontWeight: FontWeight.w800,
+                                    color: focused
+                                        ? AppColors.onFocus
+                                        : Colors.white)),
+                          ],
+                        ),
+                      ),
                     ),
                   ),
                 ),
