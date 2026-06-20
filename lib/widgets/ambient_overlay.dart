@@ -9,9 +9,9 @@ import '../utils/screensaver_meta.dart';
 import 'catalog_image.dart';
 
 /// TV-only screensaver: after a few minutes of no input, crossfades through
-/// famous backdrops with a Netflix-style title/meta card and a live clock. Any
-/// key/pointer dismisses it. Suppressed while the player is up. On phones it is
-/// an inert pass-through.
+/// famous backdrops with a Netflix-style title/meta card. Any key/pointer
+/// dismisses it. Suppressed while the player is up. On phones it is an inert
+/// pass-through.
 class AmbientOverlay extends ConsumerStatefulWidget {
   final Widget child;
   const AmbientOverlay({super.key, required this.child});
@@ -24,10 +24,8 @@ class _AmbientOverlayState extends ConsumerState<AmbientOverlay> {
   static const _rotate = Duration(seconds: 9);
   Timer? _idleTimer;
   Timer? _rotateTimer;
-  Timer? _clockTimer;
   bool _active = false;
   int _index = 0;
-  TimeOfDay _now = TimeOfDay.now();
 
   @override
   void initState() {
@@ -64,17 +62,10 @@ class _AmbientOverlayState extends ConsumerState<AmbientOverlay> {
     _rotateTimer = Timer.periodic(_rotate, (_) {
       if (mounted) setState(() => _index++);
     });
-    // Keep the on-screen clock fresh only while the saver is visible.
-    _clockTimer?.cancel();
-    _now = TimeOfDay.now();
-    _clockTimer = Timer.periodic(const Duration(seconds: 20), (_) {
-      if (mounted) setState(() => _now = TimeOfDay.now());
-    });
   }
 
   void _wake() {
     _rotateTimer?.cancel();
-    _clockTimer?.cancel();
     if (_active && mounted) setState(() => _active = false);
     _arm();
   }
@@ -84,7 +75,6 @@ class _AmbientOverlayState extends ConsumerState<AmbientOverlay> {
     HardwareKeyboard.instance.removeHandler(_onKey);
     _idleTimer?.cancel();
     _rotateTimer?.cancel();
-    _clockTimer?.cancel();
     super.dispose();
   }
 
@@ -132,20 +122,6 @@ class _AmbientOverlayState extends ConsumerState<AmbientOverlay> {
                             end: Alignment.center,
                             colors: [Color(0xCC000000), Color(0x00000000)],
                           ),
-                        ),
-                      ),
-                    ),
-                    // live clock, top-right
-                    Positioned(
-                      top: 56,
-                      right: 64,
-                      child: Text(
-                        _now.format(context),
-                        style: const TextStyle(
-                          fontFamily: Fonts.display,
-                          fontWeight: FontWeight.w600,
-                          fontSize: 40,
-                          color: AppColors.ink,
                         ),
                       ),
                     ),
@@ -230,7 +206,7 @@ class _SaverInfoState extends State<_SaverInfo>
                 overflow: TextOverflow.ellipsis,
                 style: const TextStyle(
                   fontWeight: FontWeight.w800,
-                  fontSize: 26,
+                  fontSize: 21,
                   letterSpacing: 0.5,
                   color: AppColors.inkSoft,
                 ),

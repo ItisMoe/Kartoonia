@@ -4,7 +4,7 @@ import '../../state/app_state.dart';
 import '../../widgets/shaarat_reel.dart';
 
 /// Index of the شارات tab in the phone bottom nav / IndexedStack.
-const int kShaaratPhoneTab = 4;
+const int kShaaratPhoneTab = 3;
 
 /// Phone شارات tab — vertical-swipe reels. Plays only while it is the selected
 /// tab (the shell keeps every tab alive in an IndexedStack).

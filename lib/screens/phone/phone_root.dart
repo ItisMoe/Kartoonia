@@ -9,8 +9,8 @@ import 'phone_search_screen.dart';
 import 'phone_shaarat_screen.dart';
 
 /// Root of the portrait phone experience: five keep-alive tabs behind a
-/// Netflix-style bottom navigation bar (Home · Browse · Search · My List ·
-/// شارات). Detail / Player / Settings are pushed on top via the normal
+/// Netflix-style bottom navigation bar (Home · Browse · Search · شارات ·
+/// My List). Detail / Player / Settings are pushed on top via the normal
 /// navigator.
 class PhoneRoot extends ConsumerWidget {
   const PhoneRoot({super.key});
@@ -28,8 +28,8 @@ class PhoneRoot extends ConsumerWidget {
           PhoneHomeScreen(),
           PhoneBrowseScreen(),
           PhoneSearchScreen(),
-          PhoneMyListScreen(),
           PhoneShaaratScreen(),
+          PhoneMyListScreen(),
         ],
       ),
       bottomNavigationBar: _PhoneNavBar(
@@ -39,8 +39,8 @@ class PhoneRoot extends ConsumerWidget {
           (Icons.home_rounded, t['nav_home']!),
           (Icons.grid_view_rounded, t['nav_browse']!),
           (Icons.search_rounded, t['nav_search']!),
-          (Icons.favorite_rounded, t['nav_mylist']!),
           (Icons.music_note_rounded, t['nav_shaarat']!),
+          (Icons.favorite_rounded, t['nav_mylist']!),
         ],
       ),
     );

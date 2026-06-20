@@ -50,6 +50,12 @@ class _ShaaratFeedViewState extends ConsumerState<ShaaratFeedView>
   late ShaaratResolver _resolver;
   List<Show> _queue = const [];
 
+  /// Warmed stream-URL resolutions, keyed by YouTube videoId. Filled by
+  /// [_prefetch] for the next reels (and by [_activate] for the current one) so a
+  /// swipe usually skips the ~1–2s manifest extraction. Cleared on [_restart]
+  /// since the resolved URLs are time-limited.
+  final Map<String, Future<YoutubePlayback?>> _pbCache = {};
+
   int _active = 0;
   int _loadToken = 0; // bumps to cancel in-flight resolves
   int _skips = 0; // consecutive un-playable reels (loop guard)
@@ -114,7 +120,7 @@ class _ShaaratFeedViewState extends ConsumerState<ShaaratFeedView>
       if (!_started) {
         _started = true;
         SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
-        _activate(_active);
+        _restart();
         WidgetsBinding.instance.addPostFrameCallback((_) {
           if (mounted && widget.isTv) _enterFocus.requestFocus();
         });
@@ -126,6 +132,21 @@ class _ShaaratFeedViewState extends ConsumerState<ShaaratFeedView>
         SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
       }
     }
+  }
+
+  /// Re-roll the queue and jump back to the top. Called every time the feed
+  /// becomes active (a fresh TV push, or re-selecting the phone tab), so each
+  /// visit opens on a new, popularity-weighted random reel instead of replaying
+  /// the show you saw last time.
+  void _restart() {
+    _buildQueue();
+    _pbCache.clear(); // drop possibly-expired stream URLs from a prior visit
+    _active = 0;
+    _skips = 0;
+    _allFailed = false;
+    if (_pc.hasClients) _pc.jumpToPage(0);
+    if (mounted) setState(() {});
+    _activate(0);
   }
 
   /// Resolve and play the reel at [index]. Skips to the next reel when the theme
@@ -142,12 +163,7 @@ class _ShaaratFeedViewState extends ConsumerState<ShaaratFeedView>
     if (token != _loadToken || !mounted) return;
     if (id == null) return _skip(index);
 
-    YoutubePlayback? pb;
-    try {
-      pb = await YoutubeStreamResolver.resolvePlayback(id);
-    } catch (_) {
-      pb = null;
-    }
+    final pb = await _playbackFor(id); // reuses a prefetched resolve when warm
     if (token != _loadToken || !mounted) return;
     if (pb == null) return _skip(index);
 
@@ -183,10 +199,29 @@ class _ShaaratFeedViewState extends ConsumerState<ShaaratFeedView>
     await PlayerService.instance.open(muxed);
   }
 
-  /// Resolve (videoId only) the next couple of reels so swiping is instant.
+  /// Resolve a videoId's playback options, deduped + cached. Failed/empty
+  /// resolves are evicted so a later attempt can retry. No decoder is touched —
+  /// this is just the network manifest extraction — so it is safe to run ahead.
+  Future<YoutubePlayback?> _playbackFor(String id) {
+    final existing = _pbCache[id];
+    if (existing != null) return existing;
+    final future =
+        YoutubeStreamResolver.resolvePlayback(id).catchError((_) => null);
+    _pbCache[id] = future;
+    future.then((pb) {
+      if (pb == null) _pbCache.remove(id);
+    });
+    return future;
+  }
+
+  /// Warm the next couple of reels: resolve each videoId, then pre-extract its
+  /// stream URLs so swiping plays almost instantly. Limited to 2 ahead because
+  /// the resolved URLs expire. Fire-and-forget; results are cached.
   void _prefetch(int index) {
     for (var i = index + 1; i <= index + 2 && i < _queue.length; i++) {
-      _resolver.videoIdFor(_queue[i]); // fire-and-forget; result is cached
+      _resolver.videoIdFor(_queue[i]).then((id) {
+        if (id != null && mounted) _playbackFor(id);
+      });
     }
   }
 
@@ -276,6 +311,7 @@ class _ShaaratFeedViewState extends ConsumerState<ShaaratFeedView>
       );
     }
 
+    final audioMode = ref.watch(settingsProvider).prefs['shaarat'] == 'audio';
     final feed = Stack(
       children: [
         PageView.builder(
@@ -289,10 +325,30 @@ class _ShaaratFeedViewState extends ConsumerState<ShaaratFeedView>
           itemBuilder: (context, i) => _ReelBackground(
             show: _queue[i],
             isTv: widget.isTv,
-            audioMode: ref.watch(settingsProvider).prefs['shaarat'] == 'audio',
-            showVideo: i == _active && !_loading,
+            audioMode: audioMode,
           ),
         ),
+        // ONE persistent video surface for the whole feed. It is mounted once
+        // and reused across page changes — re-creating a `Video` per page (the
+        // old approach) detached the shared decoder's texture every time you
+        // swiped, so every reel after the first stayed stuck on its blurred
+        // backdrop. We just swap the media on the shared player and fade this
+        // surface in. `IgnorePointer` lets swipes reach the PageView beneath it.
+        if (!audioMode)
+          Positioned.fill(
+            child: IgnorePointer(
+              child: AnimatedOpacity(
+                opacity: _loading ? 0 : 1,
+                duration: const Duration(milliseconds: 200),
+                child: Video(
+                  controller: PlayerService.instance.controller,
+                  controls: NoVideoControls,
+                  fit: BoxFit.contain,
+                  fill: Colors.transparent,
+                ),
+              ),
+            ),
+          ),
         if (_loading)
           const Center(
             child: CircularProgressIndicator(color: AppColors.primary),
@@ -355,18 +411,17 @@ class _ShaaratFeedViewState extends ConsumerState<ShaaratFeedView>
   }
 }
 
-/// One reel's background: a blurred dimmed backdrop (video mode) with the shared
-/// `Video` surface on top, or a full-cover poster/backdrop (audio mode).
+/// One reel's background: a blurred, dimmed backdrop (video mode) or a full-cover
+/// poster/backdrop (audio mode). The playing video itself is a single shared
+/// surface layered above the PageView, not part of this per-page background.
 class _ReelBackground extends StatelessWidget {
   final Show show;
   final bool isTv;
   final bool audioMode;
-  final bool showVideo;
   const _ReelBackground({
     required this.show,
     required this.isTv,
     required this.audioMode,
-    required this.showVideo,
   });
 
   @override
@@ -378,15 +433,6 @@ class _ReelBackground extends StatelessWidget {
         // Cover image (blurred behind the video, sharp in audio mode).
         _NetImage(url: coverUrl, blur: !audioMode),
         Container(color: Colors.black.withValues(alpha: audioMode ? 0.25 : 0.45)),
-        if (!audioMode && showVideo)
-          Positioned.fill(
-            child: Video(
-              controller: PlayerService.instance.controller,
-              controls: NoVideoControls,
-              fit: BoxFit.contain,
-              fill: Colors.transparent,
-            ),
-          ),
       ],
     );
   }

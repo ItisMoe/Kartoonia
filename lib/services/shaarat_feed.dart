@@ -16,25 +16,31 @@ List<Show> shaaratPool(List<Show> shows) {
   return out;
 }
 
-/// Weighted-random permutation of the شارات pool, stable per calendar day +
-/// [daySalt] (random feel, but doesn't reshuffle on every open). Liked shows get
-/// [likeBoost]× weight so they surface earlier and more often. Uses the
-/// Efraimidis–Spirakis key `-ln(u)/w` (smaller key = earlier), which yields a
-/// correct weighted permutation from independent uniforms.
+/// Weighted-random permutation of the شارات pool, **re-rolled on every call** so
+/// each visit to the reels feed gets a fresh order (never the same first show
+/// twice in a row). Two weights stack:
+///   - popularity: a show's [Show.fameScore] (TMDB vote_count) compressed by
+///     `sqrt` so the most famous cartoons strongly trend to the top while every
+///     show still keeps a real chance of appearing — "stress on popularity"
+///     without degenerating into a fixed sort.
+///   - likes: a liked show gets an extra [likeBoost]× multiplier on top.
+/// Uses the Efraimidis–Spirakis key `-ln(u)/w` (smaller key = earlier), which
+/// yields a correct weighted permutation from independent uniforms. Pass [rng]
+/// to make the roll deterministic in tests.
 List<Show> shaaratQueue(
   List<Show> shows,
   Set<String> likedIds, {
-  String? daySalt,
+  Random? rng,
   int likeBoost = 3,
 }) {
   final pool = shaaratPool(shows);
   if (pool.length < 2) return pool;
-  final now = DateTime.now();
-  final salt = daySalt ?? '';
-  final rng = Random('${now.year}-${now.month}-${now.day}-$salt'.hashCode);
+  final r = rng ?? Random();
   final keyed = pool.map((s) {
-    final w = likedIds.contains(s.id) ? likeBoost.toDouble() : 1.0;
-    final u = rng.nextDouble().clamp(1e-12, 1.0);
+    final fame = s.fameScore > 0 ? s.fameScore : 1.0;
+    var w = sqrt(fame); // compress the heavy-tailed vote_count distribution
+    if (likedIds.contains(s.id)) w *= likeBoost;
+    final u = r.nextDouble().clamp(1e-12, 1.0);
     return (key: -log(u) / w, show: s);
   }).toList()
     ..sort((a, b) => a.key.compareTo(b.key));

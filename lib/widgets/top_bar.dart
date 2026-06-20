@@ -44,10 +44,6 @@ class TopBar extends ConsumerWidget {
               active: current == 'home',
               onPressed: () => AppNav.home(context)),
           _NavItem(
-              label: t['nav_shaarat']!,
-              active: current == 'shaarat',
-              onPressed: () => AppNav.shaarat(context)),
-          _NavItem(
               label: t['nav_tv']!,
               active: current == 'tv',
               onPressed: () => AppNav.browse(context, 'tv')),
@@ -55,6 +51,10 @@ class TopBar extends ConsumerWidget {
               label: t['nav_movies']!,
               active: current == 'movies',
               onPressed: () => AppNav.browse(context, 'movies')),
+          _NavItem(
+              label: t['nav_shaarat']!,
+              active: current == 'shaarat',
+              onPressed: () => AppNav.shaarat(context)),
           _NavItem(
               label: t['nav_mylist']!,
               active: current == 'mylist',
