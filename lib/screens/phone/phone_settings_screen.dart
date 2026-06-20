@@ -54,6 +54,16 @@ class PhoneSettingsScreen extends ConsumerWidget {
                 onChanged: (v) => sn.setPref('motion', v ? 'on' : 'off')),
           ),
           _Group(
+            label: t['shaarat_mode']!,
+            child: Row(children: [
+              _Opt(t['shaarat_mode_video']!, settings.prefs['shaarat'] != 'audio',
+                  () => sn.setPref('shaarat', 'video')),
+              const SizedBox(width: 12),
+              _Opt(t['shaarat_mode_audio']!, settings.prefs['shaarat'] == 'audio',
+                  () => sn.setPref('shaarat', 'audio')),
+            ]),
+          ),
+          _Group(
             label: t['set_ytkey']!,
             hint: ytKey.trim().isEmpty
                 ? t['ytkey_default']!

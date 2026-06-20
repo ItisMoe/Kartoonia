@@ -107,6 +107,14 @@ class SettingsScreen extends ConsumerWidget {
                 opt(t['off']!, settings.prefs['motion'] != 'on',
                     () => sn.setPref('motion', 'off')),
               ]),
+              group(t['shaarat_mode']!, [
+                opt(t['shaarat_mode_video']!,
+                    settings.prefs['shaarat'] != 'audio',
+                    () => sn.setPref('shaarat', 'video')),
+                opt(t['shaarat_mode_audio']!,
+                    settings.prefs['shaarat'] == 'audio',
+                    () => sn.setPref('shaarat', 'audio')),
+              ]),
               // YouTube API key (override the bundled default)
               Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
