@@ -14,9 +14,9 @@ import '../theme/theme.dart';
 /// it) — the video is positioned at this rect (slightly overscanned) and the
 /// cutout, drawn on top, frames it to the exact screen shape.
 const Rect kTvRoomScreen =
-    Rect.fromLTRB(0.3372, 0.2031, 0.6323, 0.5794); // tv-clean-cut hole
+    Rect.fromLTRB(0.3634, 0.2344, 0.6141, 0.5339); // tv-clean-cut hole
 const Rect kPhoneRoomScreen =
-    Rect.fromLTRB(0.2878, 0.3590, 0.6745, 0.5276); // phone-clean-cut hole
+    Rect.fromLTRB(0.3255, 0.3779, 0.6380, 0.5087); // phone-clean-cut hole
 
 const double _kTvAspect = 1376 / 768;
 const double _kPhoneAspect = 768 / 1376;
