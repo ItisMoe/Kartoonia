@@ -54,6 +54,7 @@ class StorageService {
   static const _kRecentSearches = 'kt/recentSearches';
   static const _kShaaratBoosts = 'kt/shaaratBoosts';
   static const _kShaaratVideoIds = 'kt/shaaratVideoIds';
+  static const _kSkippedUpdate = 'kt/skippedUpdate'; // release the user dismissed
 
   final SharedPreferences _prefs;
   StorageService(this._prefs);
@@ -232,4 +233,12 @@ class StorageService {
     final p = getPrefs()..[key] = value;
     await _prefs.setString(_kPrefs, jsonEncode(p));
   }
+
+  // ---- App update ----
+  /// The release version the user chose to skip (e.g. "1.22.0"), or '' if none.
+  /// The update prompt is suppressed for exactly this version; a newer release
+  /// still prompts.
+  String getSkippedUpdate() => _prefs.getString(_kSkippedUpdate) ?? '';
+  Future<void> setSkippedUpdate(String version) =>
+      _prefs.setString(_kSkippedUpdate, version);
 }

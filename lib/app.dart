@@ -5,6 +5,7 @@ import 'screens/splash_screen.dart';
 import 'state/app_state.dart';
 import 'theme/theme.dart';
 import 'widgets/ambient_overlay.dart';
+import 'widgets/update_gate.dart';
 
 class KartooniaApp extends ConsumerWidget {
   const KartooniaApp({super.key});
@@ -32,8 +33,10 @@ class KartooniaApp extends ConsumerWidget {
           textDirection: isRtl ? TextDirection.rtl : TextDirection.ltr,
           child: Material(
             type: MaterialType.transparency,
-            child: AmbientOverlay(
-              child: child ?? const SizedBox.shrink(),
+            child: UpdateGate(
+              child: AmbientOverlay(
+                child: child ?? const SizedBox.shrink(),
+              ),
             ),
           ),
         );

@@ -2,7 +2,7 @@ name: kartoonia
 description: "Kartoonia - Arabic cartoons for Android TV"
 publish_to: 'none'
 
-version: 1.20.0+8
+version: 1.21.0+9
 
 environment:
   sdk: ^3.12.1
@@ -36,6 +36,10 @@ dependencies:
   shared_preferences: ^2.3.3
   youtube_explode_dart: ^3.1.0
 
+  # In-app update check (reads GitHub Releases, opens the APK/download)
+  package_info_plus: ^8.0.0
+  url_launcher: ^6.3.0
+
 dev_dependencies:
   flutter_test:
     sdk: flutter
@@ -62,8 +66,6 @@ flutter:
     # video is drawn UNDER these so the painted TV frame covers its edges.
     - assets/tv-clean-cut.png
     - assets/phone-clean-cut.png
-    # Audible CRT "snow" played while the next reel resolves.
-    - assets/crt-static.wav
 
   fonts:
     - family: Fredoka

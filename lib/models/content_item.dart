@@ -117,6 +117,14 @@ class TmdbData {
   final String? backdropUrl;
   final String? overviewAr;
   final String? overviewEn;
+
+  /// English TMDB title (e.g. القناص → "Hunter x Hunter") and the production's
+  /// original title (often a third language, e.g. "HUNTER×HUNTER"). Both are
+  /// matched by search so an Arabic-only catalog title is still findable by its
+  /// English/Latin name. Never shown in the UI — the Arabic [title] stays primary.
+  final String? enTitle;
+  final String? originalTitle;
+
   final List<String> genres;
   final int? year;
 
@@ -143,6 +151,8 @@ class TmdbData {
     this.backdropUrl,
     this.overviewAr,
     this.overviewEn,
+    this.enTitle,
+    this.originalTitle,
     this.genres = const [],
     this.year,
     this.voteAverage,
@@ -165,6 +175,8 @@ class TmdbData {
       backdropUrl: j['backdrop_url'] as String?,
       overviewAr: j['overview_ar'] as String?,
       overviewEn: j['overview_en'] as String?,
+      enTitle: (en is Map) ? en['title'] as String? : null,
+      originalTitle: j['original_title'] as String?,
       genres: genres,
       tmdbGenres: genres,
       tmdbId: (j['tmdb_id'] as num?)?.toInt(),

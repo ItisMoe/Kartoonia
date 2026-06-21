@@ -198,7 +198,10 @@ class CatalogService {
   List<Show> getRecentShows({int count = 20}) => shows.take(count).toList();
   List<Movie> getRecentMovies({int count = 20}) => movies.take(count).toList();
 
-  // ---- Search: title + description + overviews ----
+  // ---- Search: Arabic title + English/original title + description + overviews
+  // The English ([TmdbData.enTitle]) and original ([TmdbData.originalTitle])
+  // titles let an Arabic-only catalog title still surface from a Latin query
+  // (e.g. typing "Hunter" finds القناص = "Hunter x Hunter").
   List<ContentItem> search(String query) {
     final q = normalizeArSearch(query.toLowerCase().trim());
     if (q.isEmpty) return const [];
@@ -206,6 +209,8 @@ class CatalogService {
     return all.where((i) {
       final t = i.tmdb;
       return has(i.title) ||
+          has(t?.enTitle ?? '') ||
+          has(t?.originalTitle ?? '') ||
           has(i.description) ||
           has(t?.overviewEn ?? '') ||
           has(t?.overviewAr ?? '');

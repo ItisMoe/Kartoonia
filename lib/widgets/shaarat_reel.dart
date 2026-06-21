@@ -172,6 +172,10 @@ class _ShaaratFeedViewState extends ConsumerState<ShaaratFeedView>
         _stopPlayer();
         _suppressScreensaver(false);
         SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
+        // Clear the loading state so the CRT static (its animation timer) stops
+        // when we leave the tab — otherwise a reel left mid-resolve keeps the
+        // snow running on the kept-alive phone tab.
+        if (mounted) setState(() => _loading = false);
       }
     }
   }

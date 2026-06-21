@@ -126,6 +126,11 @@ const Map<String, Map<String, String>> kStrings = {
     'shaarat_loading': 'Loading…',
     'shaarat_playing': 'Playing',
     'shaarat_empty': 'No theme songs available yet.',
+    'update_title': 'Update available',
+    'update_message': 'A new version of Kartoonia is ready',
+    'update_now': 'Update',
+    'update_later': 'Later',
+    'update_skip': 'Skip this version',
   },
   'ar': {
     'appName': 'كرتونيا',
@@ -252,5 +257,10 @@ const Map<String, Map<String, String>> kStrings = {
     'shaarat_loading': 'جارٍ التحميل…',
     'shaarat_playing': 'قيد التشغيل',
     'shaarat_empty': 'لا توجد شارات متاحة بعد.',
+    'update_title': 'يتوفّر تحديث',
+    'update_message': 'إصدار جديد من كرتونيا جاهز',
+    'update_now': 'تحديث',
+    'update_later': 'لاحقاً',
+    'update_skip': 'تخطّي هذا الإصدار',
   },
 };

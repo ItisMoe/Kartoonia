@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../services/storage_service.dart';
 import '../services/catalog_service.dart';
+import '../services/update_service.dart';
 import '../services/voice_search_service.dart';
 import '../i18n/strings.dart';
 
@@ -21,6 +22,9 @@ final catalogProvider = Provider<CatalogService>(
 /// Bumped after an import or a source switch so dependent UI rebuilds (the
 /// catalog mutates in place).
 final catalogRevProvider = StateProvider<int>((ref) => 0);
+
+/// Checks GitHub Releases for a newer build (see [UpdateGate]).
+final updateServiceProvider = Provider<UpdateService>((ref) => UpdateService());
 
 /// True while the full-screen player is mounted — suppresses the screensaver so
 /// it never covers playback.
