@@ -157,16 +157,27 @@ class _ShaaratFeedViewState extends ConsumerState<ShaaratFeedView>
         _subscribe();
         _restart();
         WidgetsBinding.instance.addPostFrameCallback((_) {
-          if (mounted && widget.isTv) _enterFocus.requestFocus();
+          if (!mounted) return;
+          // Suppress the ambient screensaver while this tab drives playback —
+          // the reels auto-advance with no input, so the TV idle-overlay would
+          // otherwise drift in over a playing theme (same flag PlayerScreen
+          // uses). Cleared again when we stop driving playback / dispose.
+          _suppressScreensaver(true);
+          if (widget.isTv) _enterFocus.requestFocus();
         });
       }
     } else {
       if (_started) {
         _started = false;
         _stopPlayer();
+        _suppressScreensaver(false);
         SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
       }
     }
+  }
+
+  void _suppressScreensaver(bool on) {
+    ref.read(playerActiveProvider.notifier).state = on;
   }
 
   /// Subscribe to the shared player: completion auto-advances the feed (and
@@ -291,7 +302,13 @@ class _ShaaratFeedViewState extends ConsumerState<ShaaratFeedView>
   /// decoders. Adaptive video+audio is only a fallback when no muxed exists.
   Future<void> _playActive(YoutubePlayback pb, bool audioOnly) async {
     if (audioOnly) {
-      final url = pb.audioUrl ?? pb.muxedFallbackUrl;
+      // Prefer the progressive MUXED stream even in audio mode: it's the same
+      // stream the (working) video mode plays and reliably carries audio. The
+      // adaptive audio-only URL is throttled by YouTube unless fed extra range
+      // params libmpv doesn't send, so opening it bare often plays nothing —
+      // that's the "audio mode is silent" bug. Fall back to it only if no muxed
+      // exists. The video track decodes to no surface (poster covers the CRT).
+      final url = pb.muxedFallbackUrl ?? pb.audioUrl;
       if (url == null) throw Exception('no audio stream');
       await PlayerService.instance.open(url);
       return;
@@ -399,6 +416,7 @@ class _ShaaratFeedViewState extends ConsumerState<ShaaratFeedView>
     if (_started) {
       _player.setPlaylistMode(PlaylistMode.none);
       PlayerService.instance.stop();
+      _suppressScreensaver(false);
       SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
     }
     _pc.dispose();
@@ -546,10 +564,12 @@ class _Footer extends StatelessWidget {
       bottom: 0,
       child: DecoratedBox(
         decoration: BoxDecoration(
+          // A soft scrim, not a heavy bar — the text reads while the room stays
+          // visible, so the footer feels part of the scene.
           gradient: LinearGradient(
             begin: Alignment.bottomCenter,
             end: Alignment.topCenter,
-            colors: [Colors.black.withValues(alpha: 0.9), Colors.transparent],
+            colors: [Colors.black.withValues(alpha: 0.66), Colors.transparent],
             stops: const [0, 1],
           ),
         ),
@@ -600,65 +620,75 @@ class _Footer extends StatelessWidget {
                       fontSize: 22,
                       fontWeight: FontWeight.w900,
                       color: Colors.white)),
-              const SizedBox(height: 12),
-              // Small "Enter show" pill, styled to belong to the room: frosted
-              // dark glass with a warm amber edge + glow echoing the CRT light.
-              // Focus (TV) brightens it to a clear white target.
+              const SizedBox(height: 10),
+              // Compact "Enter show" chip that belongs to the room: frosted dark
+              // glass with a warm amber edge whose soft bloom reads like the
+              // CRT's light spilling into the scene. Focus (TV) blooms it
+              // brighter and flips it to a clear white target.
               Align(
                 alignment: AlignmentDirectional.centerStart,
                 child: Focusable(
                   focusNode: enterFocus,
                   onPressed: onEnter,
-                  builder: (context, focused) => ClipRRect(
-                    borderRadius: BorderRadius.circular(18),
-                    child: BackdropFilter(
-                      filter: ui.ImageFilter.blur(sigmaX: 8, sigmaY: 8),
-                      child: AnimatedContainer(
-                        duration: const Duration(milliseconds: 150),
-                        height: 36,
-                        padding: const EdgeInsets.symmetric(horizontal: 16),
-                        alignment: Alignment.center,
-                        decoration: BoxDecoration(
-                          color: focused
-                              ? Colors.white.withValues(alpha: 0.92)
-                              : Colors.black.withValues(alpha: 0.42),
-                          borderRadius: BorderRadius.circular(18),
-                          border: Border.all(
-                            color: focused
-                                ? Colors.white
-                                : _kCrtGlow.withValues(alpha: 0.7),
-                            width: 1.4,
-                          ),
-                          boxShadow: [
-                            BoxShadow(
-                              color: _kCrtGlow
-                                  .withValues(alpha: focused ? 0.55 : 0.3),
-                              blurRadius: focused ? 18 : 12,
-                              spreadRadius: focused ? 1 : 0,
-                            ),
-                          ],
-                        ),
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Icon(Icons.play_arrow,
-                                size: 17,
-                                color: focused ? AppColors.onFocus : _kCrtGlow),
-                            const SizedBox(width: 5),
-                            Text(t['shaarat_enter']!,
-                                style: TextStyle(
-                                    fontSize: 13,
-                                    fontWeight: FontWeight.w800,
-                                    color: focused
-                                        ? AppColors.onFocus
-                                        : Colors.white)),
-                          ],
-                        ),
-                      ),
-                    ),
-                  ),
+                  builder: (context, focused) =>
+                      _EnterChip(focused: focused, label: t['shaarat_enter']!),
                 ),
               ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// The small "Enter show" call-to-action. Frosted glass + an amber edge and an
+/// outer [_kCrtGlow] bloom so it reads as CRT light caught on a surface in the
+/// room rather than a flat button on top. [focused] (TV) brightens it.
+class _EnterChip extends StatelessWidget {
+  final bool focused;
+  final String label;
+  const _EnterChip({required this.focused, required this.label});
+
+  @override
+  Widget build(BuildContext context) {
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(15),
+      child: BackdropFilter(
+        filter: ui.ImageFilter.blur(sigmaX: 6, sigmaY: 6),
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 160),
+          height: 30,
+          padding: const EdgeInsets.symmetric(horizontal: 14),
+          alignment: Alignment.center,
+          decoration: BoxDecoration(
+            color: focused
+                ? Colors.white.withValues(alpha: 0.92)
+                : Colors.black.withValues(alpha: 0.32),
+            borderRadius: BorderRadius.circular(15),
+            border: Border.all(
+              color: focused ? Colors.white : _kCrtGlow.withValues(alpha: 0.85),
+              width: 1.2,
+            ),
+            boxShadow: [
+              BoxShadow(
+                color: _kCrtGlow.withValues(alpha: focused ? 0.6 : 0.38),
+                blurRadius: focused ? 22 : 16,
+                spreadRadius: focused ? 2 : 1,
+              ),
+            ],
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(Icons.play_arrow,
+                  size: 15, color: focused ? AppColors.onFocus : _kCrtGlow),
+              const SizedBox(width: 5),
+              Text(label,
+                  style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w800,
+                      color: focused ? AppColors.onFocus : Colors.white)),
             ],
           ),
         ),

@@ -4,17 +4,28 @@ import 'dart:typed_data';
 import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
+import 'package:media_kit/media_kit.dart';
 
 import '../theme/theme.dart';
 
-/// Where the CRT screen sits inside each room illustration, as fractions of the
-/// IMAGE (left, top, right, bottom). Measured against the art; fine-tune by eye.
-const Rect kTvRoomScreen = Rect.fromLTRB(0.421, 0.310, 0.605, 0.600); // tv-clean
+/// Where the CRT screen opening sits inside each room illustration, as fractions
+/// of the IMAGE (left, top, right, bottom). These MUST match the transparent
+/// hole punched into the `*-clean-cut.png` cutout art (see tools that generated
+/// it) — the video is positioned at this rect (slightly overscanned) and the
+/// cutout, drawn on top, frames it to the exact screen shape.
+const Rect kTvRoomScreen =
+    Rect.fromLTRB(0.3372, 0.2031, 0.6323, 0.5794); // tv-clean-cut hole
 const Rect kPhoneRoomScreen =
-    Rect.fromLTRB(0.401, 0.362, 0.720, 0.622); // phone-clean
+    Rect.fromLTRB(0.2878, 0.3590, 0.6745, 0.5276); // phone-clean-cut hole
 
 const double _kTvAspect = 1376 / 768;
 const double _kPhoneAspect = 768 / 1376;
+
+/// How far the video bleeds past the screen opening, as a fraction of the
+/// opening's size. The cutout art (on top) crops it back to the bezel; the
+/// overscan just guarantees no hairline seam shows at the hole's antialiased
+/// edge on any aspect ratio.
+const double _kOverscan = 0.025;
 
 /// The "boy watching an old TV" frame for the شارات reels. Paints the room
 /// illustration full-bleed and places [crtChild] (the live theme video, or the
@@ -44,25 +55,38 @@ class TvRoomStage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final asset = isTv ? 'assets/tv-clean.png' : 'assets/phone-clean.png';
+    // The cutout art has a transparent hole at the screen opening, so the video
+    // (drawn UNDER it) shows through and the painted bezel/glass frames it — the
+    // TV reads as a real tube with the content recessed inside, not a rectangle
+    // pasted on top.
+    final asset =
+        isTv ? 'assets/tv-clean-cut.png' : 'assets/phone-clean-cut.png';
     final aspect = isTv ? _kTvAspect : _kPhoneAspect;
     final frac = isTv ? kTvRoomScreen : kPhoneRoomScreen;
 
     return LayoutBuilder(builder: (context, c) {
       final box = Size(c.maxWidth, c.maxHeight);
       final screen = _coverRect(box, aspect, frac);
+      // Bleed the video a touch past the opening; the cutout crops it back.
+      final video = screen.inflate(screen.shortestSide * _kOverscan);
       return Stack(
         fit: StackFit.expand,
         children: [
+          // Black behind the tube so any sliver outside the video reads as dark.
+          const ColoredBox(color: Colors.black),
+          // The live theme video (or poster), recessed BEHIND the art.
+          Positioned.fromRect(rect: video, child: crtChild),
+          // Room illustration with the screen punched out, on top of the video.
           Image.asset(asset, fit: BoxFit.cover),
+          // Screen-only effects, clipped to the opening and layered above the
+          // art so they appear ON the glass.
           Positioned.fromRect(
             rect: screen,
             child: ClipRRect(
-              borderRadius: BorderRadius.circular(screen.shortestSide * 0.06),
+              borderRadius: BorderRadius.circular(screen.shortestSide * 0.10),
               child: Stack(
                 fit: StackFit.expand,
                 children: [
-                  crtChild,
                   // CRT "snow" while the next theme resolves: it covers the
                   // media swap, then crossfades away to reveal the new video —
                   // like changing channels on an old TV. Doubles as the loading
@@ -173,6 +197,7 @@ class _CrtStaticState extends State<_CrtStatic> {
   }
 
   void _start() {
+    _CrtAudio.start(); // audible hiss to match the on-screen snow
     _timer ??= Timer.periodic(const Duration(milliseconds: 60), (_) {
       if (_frames.isEmpty) return;
       setState(() => _i = (_i + 1) % _frames.length);
@@ -180,6 +205,7 @@ class _CrtStaticState extends State<_CrtStatic> {
   }
 
   void _stop() {
+    _CrtAudio.stop();
     _timer?.cancel();
     _timer = null;
   }
@@ -201,6 +227,38 @@ class _CrtStaticState extends State<_CrtStatic> {
       willChange: true,
       size: Size.infinite,
     );
+  }
+}
+
+/// The CRT "snow" hiss that plays while the next reel resolves, so the static
+/// is heard as well as seen — like an old TV between channels. Uses its OWN
+/// tiny audio-only [Player] (a short seamless noise loop), kept alive and reused
+/// for the whole app session. This never touches a video decoder, so it doesn't
+/// break the app's one-video-Player rule; the shared theme Player is stopped
+/// during loading anyway, so the two never fight over the speakers.
+class _CrtAudio {
+  static Player? _player;
+  static bool _on = false;
+
+  static Player _ensure() {
+    final p = _player ??= Player();
+    p.setPlaylistMode(PlaylistMode.loop); // loop until loading ends
+    p.setVolume(42); // a soft hiss under the UI, not a blast
+    return p;
+  }
+
+  static void start() {
+    if (_on) return;
+    _on = true;
+    final p = _ensure();
+    // Restart from the top so every channel-change opens on a fresh burst.
+    p.open(Media('asset:///assets/crt-static.wav')).catchError((_) {});
+  }
+
+  static void stop() {
+    if (!_on) return;
+    _on = false;
+    _player?.stop().catchError((_) {});
   }
 }
 
