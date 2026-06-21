@@ -51,7 +51,6 @@ class StorageService {
   static const _kPrefs = 'kt/prefs'; // motion/autoplay
   static const _kYtKey = 'kt/ytKey'; // user-set YouTube Data API key override
   static const _kCatalogSource = 'kt/catalogSource'; // arabicToons | stardima
-  static const _kRecentSearches = 'kt/recentSearches';
   static const _kShaaratBoosts = 'kt/shaaratBoosts';
   static const _kShaaratVideoIds = 'kt/shaaratVideoIds';
   static const _kSkippedUpdate = 'kt/skippedUpdate'; // release the user dismissed
@@ -135,24 +134,6 @@ class StorageService {
     await _prefs.setString(
         _kProgress, jsonEncode(map.map((k, v) => MapEntry(k, v.toJson()))));
   }
-
-  // ---- Recent searches ----
-  /// Recent search queries, most-recent first.
-  List<String> getRecentSearches() =>
-      _prefs.getStringList(_kRecentSearches) ?? const [];
-
-  /// Record a query: trims, ignores empties, de-dupes case-insensitively,
-  /// moves to the front, and caps the list at 8.
-  Future<void> addRecentSearch(String q) async {
-    final query = q.trim();
-    if (query.isEmpty) return;
-    final list = [...getRecentSearches()]
-      ..removeWhere((e) => e.toLowerCase() == query.toLowerCase());
-    list.insert(0, query);
-    await _prefs.setStringList(_kRecentSearches, list.take(8).toList());
-  }
-
-  Future<void> clearRecentSearches() => _prefs.remove(_kRecentSearches);
 
   // ---- شارات engagement boost (implicit; orders the reel feed) ----
   // showId -> accumulated boost points. Earned from dwell/completion/entering a
