@@ -1,5 +1,10 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:http/http.dart' as http;
+import 'package:path_provider/path_provider.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../navigation.dart';
@@ -56,8 +61,7 @@ class _UpdateGateState extends ConsumerState<UpdateGate> {
         t: t,
         onUpdate: () {
           Navigator.of(dctx).pop();
-          launchUrl(Uri.parse(release.downloadUrl),
-              mode: LaunchMode.externalApplication);
+          _downloadAndInstall(release);
         },
         onLater: () => Navigator.of(dctx).pop(),
         onSkip: () {
@@ -68,8 +72,110 @@ class _UpdateGateState extends ConsumerState<UpdateGate> {
     );
   }
 
+  static const _installChannel = MethodChannel('kartoonia/reco');
+
+  /// Download the release APK in-app (progress dialog) and hand it to the
+  /// system package installer. Any failure — no APK asset, network error,
+  /// installer refused — falls back to opening the download URL in a browser
+  /// (the old behavior, still right on phones).
+  Future<void> _downloadAndInstall(AppRelease release) async {
+    final apkUrl = release.apkUrl;
+    final ctx = appNavigatorKey.currentContext;
+    if (apkUrl == null || ctx == null || !ctx.mounted) {
+      launchUrl(Uri.parse(release.downloadUrl),
+          mode: LaunchMode.externalApplication);
+      return;
+    }
+
+    final t = ref.read(stringsProvider);
+    final progress = ValueNotifier<double?>(null);
+    var dialogUp = true;
+    showDialog<void>(
+      context: ctx,
+      barrierDismissible: false,
+      builder: (_) => _DownloadDialog(progress: progress, t: t),
+    ).whenComplete(() => dialogUp = false);
+    void closeDialog() {
+      if (dialogUp) appNavigatorKey.currentState?.pop();
+    }
+
+    final client = http.Client();
+    try {
+      final resp =
+          await client.send(http.Request('GET', Uri.parse(apkUrl)));
+      if (resp.statusCode != 200) throw Exception('HTTP ${resp.statusCode}');
+      final file = File(
+          '${(await getTemporaryDirectory()).path}/kartoonia-update.apk');
+      final sink = file.openWrite();
+      final total = resp.contentLength ?? 0;
+      var got = 0;
+      try {
+        await for (final chunk in resp.stream) {
+          sink.add(chunk);
+          got += chunk.length;
+          if (total > 0) progress.value = got / total;
+        }
+      } finally {
+        await sink.close();
+      }
+      closeDialog();
+      final ok =
+          await _installChannel.invokeMethod('installApk', {'path': file.path});
+      if (ok != true) throw Exception('installer refused');
+    } catch (_) {
+      closeDialog();
+      launchUrl(Uri.parse(release.downloadUrl),
+          mode: LaunchMode.externalApplication);
+    } finally {
+      client.close();
+    }
+  }
+
   @override
   Widget build(BuildContext context) => widget.child;
+}
+
+/// Modal download progress for the in-app update. Indeterminate until the
+/// content length is known, then a percentage bar.
+class _DownloadDialog extends StatelessWidget {
+  final ValueNotifier<double?> progress;
+  final Map<String, String> t;
+  const _DownloadDialog({required this.progress, required this.t});
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      backgroundColor: AppColors.bg2,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+      title: Row(children: [
+        const Icon(Icons.download, color: AppColors.primary2, size: 26),
+        const SizedBox(width: 10),
+        Expanded(
+          child: Text(t['update_downloading'] ?? 'Downloading update…',
+              style: const TextStyle(
+                  fontWeight: FontWeight.w900, color: AppColors.ink)),
+        ),
+      ]),
+      content: ValueListenableBuilder<double?>(
+        valueListenable: progress,
+        builder: (_, v, _) => Column(mainAxisSize: MainAxisSize.min, children: [
+          LinearProgressIndicator(
+            value: v,
+            minHeight: 8,
+            borderRadius: BorderRadius.circular(4),
+            backgroundColor: const Color(0x33FFFFFF),
+            valueColor: const AlwaysStoppedAnimation(AppColors.primary),
+          ),
+          if (v != null) ...[
+            const SizedBox(height: 10),
+            Text('${(v * 100).round()}%',
+                style: const TextStyle(
+                    fontWeight: FontWeight.w800, color: AppColors.inkSoft)),
+          ],
+        ]),
+      ),
+    );
+  }
 }
 
 class _UpdateDialog extends StatelessWidget {

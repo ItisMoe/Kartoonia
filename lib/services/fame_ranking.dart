@@ -75,6 +75,47 @@ List<T> sortedForBrowse<T extends ContentItem>(List<T> items) {
   return [...enriched, ...rest];
 }
 
+/// Titles similar to [item] for the detail screen's "More Like This" row.
+///
+/// Ranked by shared-genre count (dominant), then a same-kind bonus (shows
+/// suggest shows, movies suggest movies), then fame as the tiebreak. The item
+/// itself and its cross-source twin (same tmdbId) are excluded, results are
+/// deduped by tmdbId. When genre overlap can't fill [count] (genre-less
+/// items), famous same-kind titles backfill so the row is never sparse.
+List<ContentItem> similarTo(ContentItem item, List<ContentItem> all,
+    {int count = 12}) {
+  final own = item.genres.toSet();
+  bool isShow(ContentItem o) => o is Show;
+  bool excluded(ContentItem o) =>
+      o.id == item.id || (item.tmdbId != null && o.tmdbId == item.tmdbId);
+
+  final scored = <(double, ContentItem)>[];
+  for (final o in all) {
+    if (excluded(o)) continue;
+    final shared = own.isEmpty ? 0 : o.genres.where(own.contains).length;
+    if (shared == 0) continue;
+    // Genre overlap dominates (1e6 per genre), same-kind is worth half a
+    // genre, fame (vote_count, <1e5) only breaks ties within a bucket.
+    final score = shared * 1e6 +
+        (isShow(o) == isShow(item) ? 5e5 : 0) +
+        (o.fameScore > 0 ? o.fameScore : 0);
+    scored.add((score, o));
+  }
+  scored.sort((a, b) => b.$1.compareTo(a.$1));
+  final out = _dedupeByTmdbId([for (final s in scored) s.$2]);
+
+  if (out.length < count) {
+    final have = {for (final o in out) o.id};
+    for (final o in famousPool(all)) {
+      if (out.length >= count) break;
+      if (excluded(o) || have.contains(o.id)) continue;
+      if (isShow(o) != isShow(item)) continue;
+      out.add(o);
+    }
+  }
+  return out.take(count).toList();
+}
+
 /// All distinct genres present across [items], sorted alphabetically.
 List<String> genresIn(List<ContentItem> items) {
   final set = <String>{};

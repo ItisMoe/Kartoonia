@@ -58,13 +58,14 @@ void main() {
   });
 
   group('selectVideoOptions', () {
-    test('caps at maxHeight and sorts high to low (all video-only)', () {
+    test('caps at maxHeight (default 1080) and sorts high to low', () {
       final r = selectVideoOptions(const [
         VideoStreamCandidate(height: 360, url: '360', isMp4: true),
+        VideoStreamCandidate(height: 1440, url: '1440', isMp4: true),
         VideoStreamCandidate(height: 1080, url: '1080', isMp4: true),
         VideoStreamCandidate(height: 720, url: '720', isMp4: true),
       ]);
-      expect(r.map((o) => o.height).toList(), [720, 360]);
+      expect(r.map((o) => o.height).toList(), [1080, 720, 360]);
       expect(r.every((o) => o.muxed == false), isTrue);
     });
     test('prefers mp4 when a height has both mp4 and webm', () {

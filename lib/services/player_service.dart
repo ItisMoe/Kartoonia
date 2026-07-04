@@ -53,6 +53,11 @@ class PlayerService {
     final platform = p.platform;
     if (platform is NativePlayer) {
       platform.setProperty('hls-bitrate', 'max');
+      // Prefer the Arabic audio rendition on multi-language streams (some
+      // Stardima HLS masters carry several). Restores what the Python
+      // prototype did with VLC's --audio-language; ExoPlayer couldn't, libmpv
+      // can. Streams without an Arabic track just play their default.
+      platform.setProperty('alang', 'ara,ar');
     }
   }
 

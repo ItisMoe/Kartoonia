@@ -33,6 +33,49 @@ void main() {
         servers: const [],
       );
 
+  group('similarTo', () {
+    Movie m(String id,
+            {List<String> genres = const [], int? tmdbId, int votes = 0}) =>
+        Movie(
+          id: id,
+          title: id,
+          thumbnailUrl: '',
+          description: '',
+          // fromJson sets genres and tmdbGenres from the same list — mirror it.
+          tmdb: TmdbData(
+              genres: genres,
+              tmdbGenres: genres,
+              tmdbId: tmdbId,
+              voteCount: votes,
+              voteAverage: 7),
+          pageUrl: '',
+          servers: const [],
+        );
+
+    test('ranks by genre overlap with fame tiebreak; excludes self and twin',
+        () {
+      final item = m('a', genres: ['Animation', 'Comedy'], tmdbId: 1);
+      final twin = m('a2', genres: ['Animation', 'Comedy'], tmdbId: 1);
+      final twoShared = m('b', genres: ['Animation', 'Comedy'], tmdbId: 2, votes: 10);
+      final oneFamous = m('c', genres: ['Animation'], tmdbId: 3, votes: 9000);
+      final oneMeh = m('d', genres: ['Comedy'], tmdbId: 4, votes: 5);
+      final noOverlap = m('e', genres: ['Drama'], tmdbId: 5, votes: 99999);
+
+      final r = similarTo(
+          item, [item, twin, twoShared, oneFamous, oneMeh, noOverlap]);
+      // Two shared genres beat one famous shared genre; fame orders within a
+      // bucket; self/twin excluded; zero-overlap non-animation never appears.
+      expect(r.map((i) => i.id).toList(), ['b', 'c', 'd']);
+    });
+
+    test('backfills from the famous pool when overlap cannot fill the row', () {
+      final item = m('a', genres: ['Comedy'], tmdbId: 1);
+      final famous = m('f', genres: ['Animation'], tmdbId: 2, votes: 9000);
+      final r = similarTo(item, [item, famous], count: 5);
+      expect(r.map((i) => i.id).toList(), ['f']);
+    });
+  });
+
   group('TmdbData parsing', () {
     test('parses vote_count and popularity when present', () {
       final t = TmdbData.fromJson({

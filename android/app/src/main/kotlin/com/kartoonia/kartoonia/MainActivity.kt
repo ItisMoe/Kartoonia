@@ -46,6 +46,48 @@ class MainActivity : FlutterActivity() {
                         result.success(false)
                     }
                 }
+                "watchNext" -> {
+                    try {
+                        @Suppress("UNCHECKED_CAST")
+                        val args = call.arguments as? Map<String, Any?> ?: emptyMap()
+                        Recommendations.upsertWatchNext(this, args)
+                        result.success(true)
+                    } catch (e: Throwable) {
+                        result.success(false)
+                    }
+                }
+                "watchNextRemove" -> {
+                    try {
+                        Recommendations.removeWatchNext(
+                            this, call.argument<String>("id") ?: ""
+                        )
+                        result.success(true)
+                    } catch (e: Throwable) {
+                        result.success(false)
+                    }
+                }
+                // Hand a downloaded release APK to the system package installer
+                // (in-app update; browsers don't exist on most TV boxes).
+                "installApk" -> {
+                    try {
+                        val path = call.argument<String>("path")!!
+                        val uri = androidx.core.content.FileProvider.getUriForFile(
+                            this, "$packageName.fileprovider", java.io.File(path)
+                        )
+                        val intent = Intent(Intent.ACTION_VIEW)
+                            .setDataAndType(
+                                uri, "application/vnd.android.package-archive"
+                            )
+                            .addFlags(
+                                Intent.FLAG_GRANT_READ_URI_PERMISSION or
+                                    Intent.FLAG_ACTIVITY_NEW_TASK
+                            )
+                        startActivity(intent)
+                        result.success(true)
+                    } catch (e: Throwable) {
+                        result.success(false)
+                    }
+                }
                 "getInitialDeepLink" -> {
                     result.success(pendingDeepLink)
                     pendingDeepLink = null

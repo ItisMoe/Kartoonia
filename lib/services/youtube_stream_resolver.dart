@@ -83,7 +83,7 @@ String? pickBestAudioUrl(List<AudioStreamCandidate> options) {
 /// Video-only options at or below [maxHeight], one per distinct height (mp4
 /// preferred when a height offers both), sorted high -> low.
 List<YtVideoOption> selectVideoOptions(List<VideoStreamCandidate> options,
-    {int maxHeight = 720}) {
+    {int maxHeight = 1080}) {
   final byHeight = <int, VideoStreamCandidate>{};
   for (final o in options) {
     if (o.height <= 0 || o.height > maxHeight) continue;
@@ -107,10 +107,15 @@ class YoutubeStreamResolver {
   /// paired with the best audio, plus a muxed fallback). Returns null when
   /// nothing usable is found. Throws on transport errors (caller handles).
   ///
+  /// The cap is 1080p: YouTube's muxed files stop at 360p, so real quality
+  /// comes from the video-only + audio-only pair libmpv plays in sync; 1080p
+  /// H.264 is near-universally available and decodes fine on Android TV,
+  /// while 1440p+ is usually VP9/AV1-only and stutters on weak TV decoders.
+  ///
   /// If no usable audio-only stream exists, the video-only options are dropped
   /// (they would play silent) and only the muxed fallback remains.
   static Future<YoutubePlayback?> resolvePlayback(String videoId,
-      {int maxHeight = 720}) async {
+      {int maxHeight = 1080}) async {
     final yt = YoutubeExplode();
     try {
       final manifest = await yt.videos.streamsClient.getManifest(videoId);

@@ -1,8 +1,7 @@
-import 'dart:convert';
-import 'package:flutter/services.dart' show rootBundle;
 import '../models/catalog_source.dart';
 import '../models/content_item.dart';
 import '../models/stardima_adapter.dart';
+import 'catalog_updater.dart';
 import 'fame_ranking.dart';
 
 /// Loads, indexes and queries a bundled catalog. The active source (Arabic Toons
@@ -43,10 +42,9 @@ class CatalogService {
   static Future<CatalogService> loadMerged() async {
     final svc = CatalogService._(CatalogSource.arabicToons);
 
-    // Arabic Toons (legacy schema).
-    final atStr =
-        await rootBundle.loadString(CatalogSource.arabicToons.assetPath);
-    final atData = jsonDecode(atStr) as Map<String, dynamic>;
+    // Arabic Toons (legacy schema). Loads the freshest valid data: a cached
+    // GitHub download when present, else the bundled asset (CatalogUpdater).
+    final atData = await CatalogUpdater.loadJson(CatalogSource.arabicToons);
     final atShows = ((atData['shows'] as List?) ?? const [])
         .map((e) => Show.fromJson((e as Map).cast<String, dynamic>()))
         .toList();
@@ -55,8 +53,7 @@ class CatalogService {
         .toList();
 
     // Stardima (adapter).
-    final stStr = await rootBundle.loadString(CatalogSource.stardima.assetPath);
-    final stData = jsonDecode(stStr) as Map<String, dynamic>;
+    final stData = await CatalogUpdater.loadJson(CatalogSource.stardima);
     final (stShows, stMovies) = StardimaAdapter.parse(stData);
 
     // Index items by tmdbId per source. A tmdbId can map to more than one item
@@ -140,8 +137,7 @@ class CatalogService {
   }
 
   Future<void> _loadSource(CatalogSource src) async {
-    final jsonStr = await rootBundle.loadString(src.assetPath);
-    final data = jsonDecode(jsonStr) as Map<String, dynamic>;
+    final data = await CatalogUpdater.loadJson(src);
     source = src;
     switch (src) {
       case CatalogSource.arabicToons:

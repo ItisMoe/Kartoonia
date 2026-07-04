@@ -2,7 +2,7 @@ name: kartoonia
 description: "Kartoonia - Arabic cartoons for Android TV"
 publish_to: 'none'
 
-version: 1.22.0+10
+version: 1.23.0+11
 
 environment:
   sdk: ^3.12.1
@@ -30,6 +30,9 @@ dependencies:
   # Networking + images
   http: ^1.2.2
   cached_network_image: ^3.4.1
+
+  # Remote-catalog cache location (app support dir)
+  path_provider: ^2.1.5
 
   # The trailer/theme-song YouTube player
   # Persistence

@@ -4,6 +4,10 @@
     <uses-permission android:name="com.android.providers.tv.permission.WRITE_EPG_DATA"/>
     <!-- Voice search: record audio for on-device speech recognition -->
     <uses-permission android:name="android.permission.RECORD_AUDIO"/>
+    <!-- In-app update: install the downloaded release APK over this app.
+         Many TV boxes have no browser, so opening the download URL is a dead
+         end there — the app downloads and hands the APK to the installer. -->
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES"/>
 
     <!-- Runs on both Android TV / Google TV (leanback, no touchscreen) AND
          touch phones/tablets. Nothing is required, so the app installs on every
@@ -13,8 +17,11 @@
     <!-- Mic is optional: TVs without one still install (voice button hides itself) -->
     <uses-feature android:name="android.hardware.microphone" android:required="false"/>
 
+    <!-- allowBackup keeps SharedPreferences (watchlist, watch progress, prefs)
+         in Google's device backup, so a reinstall/new TV restores them. -->
     <application
         android:label="Kartoonia"
+        android:allowBackup="true"
         android:name="${applicationName}"
         android:banner="@drawable/banner"
         android:icon="@mipmap/ic_launcher"
@@ -50,6 +57,17 @@
                 <data android:scheme="kartoonia"/>
             </intent-filter>
         </activity>
+        <!-- Exposes the downloaded update APK (app cache dir) to the system
+             package installer via a content:// URI. -->
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.fileprovider"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/file_paths"/>
+        </provider>
         <meta-data
             android:name="flutterEmbedding"
             android:value="2" />

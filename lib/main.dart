@@ -1,9 +1,11 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:media_kit/media_kit.dart';
 import 'app.dart';
 import 'services/catalog_service.dart';
+import 'services/catalog_updater.dart';
 import 'services/storage_service.dart';
 import 'state/app_state.dart';
 
@@ -50,6 +52,10 @@ Future<void> main() async {
       child: const KartooniaApp(),
     ),
   );
+
+  // Background-refresh the catalogs from GitHub (ETag-cheap when unchanged).
+  // A fresh download is served by the NEXT launch — see CatalogUpdater.
+  unawaited(CatalogUpdater.refreshAll());
 }
 
 /// Ask the host whether this is a leanback (TV) device. Reuses the existing

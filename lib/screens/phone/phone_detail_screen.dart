@@ -4,11 +4,14 @@ import '../../models/catalog_source.dart';
 import '../../models/content_item.dart';
 import '../../navigation.dart';
 import '../../playback.dart';
+import '../../services/fame_ranking.dart';
 import '../../services/storage_service.dart';
 import '../../state/app_state.dart';
 import '../../theme/theme.dart';
 import '../../utils/genre_translations.dart';
 import '../../widgets/catalog_image.dart';
+import '../../widgets/phone/phone_poster_card.dart';
+import 'phone_nav.dart';
 
 /// Portrait title page: a backdrop header, metadata, the primary actions and a
 /// vertical episode list (for shows) with a season selector.
@@ -183,6 +186,8 @@ class _PhoneDetailScreenState extends ConsumerState<PhoneDetailScreen> {
                         const SizedBox(height: 18),
                       ],
                       if (item is Show) _episodes(item, t),
+                      const SizedBox(height: 24),
+                      _similarRow(item, t),
                     ],
                   ),
                 ),
@@ -215,6 +220,40 @@ class _PhoneDetailScreenState extends ConsumerState<PhoneDetailScreen> {
           ),
         ),
       ]),
+    );
+  }
+
+  /// "More Like This": genre-matched titles (see [similarTo]) as a horizontal
+  /// poster rail. Tapping one pushes its detail page.
+  Widget _similarRow(ContentItem item, Map<String, String> t) {
+    final sims = similarTo(item, ref.read(catalogProvider).all);
+    if (sims.isEmpty) return const SizedBox.shrink();
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(t['row_similar']!,
+            style: const TextStyle(
+                fontFamily: Fonts.display,
+                fontFamilyFallback: Fonts.fallback,
+                fontWeight: FontWeight.w600,
+                fontSize: 22,
+                color: AppColors.ink)),
+        const SizedBox(height: 12),
+        SizedBox(
+          height: 116 * 3 / 2,
+          child: ListView.separated(
+            scrollDirection: Axis.horizontal,
+            clipBehavior: Clip.none,
+            itemCount: sims.length,
+            separatorBuilder: (_, _) => const SizedBox(width: 10),
+            itemBuilder: (context, i) => PhonePosterCard(
+              item: sims[i],
+              movieLabel: t['movie']!,
+              onPressed: () => openPhoneDetail(context, sims[i]),
+            ),
+          ),
+        ),
+      ],
     );
   }
 

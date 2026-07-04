@@ -73,6 +73,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
           TextButton(
             onPressed: () async {
               await ref.read(storageProvider).removeProgressForItem(item.id);
+              Recommendations.removeWatchNext(item.id);
               ref.read(userProvider.notifier).refresh();
               if (ctx.mounted) Navigator.pop(ctx);
             },

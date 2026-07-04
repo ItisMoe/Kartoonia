@@ -9,6 +9,7 @@ import '../models/content_item.dart';
 import '../services/playback_error_policy.dart';
 import '../services/playback_resolver.dart';
 import '../services/player_service.dart';
+import '../services/recommendations.dart';
 import '../services/storage_service.dart';
 import '../state/app_state.dart';
 import '../theme/theme.dart';
@@ -114,6 +115,11 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
   // touching the provider after the widget tree is torn down.
   late final bool _isTv = ref.read(isTvProvider);
   bool get _phone => !_isTv;
+
+  // The catalog item being played, for the launcher's Watch Next row (TV).
+  // Resolved once; null when the id is unknown (imported/stale progress).
+  late final ContentItem? _wnItem =
+      ref.read(catalogProvider).getById(widget.args.itemId);
 
   // x of the last double-tap-down on the touch surface, used to decide which
   // half of the screen was tapped (left = rewind, right = forward).
@@ -421,6 +427,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
 
   void _onEnd() {
     _saveProgressComplete();
+    _syncWatchNext(completed: true);
     if (!_hasNext) {
       Navigator.maybePop(context);
       return;
@@ -539,11 +546,48 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
     _flashControls();
   }
 
+  /// Keep the Android TV launcher's WATCH NEXT row in sync with this session:
+  /// in-progress → a continue card with a progress bar; finished with a next
+  /// episode → an "up next" card; finished with nothing left → card removed.
+  /// TMDB-artless items are skipped (the launcher can't send the CDN Referer).
+  void _syncWatchNext({bool completed = false}) {
+    final item = _wnItem;
+    if (!_isTv || item == null || item.tmdb == null) return;
+    final durMs = _duration.inMilliseconds;
+    final posMs = _position.inMilliseconds;
+    final done = completed || (durMs > 0 && posMs / durMs >= 0.95);
+    if (done) {
+      if (_hasNext) {
+        Recommendations.updateWatchNext(
+          id: item.id,
+          title: item.title,
+          poster: item.posterUrl,
+          positionMs: 0,
+          durationMs: 0,
+          isMovie: item is Movie,
+          next: true,
+        );
+      } else {
+        Recommendations.removeWatchNext(item.id);
+      }
+    } else if (durMs > 0 && _position.inSeconds > 10) {
+      Recommendations.updateWatchNext(
+        id: item.id,
+        title: item.title,
+        poster: item.posterUrl,
+        positionMs: posMs,
+        durationMs: durMs,
+        isMovie: item is Movie,
+      );
+    }
+  }
+
   /// Netflix-style: stop playback the moment the player is no longer on screen.
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state != AppLifecycleState.resumed) {
       _saveProgress();
+      _syncWatchNext();
       _player.pause();
     }
   }
@@ -553,6 +597,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
     WidgetsBinding.instance.removeObserver(this);
     ref.read(playerActiveProvider.notifier).state = false;
     _saveProgress();
+    _syncWatchNext();
     _hideTimer?.cancel();
     _saveTimer?.cancel();
     _errorConfirmTimer?.cancel();
@@ -637,6 +682,11 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
                   controls: NoVideoControls,
                   fit: BoxFit.contain,
                   fill: Colors.black,
+                  // The catalogs top out at 480p-1080p while TVs are 1080p-4K,
+                  // so the texture is almost always upscaled. Default is
+                  // FilterQuality.low (bilinear) — cubic keeps edges noticeably
+                  // crisper on a big screen for one full-screen quad.
+                  filterQuality: FilterQuality.high,
                 ),
               ),
               // Phone touch layer: sits ABOVE the video but BELOW the controls

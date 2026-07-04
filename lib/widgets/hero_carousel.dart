@@ -77,6 +77,9 @@ class _HeroCarouselState extends State<HeroCarousel> {
   @override
   Widget build(BuildContext context) {
     if (widget.items.isEmpty) return const SizedBox(height: Dims.heroH);
+    // The featured list can shrink across rebuilds (daily rotation / source
+    // switch); clamp so a stale _index can't range-error the whole Home screen.
+    if (_index >= widget.items.length) _index = 0;
     final s = widget.items[_index];
     final t = widget.t;
     final align =

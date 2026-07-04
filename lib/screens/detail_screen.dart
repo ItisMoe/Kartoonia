@@ -4,13 +4,16 @@ import '../models/catalog_source.dart';
 import '../models/content_item.dart';
 import '../navigation.dart';
 import '../playback.dart';
+import '../services/fame_ranking.dart';
 import '../services/resume.dart';
 import '../services/storage_service.dart';
 import '../state/app_state.dart';
+import '../theme/layout.dart';
 import '../theme/theme.dart';
 import '../utils/genre_translations.dart';
 import '../utils/youtube_query.dart';
 import '../widgets/catalog_image.dart';
+import '../widgets/content_card.dart';
 import '../widgets/ensure_visible.dart';
 import '../widgets/focusable.dart';
 import '../widgets/pill.dart';
@@ -226,11 +229,51 @@ class _DetailScreenState extends ConsumerState<DetailScreen> {
                   const SizedBox(height: 28),
                 ],
                 if (item is Show) _episodes(item, t),
+                const SizedBox(height: 36),
+                _similarRow(item, t),
               ],
             ),
           ),
         ),
       ]),
+    );
+  }
+
+  /// "More Like This": genre-matched titles (see [similarTo]), rendered in the
+  /// same rail style as the episodes list. Opening one pushes its detail.
+  Widget _similarRow(ContentItem item, Map<String, String> t) {
+    final sims = similarTo(item, ref.read(catalogProvider).all);
+    if (sims.isEmpty) return const SizedBox.shrink();
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(t['row_similar']!,
+            style: const TextStyle(
+                fontFamily: Fonts.display,
+                fontFamilyFallback: Fonts.fallback,
+                fontWeight: FontWeight.w500,
+                fontSize: 30,
+                color: AppColors.ink)),
+        const SizedBox(height: 16),
+        SizedBox(
+          height: Dims.cardH + 24,
+          child: ListView.separated(
+            scrollDirection: Axis.horizontal,
+            clipBehavior: Clip.none,
+            itemCount: sims.length,
+            separatorBuilder: (_, _) => const SizedBox(width: Dims.rowGap),
+            itemBuilder: (context, i) => Center(
+              child: EnsureVisibleOnFocus(
+                child: PosterCard(
+                  item: sims[i],
+                  movieLabel: t['movie']!,
+                  onPressed: () => AppNav.detail(context, sims[i]),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ],
     );
   }
 

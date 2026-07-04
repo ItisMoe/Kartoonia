@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:media_kit/media_kit.dart';
 import 'package:media_kit_video/media_kit_video.dart';
+import '../services/playback_error_policy.dart';
 import '../services/player_service.dart';
 import '../services/youtube_service.dart';
 import '../services/youtube_stream_resolver.dart';
@@ -38,6 +39,14 @@ class _YoutubeScreenState extends ConsumerState<YoutubeScreen>
   bool _ended = false;
 
   YoutubePlayback? _playback;
+
+  // True while the current media is the adaptive (video+audio) pair — a
+  // confirmed mid-playback stall then falls back to the muxed stream instead
+  // of failing outright. False once muxed is playing (nothing left to try).
+  bool _adaptiveActive = false;
+  // Pending stall confirmation for a mid-playback error (see the main player:
+  // libmpv logs error-level events for transient, self-recovering problems).
+  Timer? _errorConfirmTimer;
 
   bool _controlsShown = true;
   Timer? _hideTimer;
@@ -86,7 +95,7 @@ class _YoutubeScreenState extends ConsumerState<YoutubeScreen>
         }
       }),
       p.stream.error.listen((_) {
-        if (mounted && !_loading) _fail();
+        if (mounted && !_loading && !_failed) _onPlaybackError();
       }),
     ]);
   }
@@ -185,6 +194,7 @@ class _YoutubeScreenState extends ConsumerState<YoutubeScreen>
           ),
           const Duration(seconds: 30),
         );
+        _adaptiveActive = !video.muxed;
         return;
       } catch (e) {
         debugPrint('YouTube adaptive open failed, trying muxed: $e');
@@ -194,6 +204,49 @@ class _YoutubeScreenState extends ConsumerState<YoutubeScreen>
     if (muxed == null) throw Exception('no playable youtube stream');
     await _openAndWait(
         () => PlayerService.instance.open(muxed), const Duration(seconds: 30));
+    _adaptiveActive = false;
+  }
+
+  /// A mid-playback error is only a *suspicion* (libmpv logs error-level events
+  /// for transient, self-recovering problems — same policy as the main player).
+  /// Snapshot the position, wait, and act only on a confirmed stall: first try
+  /// dropping from the adaptive pair to the muxed stream (resuming where the
+  /// video stalled), and only fail when nothing is left to try.
+  void _onPlaybackError() {
+    if (_errorConfirmTimer?.isActive ?? false) return;
+    final before = _player.state.position;
+    _errorConfirmTimer = Timer(const Duration(seconds: 6), () {
+      if (!mounted || _loading || _failed) return;
+      final s = _player.state;
+      if (shouldFailOverAfterError(
+        positionBefore: before,
+        positionNow: s.position,
+        playing: s.playing,
+        buffering: s.buffering,
+        completed: s.completed,
+      )) {
+        _fallbackToMuxedOrFail();
+      }
+    });
+  }
+
+  Future<void> _fallbackToMuxedOrFail() async {
+    final muxed = _playback?.muxedFallbackUrl;
+    if (_adaptiveActive && muxed != null) {
+      _adaptiveActive = false;
+      final resume = _player.state.position;
+      try {
+        await _openAndWait(() => PlayerService.instance.open(muxed),
+            const Duration(seconds: 30));
+        if (!mounted) return;
+        if (resume > Duration.zero) await _player.seek(resume);
+        return;
+      } catch (e) {
+        debugPrint('YouTube muxed fallback failed: $e');
+      }
+      if (!mounted) return;
+    }
+    _fail();
   }
 
   /// Run [open], completing once playback starts (first known duration) or
@@ -271,6 +324,7 @@ class _YoutubeScreenState extends ConsumerState<YoutubeScreen>
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     _hideTimer?.cancel();
+    _errorConfirmTimer?.cancel();
     for (final s in _subs) {
       s.cancel();
     }
@@ -333,6 +387,8 @@ class _YoutubeScreenState extends ConsumerState<YoutubeScreen>
               controls: NoVideoControls,
               fit: BoxFit.contain,
               fill: Colors.black,
+              // Cubic upscale — same reasoning as the main player's surface.
+              filterQuality: FilterQuality.high,
             ),
           ),
           if (_loading)
