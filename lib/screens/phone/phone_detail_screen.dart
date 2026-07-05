@@ -26,6 +26,17 @@ class _PhoneDetailScreenState extends ConsumerState<PhoneDetailScreen> {
   int _seasonIdx = 0;
   CatalogSource? _selectedSource;
 
+  // Cache "More Like This" per item (see the TV detail screen for why).
+  String? _simForId;
+  List<ContentItem>? _simCache;
+  List<ContentItem> _similar(ContentItem item) {
+    if (_simForId != item.id) {
+      _simCache = similarTo(item, ref.read(catalogProvider).all);
+      _simForId = item.id;
+    }
+    return _simCache!;
+  }
+
   /// Default to whichever twin has stored progress (so Resume works), else the
   /// Arabic Toons source.
   CatalogSource _defaultSource(
@@ -226,7 +237,7 @@ class _PhoneDetailScreenState extends ConsumerState<PhoneDetailScreen> {
   /// "More Like This": genre-matched titles (see [similarTo]) as a horizontal
   /// poster rail. Tapping one pushes its detail page.
   Widget _similarRow(ContentItem item, Map<String, String> t) {
-    final sims = similarTo(item, ref.read(catalogProvider).all);
+    final sims = _similar(item);
     if (sims.isEmpty) return const SizedBox.shrink();
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,

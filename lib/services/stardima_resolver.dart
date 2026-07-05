@@ -1,24 +1,28 @@
 import 'dart:convert';
 import 'package:http/http.dart' as http;
 
-/// Dart port of `resolver_scripts/stardima_resolver.py` + the stream-extraction
-/// half of `stardima_player.py`.
+/// Resolves a Stardima `play_url` to playable stream URLs.
 ///
 /// Stardima items expose only a `play_url`. Turning that into something a video
-/// player can open is a three-stage pipeline (mirrors the Python flow exactly —
-/// same URLs, headers, referers and regexes):
+/// player can open is a three-stage pipeline:
 ///
-///   1. play page          -> hyperwatching iframe `code`
-///   2. iframe `code`      -> per-host embed links  (csrf + POST /link)
-///   3. each embed page    -> the real `.m3u8` / `.mp4` stream URL
+///   1. play page              -> the hyperwatching `hashid`
+///   2. v2 watch page          -> per-host embed links (data-page JSON server
+///                                list -> GET .../server/<id>/url per host)
+///   3. each host embed page   -> the real `.m3u8` / `.mp4` stream URL
 ///
-/// The Python VLC player additionally forces the Arabic audio rendition by
-/// injecting `--audio-language` into LibVLC. `video_player` (ExoPlayer) exposes
-/// no track-selection API, so we play the master manifest and let the engine
-/// pick the default rendition — the request flow/headers are otherwise identical.
+/// NOTE (2026-07): hyperwatching migrated its player from the old
+/// `hyperwatching.com/iframe/<code>` (csrf + `POST /api/videos/<code>/link`)
+/// to an Inertia.js app at `v2.hyperwatching.com/watch/<hashid>`. The server
+/// list now lives in the page's `data-page` JSON, and each host embed is
+/// fetched from `embed/<hashid>/server/<link_id>/url`, which returns a
+/// `watch_url` pointing at a `strema.top/embed2/?id=<host-embed-url>` wrapper —
+/// the real host URL is the `id` query param. Stage 3 (packed-JS unpack +
+/// stream extraction) is unchanged: the hosts (Uqload, Lulustream, …) still
+/// serve the same Dean-Edwards-packed `master.m3u8`.
 
 const String _star = 'https://www.stardima.com';
-const String _hw = 'https://hyperwatching.com';
+const String _hw = 'https://v2.hyperwatching.com';
 const String _ua =
     'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 '
     '(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
@@ -75,16 +79,18 @@ class StardimaResolveException implements Exception {
 final http.Client _client = http.Client();
 
 // --------------------------------------------------------------------------- //
-// 1) play page  ->  hyperwatching iframe code
+// 1) play page  ->  hyperwatching hashid
 // --------------------------------------------------------------------------- //
 final List<RegExp> _codePatterns = [
-  RegExp(r'https?://(?:www\.)?hyperwatching\.com/iframe/([A-Za-z0-9_\-]+)'),
-  RegExp(r'"watch_url"\s*:\s*"[^"]*?/iframe/([A-Za-z0-9_\-]+)"'),
-  RegExp(r'og:video"\s+content="[^"]*?/iframe/([A-Za-z0-9_\-]+)"'),
+  // v2 `.../watch/<hashid>` (current) and legacy `.../iframe/<code>`.
+  RegExp(
+      r'https?://(?:www\.|v2\.)?hyperwatching\.com/(?:watch|iframe)/([A-Za-z0-9_\-]+)'),
+  RegExp(r'"watch_url"\s*:\s*"[^"]*?/(?:watch|iframe)/([A-Za-z0-9_\-]+)"'),
+  RegExp(r'og:video"\s+content="[^"]*?/(?:watch|iframe)/([A-Za-z0-9_\-]+)"'),
 ];
 
-/// Pure: find the hyperwatching iframe code in already-fetched play-page HTML.
-/// Exposed for testing; mirrors the Python `_hyperwatching_code` regexes.
+/// Pure: find the hyperwatching `hashid` (v2 `/watch/` or legacy `/iframe/`) in
+/// already-fetched play-page HTML. Exposed for testing.
 String? hyperwatchingCodeFromHtml(String html) {
   final body = _htmlUnescape(html);
   for (final p in _codePatterns) {
@@ -107,24 +113,51 @@ Future<String?> hyperwatchingCode(String playUrl) async {
 }
 
 // --------------------------------------------------------------------------- //
-// 2 + 3) iframe code  ->  per-host embed links
+// 2) v2 watch page  ->  per-host embed links
 // --------------------------------------------------------------------------- //
-/// Pure: parse the csrf token + `(id, name)` server list out of iframe HTML.
-/// Exposed for testing; mirrors the Python `servers_for_code` regexes.
-({String? csrf, List<(String, String)> servers}) parseIframeServers(
+/// Pure: parse the csrf token + `(linkId, name)` server list out of the v2
+/// watch page. The server list is JSON inside the Inertia `data-page="..."`
+/// attribute (HTML-escaped); only completed servers with a non-zero id are
+/// playable. Exposed for testing.
+({String? csrf, List<(String, String)> servers}) parseWatchServers(
     String html) {
-  final csrfMatch = RegExp(r'csrf:\s*"([^"]+)"').firstMatch(html);
-  final servers = RegExp(r'id:\s*"(\d+)",\s*name:\s*"([^"]+)"')
-      .allMatches(html)
-      .map((m) => (m.group(1)!, m.group(2)!))
-      .toList();
-  return (csrf: csrfMatch?.group(1), servers: servers);
+  final csrf =
+      RegExp(r'csrf-token"\s+content="([^"]+)"').firstMatch(html)?.group(1);
+  final dp = RegExp(r'data-page="(.*?)"\s*>', dotAll: true).firstMatch(html);
+  if (dp == null) return (csrf: csrf, servers: const []);
+  try {
+    final json =
+        jsonDecode(_htmlUnescape(dp.group(1)!)) as Map<String, dynamic>;
+    final video = (json['props'] as Map?)?['video'] as Map?;
+    final servers = (video?['servers'] as List?) ?? const [];
+    final out = <(String, String)>[];
+    for (final s in servers) {
+      if (s is! Map) continue;
+      final id = s['id'];
+      if (id == null || id == 0) continue; // 0 = still processing / no link
+      final status = s['status'];
+      if (status != null && status != 'completed') continue;
+      out.add(('$id', '${s['name'] ?? 'Server'}'));
+    }
+    return (csrf: csrf, servers: out);
+  } catch (_) {
+    return (csrf: csrf, servers: const []);
+  }
+}
+
+/// Pure: the real host embed URL behind a v2 `watch_url`. The endpoint returns
+/// a `strema.top/embed2/?id=<host-embed-url>` wrapper whose iframe shell has no
+/// stream — the playable host page is the url-decoded `id` query param.
+/// Non-wrapper URLs are returned unchanged. Exposed for testing.
+String embedHostFromWatchUrl(String watchUrl) {
+  final id = Uri.tryParse(watchUrl)?.queryParameters['id'];
+  return (id != null && id.startsWith('http')) ? id : watchUrl;
 }
 
 Future<List<_EmbedServer>> _serversForCode(String code) async {
-  final iframe = '$_hw/iframe/$code';
+  final watchPage = '$_hw/watch/$code';
   final res = await _client.get(
-    Uri.parse(iframe),
+    Uri.parse(watchPage),
     headers: {
       'User-Agent': _ua,
       'Accept-Language': 'ar,en;q=0.9',
@@ -132,33 +165,31 @@ Future<List<_EmbedServer>> _serversForCode(String code) async {
     },
   ).timeout(_timeout);
 
-  final parsed = parseIframeServers(res.body);
-  if (parsed.csrf == null) return const [];
-  final csrf = parsed.csrf!;
+  final parsed = parseWatchServers(res.body);
+  if (parsed.servers.isEmpty) return const [];
 
   final headers = {
-    'Content-Type': 'application/json',
-    'X-CSRF-TOKEN': csrf,
     'X-Requested-With': 'XMLHttpRequest',
-    'Referer': iframe,
+    'Accept': 'application/json, text/plain, */*',
+    'Referer': watchPage,
     'Origin': _hw,
     'User-Agent': _ua,
+    if (parsed.csrf != null) 'X-CSRF-TOKEN': parsed.csrf!,
   };
 
   final out = <_EmbedServer>[];
-  for (final (sid, sname) in parsed.servers) {
+  for (final (linkId, sname) in parsed.servers) {
     try {
       final r = await _client
-          .post(
-            Uri.parse('$_hw/api/videos/$code/link'),
+          .get(
+            Uri.parse('$_hw/embed/$code/server/$linkId/url'),
             headers: headers,
-            body: jsonEncode({'server_link_id': sid}),
           )
           .timeout(_timeout);
       final j = jsonDecode(r.body) as Map<String, dynamic>;
       final watch = j['watch_url'];
       if (watch is String && watch.isNotEmpty) {
-        out.add(_EmbedServer(sname, watch));
+        out.add(_EmbedServer(sname, embedHostFromWatchUrl(watch)));
       }
     } catch (_) {
       // a single host failing must not sink the rest
@@ -285,6 +316,7 @@ String _htmlUnescape(String s) => s
     .replaceAll('&quot;', '"')
     .replaceAll('&#34;', '"')
     .replaceAll('&#39;', "'")
+    .replaceAll('&#039;', "'")
     .replaceAll('&#x2F;', '/')
     .replaceAll('&#47;', '/')
     .replaceAll('&lt;', '<')
@@ -302,12 +334,12 @@ Future<List<ResolvedStream>> resolveStardima(String playUrl) async {
   final code = await hyperwatchingCode(playUrl);
   if (code == null) {
     throw const StardimaResolveException(
-        'no hyperwatching iframe found on play page');
+        'no hyperwatching player found on play page');
   }
   final embeds = await _serversForCode(code);
   if (embeds.isEmpty) {
     throw const StardimaResolveException(
-        'iframe found but no servers resolved');
+        'watch page found but no servers resolved');
   }
 
   final results = await Future.wait(embeds.map((e) async {

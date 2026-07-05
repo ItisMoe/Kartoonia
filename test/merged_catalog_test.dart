@@ -57,4 +57,13 @@ void main() {
       if (i.tmdbId == null) expect(svc.isDuplicated(i), isFalse);
     }
   });
+
+  test('famous pools are memoized (same instance on repeat calls)', () async {
+    final svc = await CatalogService.loadMerged();
+    // Identity, not just equality: a second call must reuse the cached list
+    // rather than re-filter/re-sort the whole catalog (the perf fix).
+    expect(identical(svc.popularPool(), svc.popularPool()), isTrue);
+    expect(identical(svc.getFeaturedPool(), svc.getFeaturedPool()), isTrue);
+    expect(identical(svc.genreRows(), svc.genreRows()), isTrue);
+  });
 }

@@ -80,23 +80,37 @@ class StorageService {
   }
 
   // ---- Progress / continue watching ----
+  // In-memory cache of the decoded progress map. [getProgress]/[progressForItem]
+  // are called once per episode card and per continue-watching item, and the
+  // store holds every episode ever watched — decoding that JSON on every call
+  // was a visible source of scroll jank on the detail/home screens. Decode
+  // once; every write updates the cache in place and re-serializes.
+  Map<String, ProgressEntry>? _progressCache;
+
   Map<String, ProgressEntry> _readProgress() {
+    final cached = _progressCache;
+    if (cached != null) return cached;
     final raw = _prefs.getString(_kProgress);
-    if (raw == null) return {};
+    if (raw == null) return _progressCache = {};
     try {
       final map = jsonDecode(raw) as Map<String, dynamic>;
-      return map.map((k, v) =>
+      return _progressCache = map.map((k, v) =>
           MapEntry(k, ProgressEntry.fromJson(v as Map<String, dynamic>)));
     } catch (_) {
-      return {};
+      return _progressCache = {};
     }
+  }
+
+  Future<void> _writeProgress(Map<String, ProgressEntry> map) async {
+    _progressCache = map;
+    await _prefs.setString(
+        _kProgress, jsonEncode(map.map((k, v) => MapEntry(k, v.toJson()))));
   }
 
   Future<void> saveProgress(ProgressEntry entry) async {
     final map = _readProgress();
     map[entry.episodeUrl] = entry;
-    await _prefs.setString(
-        _kProgress, jsonEncode(map.map((k, v) => MapEntry(k, v.toJson()))));
+    await _writeProgress(map);
   }
 
   ProgressEntry? getProgress(String episodeUrl) => _readProgress()[episodeUrl];
@@ -122,17 +136,13 @@ class StorageService {
 
   /// Drop a single episode's progress (keyed by its page/episode url).
   Future<void> removeProgress(String episodeUrl) async {
-    final map = _readProgress()..remove(episodeUrl);
-    await _prefs.setString(
-        _kProgress, jsonEncode(map.map((k, v) => MapEntry(k, v.toJson()))));
+    await _writeProgress(_readProgress()..remove(episodeUrl));
   }
 
   /// Drop all progress for a show/movie (clears the whole title from the
   /// Continue Watching row).
   Future<void> removeProgressForItem(String itemId) async {
-    final map = _readProgress()..removeWhere((_, v) => v.itemId == itemId);
-    await _prefs.setString(
-        _kProgress, jsonEncode(map.map((k, v) => MapEntry(k, v.toJson()))));
+    await _writeProgress(_readProgress()..removeWhere((_, v) => v.itemId == itemId));
   }
 
   // ---- شارات engagement boost (implicit; orders the reel feed) ----

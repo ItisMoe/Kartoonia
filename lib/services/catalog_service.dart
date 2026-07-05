@@ -27,6 +27,25 @@ class CatalogService {
   /// Drives the detail-screen source toggle and the collapsed library.
   Map<int, Map<CatalogSource, ContentItem>> _groups = const {};
 
+  // Memoized famous pools + genre rows. Each [famousPool]/[genreRowsFor] pass
+  // filters and sorts the WHOLE catalog (~3k items); Home alone asks for these
+  // ~7× per build and rebuilds on every user/settings change. Computing once
+  // and caching turns that from ~7 full sorts per frame into zero. Cleared by
+  // [_invalidateDerived] whenever the loaded catalog changes.
+  List<ContentItem>? _popularPool;
+  List<Show>? _popularShows;
+  List<Movie>? _popularMovies;
+  List<ContentItem>? _featuredPool;
+  List<MapEntry<String, List<ContentItem>>>? _genreRows;
+
+  void _invalidateDerived() {
+    _popularPool = null;
+    _popularShows = null;
+    _popularMovies = null;
+    _featuredPool = null;
+    _genreRows = null;
+  }
+
   CatalogService._(this.source);
 
   static Future<CatalogService> load(CatalogSource source) async {
@@ -101,6 +120,7 @@ class CatalogService {
     for (final i in [...atShows, ...atMovies, ...stShows, ...stMovies]) {
       svc._byId.putIfAbsent(i.id, () => i);
     }
+    svc._invalidateDerived();
     return svc;
   }
 
@@ -158,17 +178,19 @@ class CatalogService {
     }
     all = [...shows, ...movies];
     _byId = {for (final i in all) i.id: i};
+    _invalidateDerived();
   }
 
   ContentItem? getById(String id) => _byId[id];
 
   // ---- Fame ranking (internal ordering only; vote_average is never shown) ----
+  // All memoized (see [_invalidateDerived]) — these sort the whole catalog.
   /// Curated famous pool (denoised by vote_count), highest fame first.
-  List<ContentItem> popularPool() => famousPool(all);
+  List<ContentItem> popularPool() => _popularPool ??= famousPool(all);
 
-  List<Show> popularShows() => famousPool(shows);
+  List<Show> popularShows() => _popularShows ??= famousPool(shows);
 
-  List<Movie> popularMovies() => famousPool(movies);
+  List<Movie> popularMovies() => _popularMovies ??= famousPool(movies);
 
   /// Highest-popularity titles for the curated "Most Popular" row.
   List<ContentItem> mostPopular({int count = 30}) =>
@@ -177,9 +199,11 @@ class CatalogService {
   // ---- Featured (hero): popular titles that have a backdrop ----
   /// Pool the rotating hero is drawn from: most-popular items with a backdrop.
   List<ContentItem> getFeaturedPool() {
+    if (_featuredPool != null) return _featuredPool!;
+    final pool = popularPool();
     final withBackdrop =
-        popularPool().where((i) => i.tmdb?.backdropUrl != null).toList();
-    return withBackdrop.isNotEmpty ? withBackdrop : popularPool();
+        pool.where((i) => i.tmdb?.backdropUrl != null).toList();
+    return _featuredPool = withBackdrop.isNotEmpty ? withBackdrop : pool;
   }
 
   List<ContentItem> getFeatured({int count = 5}) =>
@@ -220,9 +244,14 @@ class CatalogService {
       all.where((i) => i.genres.contains(genre)).toList();
 
   /// Genre rows for Home: genres with >= [min] items, capped at [cap] rows.
+  /// Memoized (default args only) — the whole-catalog genre scan is expensive.
   List<MapEntry<String, List<ContentItem>>> genreRows(
-          {int min = 4, int cap = 6}) =>
-      genreRowsFor(all, min: min, cap: cap);
+      {int min = 4, int cap = 6}) {
+    if (min == 4 && cap == 6) {
+      return _genreRows ??= genreRowsFor(all, min: min, cap: cap);
+    }
+    return genreRowsFor(all, min: min, cap: cap);
+  }
 
   // ---- Browse filtering + sorting (no rating sort) ----
   List<ContentItem> browse(String kind) {
@@ -252,18 +281,24 @@ String firstLetterFor(String title, String script) {
   return ch.toUpperCase();
 }
 
+// Compiled once, not per call: search runs [normalizeArSearch] tens of
+// thousands of times per keystroke (every item × every searchable field), and
+// recompiling these regexes each time was pure overhead on the typing path.
+final RegExp _reAlef = RegExp('[آأإٱ]');
+final RegExp _reTashkeel = RegExp('[ً-ْٰ]');
+
 /// Fold Arabic letter variants to a single canonical form so search matches
 /// regardless of which form the user typed or the title stored: every alef
 /// variant -> ا, taa marbuta -> ه, alef maqsura -> ي, waw/yaa-hamza -> و/ي,
 /// and the bare hamza is dropped. Also strips tashkeel (diacritics).
 String normalizeArSearch(String s) => s
-    .replaceAll(RegExp('[آأإٱ]'), 'ا')
+    .replaceAll(_reAlef, 'ا')
     .replaceAll('ى', 'ي')
     .replaceAll('ئ', 'ي')
     .replaceAll('ة', 'ه')
     .replaceAll('ؤ', 'و')
     .replaceAll('ء', '')
-    .replaceAll(RegExp('[ً-ْٰ]'), '');
+    .replaceAll(_reTashkeel, '');
 
 const alphaEn = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
 const alphaAr = 'ابتثجحخدذرزسشصضطظعغفقكلمنهوي';

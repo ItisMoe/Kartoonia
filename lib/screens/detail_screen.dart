@@ -34,6 +34,18 @@ class _DetailScreenState extends ConsumerState<DetailScreen> {
   int? _seasonIdx;
   CatalogSource? _selectedSource;
 
+  // Cache "More Like This" per item — the O(catalog) scan shouldn't re-run on
+  // every setState (season change, list toggle). Keyed by the item id.
+  String? _simForId;
+  List<ContentItem>? _simCache;
+  List<ContentItem> _similar(ContentItem item) {
+    if (_simForId != item.id) {
+      _simCache = similarTo(item, ref.read(catalogProvider).all);
+      _simForId = item.id;
+    }
+    return _simCache!;
+  }
+
   /// Default to whichever twin has stored progress (so Resume works), else the
   /// Arabic Toons source.
   CatalogSource _defaultSource(
@@ -242,7 +254,7 @@ class _DetailScreenState extends ConsumerState<DetailScreen> {
   /// "More Like This": genre-matched titles (see [similarTo]), rendered in the
   /// same rail style as the episodes list. Opening one pushes its detail.
   Widget _similarRow(ContentItem item, Map<String, String> t) {
-    final sims = similarTo(item, ref.read(catalogProvider).all);
+    final sims = _similar(item);
     if (sims.isEmpty) return const SizedBox.shrink();
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,

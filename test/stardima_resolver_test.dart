@@ -3,52 +3,68 @@ import 'package:kartoonia/services/stardima_resolver.dart';
 
 void main() {
   group('hyperwatchingCodeFromHtml', () {
-    test('finds the iframe code from a plain iframe src', () {
+    test('finds the v2 hashid from a plain iframe src', () {
       const html =
-          '<iframe src="https://hyperwatching.com/iframe/abc_DEF-123"></iframe>';
-      expect(hyperwatchingCodeFromHtml(html), 'abc_DEF-123');
+          '<iframe src="https://v2.hyperwatching.com/watch/B5yQl3W07FFa"></iframe>';
+      expect(hyperwatchingCodeFromHtml(html), 'B5yQl3W07FFa');
     });
 
-    test('finds the code via the www host', () {
-      const html = 'x = "https://www.hyperwatching.com/iframe/Zz09";';
-      expect(hyperwatchingCodeFromHtml(html), 'Zz09');
+    test('finds the hashid inside an og:video meta tag', () {
+      const html =
+          '<meta property="og:video" content="https://v2.hyperwatching.com/watch/Zz09_x">';
+      expect(hyperwatchingCodeFromHtml(html), 'Zz09_x');
     });
 
-    test('finds the code inside a JSON watch_url', () {
-      const html =
-          '{"watch_url":"https:\\/\\/hyperwatching.com\\/iframe\\/q1w2e3"}';
-      // The escaped slashes are html-unescaped/handled by the pattern set.
-      expect(hyperwatchingCodeFromHtml(html.replaceAll(r'\/', '/')), 'q1w2e3');
+    test('still finds the legacy /iframe/ code', () {
+      const html = 'x = "https://www.hyperwatching.com/iframe/q1w2e3";';
+      expect(hyperwatchingCodeFromHtml(html), 'q1w2e3');
     });
 
-    test('handles html-escaped ampersands around the url', () {
+    test('handles html-escaped markup around the url', () {
       const html =
-          '&lt;meta property="og:video" content="https://hyperwatching.com/iframe/k9k9"&gt;';
+          '&lt;meta content="https://v2.hyperwatching.com/watch/k9k9"&gt;';
       expect(hyperwatchingCodeFromHtml(html), 'k9k9');
     });
 
-    test('returns null when no iframe present', () {
+    test('returns null when no player present', () {
       expect(hyperwatchingCodeFromHtml('<html>nothing here</html>'), isNull);
     });
   });
 
-  group('parseIframeServers', () {
-    test('extracts csrf token and the server list', () {
-      const html = '''
-        var config = { csrf: "tok3n-value", other: 1 };
-        servers = [ {id:"3", name:"Lulustream"}, {id:"5", name:"Streamhg"} ];
-      ''';
-      final r = parseIframeServers(html);
+  group('parseWatchServers', () {
+    // The v2 watch page: csrf in a meta tag, servers as HTML-escaped JSON in
+    // the Inertia `data-page` attribute.
+    const page = '<meta name="csrf-token" content="tok3n-value">'
+        '<div id="app" data-page="{&quot;props&quot;:{&quot;video&quot;:{'
+        '&quot;hashid&quot;:&quot;ABC&quot;,&quot;servers&quot;:['
+        '{&quot;id&quot;:496847,&quot;name&quot;:&quot;Uqload&quot;,&quot;status&quot;:&quot;completed&quot;},'
+        '{&quot;id&quot;:0,&quot;name&quot;:&quot;Goodstream&quot;,&quot;status&quot;:&quot;processing&quot;},'
+        '{&quot;id&quot;:496850,&quot;name&quot;:&quot;Lulustream&quot;,&quot;status&quot;:&quot;completed&quot;}'
+        ']}}}"></div>';
+
+    test('extracts csrf and only the completed, non-zero-id servers', () {
+      final r = parseWatchServers(page);
       expect(r.csrf, 'tok3n-value');
-      expect(r.servers.length, 2);
-      expect(r.servers[0], ('3', 'Lulustream'));
-      expect(r.servers[1], ('5', 'Streamhg'));
+      expect(r.servers, [('496847', 'Uqload'), ('496850', 'Lulustream')]);
     });
 
-    test('null csrf when absent', () {
-      final r = parseIframeServers('id:"1", name:"X"');
-      expect(r.csrf, isNull);
-      expect(r.servers.single, ('1', 'X'));
+    test('empty server list when data-page is absent', () {
+      final r = parseWatchServers('<meta name="csrf-token" content="t">');
+      expect(r.csrf, 't');
+      expect(r.servers, isEmpty);
+    });
+  });
+
+  group('embedHostFromWatchUrl', () {
+    test('decodes the real host embed from a strema.top wrapper', () {
+      const w =
+          'https://strema.top/embed2/?id=https%3A%2F%2Fuqload.is%2Fembed-gz3ij5i6km4o.html';
+      expect(embedHostFromWatchUrl(w), 'https://uqload.is/embed-gz3ij5i6km4o.html');
+    });
+
+    test('returns a non-wrapper url unchanged', () {
+      const w = 'https://lulustream.com/e/qp2v5e8pqtv1';
+      expect(embedHostFromWatchUrl(w), w);
     });
   });
 
