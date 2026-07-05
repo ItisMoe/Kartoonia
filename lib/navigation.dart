@@ -55,7 +55,7 @@ class AppNav {
       Navigator.push(c, _fade(const SettingsScreen()));
 
   static void detail(BuildContext c, ContentItem item) =>
-      Navigator.push(c, _fade(DetailScreen(itemId: item.id)));
+      Navigator.push(c, _fade(DetailScreen(itemId: item.id, item: item)));
 
   static void player(BuildContext c, PlayerArgs args) =>
       Navigator.push(c, _fade(PlayerScreen(args: args)));

@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../models/content_item.dart';
 import '../navigation.dart';
 import '../state/app_state.dart';
+import '../state/wcoflix_providers.dart';
 import '../theme/theme.dart';
 import '../theme/layout.dart';
 import '../widgets/content_card.dart';
@@ -40,9 +41,20 @@ class SearchScreen extends ConsumerWidget {
     }
 
     final q = s.query.trim();
-    final List<ContentItem> results = q.isEmpty
-        ? catalog.all.where((x) => x.tmdb != null).where(passFilter).take(12).toList()
-        : catalog.search(q).where(passFilter).toList();
+    // Everything mode searches the whole live WCOFlix catalog; otherwise the
+    // in-memory Arabic catalog (unchanged).
+    final everything = ref.watch(everythingModeProvider);
+    final wcoAsync = everything ? ref.watch(wcoSearchProvider(q)) : null;
+    final bool wcoLoading = everything && q.isNotEmpty && wcoAsync!.isLoading;
+    final List<ContentItem> results = everything
+        ? (wcoAsync!.asData?.value ?? const <ContentItem>[])
+        : (q.isEmpty
+            ? catalog.all
+                .where((x) => x.tmdb != null)
+                .where(passFilter)
+                .take(12)
+                .toList()
+            : catalog.search(q).where(passFilter).toList());
 
     return ScreenShell(
       current: 'search',
@@ -159,7 +171,11 @@ class SearchScreen extends ConsumerWidget {
                   ),
                   const SizedBox(height: 20),
                   Expanded(
-                    child: results.isEmpty
+                    child: wcoLoading
+                        ? const Center(
+                            child: CircularProgressIndicator(
+                                color: AppColors.primary))
+                        : results.isEmpty
                         ? _empty(t, q.isEmpty)
                         : GridView.builder(
                             gridDelegate:

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../services/youtube_service.dart';
 import '../state/app_state.dart';
+import '../state/wcoflix_providers.dart';
 import '../theme/theme.dart';
 import '../widgets/focusable.dart';
 import '../widgets/screen_shell.dart';
@@ -95,6 +96,37 @@ class SettingsScreen extends ConsumerWidget {
                     autofocus: true),
                 opt('العربية', settings.lang == 'ar', () => sn.setLang('ar')),
               ]),
+              // Everything mode — reveal the full WCOFlix library.
+              Padding(
+                padding: const EdgeInsets.only(bottom: 40),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(t['everything_mode']!,
+                        style: const TextStyle(
+                            fontSize: 26,
+                            fontWeight: FontWeight.w800,
+                            color: AppColors.inkSoft)),
+                    const SizedBox(height: 6),
+                    Text(t['everything_desc']!,
+                        style: const TextStyle(
+                            fontSize: 20,
+                            fontWeight: FontWeight.w600,
+                            color: AppColors.inkMute)),
+                    const SizedBox(height: 16),
+                    Row(children: [
+                      opt(t['on']!, ref.watch(everythingModeProvider),
+                          () => ref
+                              .read(everythingModeProvider.notifier)
+                              .set(true)),
+                      opt(t['off']!, !ref.watch(everythingModeProvider),
+                          () => ref
+                              .read(everythingModeProvider.notifier)
+                              .set(false)),
+                    ]),
+                  ],
+                ),
+              ),
               group(t['set_autoplay']!, [
                 opt(t['on']!, settings.prefs['autoplay'] != 'off',
                     () => sn.setPref('autoplay', 'on')),

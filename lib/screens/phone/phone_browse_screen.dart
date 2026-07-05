@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../models/content_item.dart';
 import '../../services/fame_ranking.dart';
 import '../../state/app_state.dart';
+import '../../state/wcoflix_providers.dart';
 import '../../theme/theme.dart';
 import '../../utils/genre_translations.dart';
 import '../../widgets/phone/phone_poster_card.dart';
@@ -26,17 +27,28 @@ class _PhoneBrowseScreenState extends ConsumerState<PhoneBrowseScreen> {
     ref.watch(catalogRevProvider);
     final catalog = ref.watch(catalogProvider);
     final t = ref.watch(stringsProvider);
+    final wco = ref.watch(everythingModeProvider);
 
-    final List<ContentItem> typeItems =
-        _kind == 'movies' ? catalog.movies : catalog.shows;
-    final genres = genresIn(typeItems);
+    AsyncValue<List<ContentItem>>? wcoAsync;
+    final List<ContentItem> typeItems;
+    if (wco) {
+      final a = ref.watch(
+          _kind == 'movies' ? wcoMoviesProvider : wcoTvBrowseProvider);
+      wcoAsync = a;
+      typeItems = a.asData?.value ?? const [];
+    } else {
+      typeItems = _kind == 'movies' ? catalog.movies : catalog.shows;
+    }
+    // WCOFlix items carry no genres, so the genre rail is hidden in that mode.
+    final genres = wco ? const <String>[] : genresIn(typeItems);
     // Drop a stale genre filter when switching to a type that lacks it.
     if (_genre != null && !genres.contains(_genre)) _genre = null;
 
     final base = _genre == null
         ? typeItems
         : typeItems.where((i) => i.genres.contains(_genre)).toList();
-    final shown = sortedForBrowse(base);
+    final shown = wco ? base : sortedForBrowse(base);
+    final wcoLoading = wco && (wcoAsync?.isLoading ?? false);
 
     return SafeArea(
       bottom: false,
@@ -120,7 +132,16 @@ class _PhoneBrowseScreenState extends ConsumerState<PhoneBrowseScreen> {
               ),
             ),
           const SliverToBoxAdapter(child: SizedBox(height: 12)),
-          SliverPadding(
+          if (wcoLoading)
+            const SliverToBoxAdapter(
+              child: SizedBox(
+                  height: 300,
+                  child: Center(
+                      child: CircularProgressIndicator(
+                          color: AppColors.primary))),
+            )
+          else
+            SliverPadding(
             padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
             sliver: SliverGrid(
               gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(

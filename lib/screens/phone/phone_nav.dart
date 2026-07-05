@@ -15,7 +15,8 @@ Route<T> phoneFade<T>(Widget page) => PageRouteBuilder<T>(
     );
 
 void openPhoneDetail(BuildContext context, ContentItem item) =>
-    Navigator.push(context, phoneFade(PhoneDetailScreen(itemId: item.id)));
+    Navigator.push(
+        context, phoneFade(PhoneDetailScreen(itemId: item.id, item: item)));
 
 void openPhoneSettings(BuildContext context) =>
     Navigator.push(context, phoneFade(const PhoneSettingsScreen()));
