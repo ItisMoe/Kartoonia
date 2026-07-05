@@ -18,6 +18,10 @@ class HeroCarousel extends StatefulWidget {
   final void Function(ContentItem) onToggleList;
   final bool Function(ContentItem) isInList;
 
+  /// Notifies the parent of the currently-shown slide's backdrop URL, so the
+  /// shell can paint it (blurred) into the letterbox bars on non-16:9 panels.
+  final void Function(String backdropUrl)? onBackdrop;
+
   const HeroCarousel({
     super.key,
     required this.items,
@@ -28,6 +32,7 @@ class HeroCarousel extends StatefulWidget {
     required this.onMoreInfo,
     required this.onToggleList,
     required this.isInList,
+    this.onBackdrop,
   });
 
   @override
@@ -43,6 +48,23 @@ class _HeroCarouselState extends State<HeroCarousel> {
   void initState() {
     super.initState();
     _start();
+    WidgetsBinding.instance.addPostFrameCallback((_) => _emitBackdrop());
+  }
+
+  /// Surface the current slide's backdrop to the parent (for the letterbox
+  /// full-bleed fill). Runs after build so it never setState()s mid-build.
+  void _emitBackdrop() {
+    final cb = widget.onBackdrop;
+    if (cb == null || widget.items.isEmpty) return;
+    final i = _index < widget.items.length ? _index : 0;
+    final s = widget.items[i];
+    final url = s.backdropUrl.isNotEmpty ? s.backdropUrl : s.thumbnailUrl;
+    if (url.isNotEmpty) cb(url);
+  }
+
+  void _setIndex(int i) {
+    setState(() => _index = i);
+    _emitBackdrop();
   }
 
   void _start() {
@@ -50,7 +72,7 @@ class _HeroCarouselState extends State<HeroCarousel> {
     if (!widget.autoplay || widget.items.length <= 1) return;
     _timer = Timer.periodic(const Duration(milliseconds: 6500), (_) {
       if (_focusInside) return;
-      if (mounted) setState(() => _index = (_index + 1) % widget.items.length);
+      if (mounted) _setIndex((_index + 1) % widget.items.length);
     });
   }
 
@@ -240,7 +262,7 @@ class _HeroCarouselState extends State<HeroCarousel> {
                     padding: const EdgeInsetsDirectional.only(end: 12),
                     child: Focusable(
                       onPressed: () {
-                        setState(() => _index = i);
+                        _setIndex(i);
                         _start();
                       },
                       builder: (context, focused) => AnimatedContainer(

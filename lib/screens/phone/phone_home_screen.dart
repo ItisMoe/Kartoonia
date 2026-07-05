@@ -40,41 +40,50 @@ class _PhoneHomeScreenState extends ConsumerState<PhoneHomeScreen> {
     PhonePosterCard card(ContentItem i) =>
         PhonePosterCard(item: i, movieLabel: movieLabel, onPressed: () => open(i));
 
-    Widget row(String title, AsyncValue<List<ContentItem>> a) => a.when(
-          loading: () => Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
-            child: Row(children: [
-              Text(title,
-                  style: const TextStyle(
-                      fontFamily: Fonts.display,
-                      fontFamilyFallback: Fonts.fallback,
-                      fontWeight: FontWeight.w600,
-                      fontSize: 20,
-                      color: AppColors.ink)),
-              const SizedBox(width: 16),
-              const SizedBox(
-                  width: 20,
-                  height: 20,
-                  child: CircularProgressIndicator(
-                      strokeWidth: 2.5, color: AppColors.primary)),
-            ]),
-          ),
+    // Everything-mode Home leads with the most TMDB-famous titles (posters +
+    // fame ranking), like the Arabic Home — no "new episodes of any random show"
+    // feed and no raw A–Z dumps. The full catalog is reachable via the Browse
+    // tabs and Search. The fame pool is sliced into a few rows.
+    final popular = ref.watch(wcoFamousProvider);
+    Widget slice(String title, int skip, int take) => popular.when(
+          loading: () => skip == 0
+              ? Padding(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+                  child: Row(children: [
+                    Text(title,
+                        style: const TextStyle(
+                            fontFamily: Fonts.display,
+                            fontFamilyFallback: Fonts.fallback,
+                            fontWeight: FontWeight.w600,
+                            fontSize: 20,
+                            color: AppColors.ink)),
+                    const SizedBox(width: 16),
+                    const SizedBox(
+                        width: 20,
+                        height: 20,
+                        child: CircularProgressIndicator(
+                            strokeWidth: 2.5, color: AppColors.primary)),
+                  ]),
+                )
+              : const SizedBox.shrink(),
           error: (_, _) => const SizedBox.shrink(),
-          data: (items) => items.isEmpty
-              ? const SizedBox.shrink()
-              : PhoneRow(
-                  title: title, cards: [for (final i in items.take(30)) card(i)]),
+          data: (items) {
+            final part = items.skip(skip).take(take).toList();
+            return part.isEmpty
+                ? const SizedBox.shrink()
+                : PhoneRow(
+                    title: title, cards: [for (final i in part) card(i)]);
+          },
         );
 
     return Stack(children: [
       ListView(
         padding: const EdgeInsets.only(top: 70, bottom: 24),
         children: [
-          row(t['row_popular']!, ref.watch(wcoPopularProvider)),
-          row(t['row_new']!, ref.watch(wcoLatestProvider)),
-          row(t['nav_tv']!, ref.watch(wcoCartoonsProvider)),
-          row(t['dubbed_anime']!, ref.watch(wcoDubbedProvider)),
-          row(t['nav_movies']!, ref.watch(wcoMoviesProvider)),
+          slice(t['most_popular']!, 0, 24),
+          slice(t['row_popular']!, 24, 24),
+          slice(t['topten']!, 48, 24),
         ],
       ),
       Positioned(top: 0, left: 0, right: 0, child: _HomeTopBar(t: t)),

@@ -46,3 +46,7 @@ app.*.map.json
 
 # Brainstorming visual-companion scratch
 .superpowers/
+
+# Transient enrichment progress status (regenerated each run)
+tool/enrich_progress.json
+.claude/

@@ -14,14 +14,14 @@ String wcoflixId(String url) => seriesSlugFromUrl(url);
 /// A lightweight browse/search/row card: a [Show] with no episodes yet (they are
 /// fetched lazily on the detail screen via [wcoflixShowFromSeries]). `pageUrl`
 /// carries the series page so detail knows what to load.
-Show wcoflixShowStub(WcoLink link) {
+Show wcoflixShowStub(WcoLink link, {TmdbData? tmdb}) {
   final meta = parseTitleMeta(link.title);
   return Show(
     id: wcoflixId(link.url),
     title: meta.cleanTitle.isEmpty ? link.title : meta.cleanTitle,
     thumbnailUrl: link.thumb ?? '',
-    description: '',
-    tmdb: null,
+    description: tmdb?.overviewEn ?? '',
+    tmdb: tmdb,
     totalEpisodes: 0,
     seasonCount: 1,
     seasons: const [],
@@ -34,7 +34,8 @@ Show wcoflixShowStub(WcoLink link) {
 /// A fully-loaded WCOFlix show: the series page's poster/plot plus its episodes.
 /// The site lists newest-first and mixes dub + sub variants of the same number;
 /// we prefer the dubbed variant, dedupe by number, and order ascending.
-Show wcoflixShowFromSeries(String pageUrl, WcoSeries series, String title) {
+Show wcoflixShowFromSeries(String pageUrl, WcoSeries series, String title,
+    {TmdbData? tmdb}) {
   final byNumber = <int, Episode>{};
   var seq = 0;
   for (final link in series.episodes) {
@@ -84,9 +85,9 @@ Show wcoflixShowFromSeries(String pageUrl, WcoSeries series, String title) {
   return Show(
     id: wcoflixId(pageUrl),
     title: title,
-    thumbnailUrl: series.poster ?? '',
-    description: series.plot,
-    tmdb: null,
+    thumbnailUrl: series.poster ?? tmdb?.posterUrlW500 ?? '',
+    description: series.plot.isNotEmpty ? series.plot : (tmdb?.overviewEn ?? ''),
+    tmdb: tmdb,
     totalEpisodes: episodes.length,
     seasonCount: 1,
     seasons: [season],

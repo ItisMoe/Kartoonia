@@ -17,9 +17,6 @@ permissions:
 jobs:
   build:
     runs-on: ubuntu-latest
-    env:
-      # Surfaced at job level so the signing step's `if` can test for its presence.
-      KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -40,23 +37,11 @@ jobs:
       - name: Install dependencies
         run: flutter pub get
 
-      # OPTIONAL — release signing. Runs only if the four signing secrets exist;
-      # otherwise the build falls back to the debug key (fine for sideloading).
-      - name: Configure release signing
-        if: ${{ env.KEYSTORE_BASE64 != '' }}
-        env:
-          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
-          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
-          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
-        run: |
-          echo "$KEYSTORE_BASE64" | base64 --decode > android/app/keystore.jks
-          cat > android/key.properties <<EOF
-          storeFile=keystore.jks
-          storePassword=$KEYSTORE_PASSWORD
-          keyAlias=$KEY_ALIAS
-          keyPassword=$KEY_PASSWORD
-          EOF
-
+      # Release signing uses the committed keystore (android/app/kartoonia-release.jks
+      # + android/key.properties). It is deliberately in the repo so EVERY build —
+      # local and CI — is signed with the SAME key; the in-app updater installs
+      # release APKs over the running app, which Android only allows when the
+      # signature matches. See android/.gitignore for the rationale.
       - name: Build release APK
         run: flutter build apk --release
 

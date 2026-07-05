@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:math';
 import 'package:http/http.dart' as http;
 import 'wcoflix_config.dart';
+import 'wcoflix_domain.dart';
 import 'wcoflix_quality.dart';
 import 'wcoflix_stream_parsers.dart';
 
@@ -23,6 +24,24 @@ class WcoflixResolveException implements Exception {
   String toString() => 'WcoflixResolveException: $message';
 }
 
+/// The embed returned the anti-adblock "Announcement / Get PREMIUM" wall
+/// instead of the player. Retryable (a fresh nonce often gets through).
+class _AdWallException extends WcoflixResolveException {
+  const _AdWallException() : super('embed served the ad-block announcement');
+}
+
+/// How many times to re-run the ad handshake when the embed serves the wall.
+const int kWcoflixAdGateRetries = 5;
+
+/// The ad-wall page (`video-js.php` returns this instead of the player). It has
+/// no video source, so distinguish it from a genuinely broken player page.
+bool _isAdWall(String html) =>
+    !html.contains('getvid?evid') &&
+    !html.contains('.m3u8') &&
+    (html.contains('Get PREMIUM') ||
+        html.contains('id="announcement"') ||
+        html.contains('<title>Announcement</title>'));
+
 /// Simple I/O seam so the resolver's logic can be driven with fixtures in tests.
 /// [get] does a GET (returns body); [post] does a POST with a raw body.
 abstract class WcoHttp {
@@ -33,13 +52,21 @@ abstract class WcoHttp {
 
 class _RealHttp implements WcoHttp {
   final http.Client _c = http.Client();
+
+  /// Rehome catalog-mirror URLs (the episode page) onto the live mirror; the
+  /// playback embed host (`embed.wcostream.com`) is left untouched by [rewrite].
+  Future<String> _live(String url) async {
+    final base = await WcoflixDomain.activeBase(WcoflixDomain.defaultGet);
+    return WcoflixDomain.rewrite(url, base);
+  }
+
   @override
   Future<String> get(String url, {Map<String, String>? headers}) async =>
-      (await _c.get(Uri.parse(url), headers: headers)).body;
+      (await _c.get(Uri.parse(await _live(url)), headers: headers)).body;
   @override
   Future<void> post(String url, String body,
           {Map<String, String>? headers}) async =>
-      _c.post(Uri.parse(url), headers: headers, body: body);
+      _c.post(Uri.parse(await _live(url)), headers: headers, body: body);
   @override
   Future<void> sleep(Duration d) => Future<void>.delayed(d);
 }
@@ -85,6 +112,7 @@ Future<List<WcoStream>> resolveWcoflix(
   String pageUrl, {
   WcoHttp? http,
   Duration dwell = const Duration(seconds: 5),
+  Duration retryBackoff = const Duration(seconds: 3),
 }) async {
   final io = http ?? _RealHttp();
   final headers = {'User-Agent': kWcoflixUserAgent};
@@ -96,25 +124,41 @@ Future<List<WcoStream>> resolveWcoflix(
   }
   embed = embed.replaceAll('&#038;', '&').replaceAll('&amp;', '&');
 
-  // Ad-gate bypass for the wcostream index.php embed.
+  // Ad-gate bypass for the wcostream index.php embed. The embed shows an
+  // anti-adblock "Announcement / Get PREMIUM" interstitial instead of the
+  // player on a random/IP-throttled fraction of requests, so run the ad
+  // handshake + player fetch a few times (fresh nonce each) until a real
+  // player page comes back.
   if (embed.contains('inc/embed/index.php')) {
     final pid = RegExp(r'[&?]pid=([0-9]+)').firstMatch(embed)?.group(1) ?? '';
-    final nonce = _nonce();
-    final flag = '__abd_${_rand.nextInt(1 << 32).toRadixString(16)}';
-    final ms = DateTime.now().millisecondsSinceEpoch;
-    await io.get(
-      '$kWcoflixEmbedHost/assets/ads/advertisement.js?flag=$flag&_=$ms',
-      headers: {...headers, 'Accept': '*/*', 'Referer': embed},
-    );
-    await io.post(
-      '$kWcoflixEmbedHost/ad-verify',
-      jsonEncode({'nonce': nonce, 'status': 'clear', 'id': pid}),
-      headers: {...headers, 'Content-Type': 'application/json', 'Referer': embed},
-    );
-    final player =
-        '${embed.replaceFirst('inc/embed/index.php', 'inc/embed/video-js-old.php')}&n=$nonce';
-    await io.sleep(dwell);
-    return _fromPlayer(io, player, embed);
+    WcoflixResolveException? lastErr;
+    for (var attempt = 0; attempt < kWcoflixAdGateRetries; attempt++) {
+      final nonce = _nonce();
+      final flag = '__abd_${_rand.nextInt(1 << 32).toRadixString(16)}';
+      final ms = DateTime.now().millisecondsSinceEpoch;
+      await io.get(
+        '$kWcoflixEmbedHost/assets/ads/advertisement.js?flag=$flag&_=$ms',
+        headers: {...headers, 'Accept': '*/*', 'Referer': embed},
+      );
+      await io.post(
+        '$kWcoflixEmbedHost/ad-verify',
+        jsonEncode({'nonce': nonce, 'status': 'clear', 'id': pid}),
+        headers: {...headers, 'Content-Type': 'application/json', 'Referer': embed},
+      );
+      // `video-js.php` is the current player endpoint; `video-js-old.php` is now
+      // the one that is always ad-walled (the two swapped roles).
+      final player =
+          '${embed.replaceFirst('inc/embed/index.php', 'inc/embed/video-js.php')}&n=$nonce';
+      await io.sleep(dwell);
+      try {
+        return await _fromPlayer(io, player, embed);
+      } on _AdWallException catch (e) {
+        lastErr = e;
+        if (attempt < kWcoflixAdGateRetries - 1) await io.sleep(retryBackoff);
+      }
+    }
+    throw lastErr ??
+        const WcoflixResolveException('ad-gate blocked every attempt');
   }
 
   // Non-index embeds: request directly.
@@ -126,6 +170,8 @@ Future<List<WcoStream>> _fromPlayer(
     WcoHttp io, String playerUrl, String referer) async {
   final headers = {'User-Agent': kWcoflixUserAgent, 'Referer': referer};
   final html = await io.get(playerUrl, headers: headers);
+
+  if (_isAdWall(html)) throw const _AdWallException();
 
   if (html.contains('high volume of requests')) {
     throw const WcoflixResolveException(

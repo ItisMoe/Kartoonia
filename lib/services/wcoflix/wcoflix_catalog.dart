@@ -1,7 +1,9 @@
 import 'dart:convert';
 import 'package:flutter/services.dart' show rootBundle;
 import 'package:http/http.dart' as http;
+import '../../models/content_item.dart';
 import 'wcoflix_config.dart';
+import 'wcoflix_domain.dart';
 import 'wcoflix_parsers.dart';
 
 typedef WcoFetch = Future<String> Function(String url,
@@ -29,17 +31,27 @@ class WcoflixCatalog {
   final _searchCache = <String, List<WcoLink>>{};
   Map<String, List<WcoLink>>? _snap;
 
+  /// Bundled TMDB art/popularity, keyed by series slug. Loaded once from
+  /// `assets/wcoflix_catalog.json` (see tool/wcoflix_enrich.dart).
+  Map<String, TmdbData>? _art;
+  List<String>? _famousPaths; // original item paths ordered by fame (votes desc)
+
   static final http.Client _client = http.Client();
   static Future<String> _defaultFetch(String url,
       {Map<String, String>? post}) async {
+    // Rehome the request onto whichever mirror is actually serving content —
+    // the configured primary (wcoflix.tv) is currently Cloudflare-walled, and
+    // snapshot/parsed links embed a possibly-dead host.
+    final base = await WcoflixDomain.activeBase(WcoflixDomain.defaultGet);
+    final target = WcoflixDomain.rewrite(url, base);
     final headers = {
       'User-Agent': kWcoflixUserAgent,
-      'Referer': '${wcoflixBaseUrls.first}/',
+      'Referer': '$base/',
       'Accept-Language': 'en-US,en;q=0.9',
     };
     final res = await (post == null
-            ? _client.get(Uri.parse(url), headers: headers)
-            : _client.post(Uri.parse(url), headers: headers, body: post))
+            ? _client.get(Uri.parse(target), headers: headers)
+            : _client.post(Uri.parse(target), headers: headers, body: post))
         .timeout(const Duration(seconds: 15));
     return res.body;
   }
@@ -64,6 +76,10 @@ class WcoflixCatalog {
   }
 
   // ---- snapshot (bundled) ----
+  // The snapshot stores each item's URL as a bare, mirror-agnostic path (e.g.
+  // `/anime/one-piece`); it is rehomed onto the live mirror by [_defaultFetch]
+  // / the resolver at fetch time. Older absolute-URL snapshots also load fine
+  // (rewrite leaves live-mirror URLs alone).
   Future<Map<String, List<WcoLink>>> _loadSnapshot() async {
     try {
       final raw = await _loadAsset('assets/wcoflix_snapshot.json');
@@ -82,6 +98,66 @@ class WcoflixCatalog {
   Future<List<WcoLink>> snapshot(String key) async {
     _snap ??= await _loadSnapshot();
     return _snap![key] ?? const [];
+  }
+
+  // ---- TMDB art / popularity (bundled) ----
+  Future<void> _loadArt() async {
+    if (_art != null) return;
+    final art = <String, TmdbData>{};
+    final ranked = <(String, int)>[]; // (path, voteCount)
+    try {
+      final raw = await _loadAsset('assets/wcoflix_catalog.json');
+      final items = (jsonDecode(raw) as Map<String, dynamic>)['items']
+          as Map<String, dynamic>;
+      items.forEach((path, v) {
+        final tm = (v as Map)['tmdb'];
+        if (tm is! Map) return;
+        final j = tm.cast<String, dynamic>();
+        // The enricher nests the plot under `en.overview`; TmdbData reads
+        // `overview_en` — bridge it so detail plots populate.
+        final en = j['en'];
+        if (en is Map && en['overview'] != null) {
+          j['overview_en'] = en['overview'];
+        }
+        art[seriesSlugFromUrl(path)] = TmdbData.fromJson(j);
+        ranked.add((path, (j['vote_count'] as num?)?.toInt() ?? 0));
+      });
+    } catch (_) {
+      // leave art empty — cards fall back to scraped thumbnails
+    }
+    ranked.sort((a, b) => b.$2.compareTo(a.$2));
+    _art = art;
+    _famousPaths = [for (final r in ranked) r.$1];
+  }
+
+  /// The bundled TMDB data for a series [url] (poster/backdrop/popularity), or
+  /// null when the title wasn't matched. Call [ensureArt] first.
+  TmdbData? artFor(String url) => _art?[seriesSlugFromUrl(url)];
+
+  /// Load the bundled art map once (idempotent). Safe to await before building
+  /// cards; a missing/bad asset just leaves art empty.
+  Future<void> ensureArt() => _loadArt();
+
+  /// Series links for the most TMDB-famous titles (vote_count desc), as
+  /// `/anime/<slug>` paths — the pool the Everything Home ranks its rows/hero
+  /// from. [withBackdrop] keeps only titles that have a backdrop (for the hero).
+  Future<List<WcoLink>> famousPool({int limit = 200, bool withBackdrop = false}) async {
+    await ensureArt();
+    final out = <WcoLink>[];
+    for (final path in _famousPaths ?? const <String>[]) {
+      final t = _art![seriesSlugFromUrl(path)];
+      if (t == null) continue;
+      if (withBackdrop && (t.backdropUrl == null || t.backdropUrl!.isEmpty)) {
+        continue;
+      }
+      final title = t.enTitle;
+      if (title == null || title.isEmpty) continue;
+      // Preserve the ORIGINAL item path (movies live at root, series under
+      // /anime/…) so detail/playback fetch the right page.
+      out.add(WcoLink(path, title, thumb: t.posterUrlW500));
+      if (out.length >= limit) break;
+    }
+    return out;
   }
 
   /// The fresh live result for [key], or null until a live fetch has succeeded.

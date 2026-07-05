@@ -19,10 +19,19 @@ class TvScaler extends StatelessWidget {
   /// painted beneath (the video surface) shows through.
   final Color background;
 
+  /// Optional full-physical-screen layer painted BEHIND the letterboxed canvas.
+  /// On panels whose aspect ratio isn't 16:9 the `BoxFit.contain` canvas leaves
+  /// bars beside/above it; supplying a backdrop (e.g. a blurred copy of the Home
+  /// hero art) fills those bars so the hero reads edge-to-edge instead of being
+  /// flanked by black. Ignored in overlay mode. On a true 16:9 panel there are
+  /// no bars, so it's simply not visible.
+  final Widget? backdrop;
+
   const TvScaler({
     super.key,
     required this.child,
     this.background = AppColors.roomDeep,
+    this.backdrop,
   });
 
   @override
@@ -47,6 +56,19 @@ class TvScaler extends StatelessWidget {
     // bring-back-after-auto-hide all silently die. So skip the box entirely in
     // overlay mode and let taps fall through.
     if (background == Colors.transparent) return canvas;
-    return ColoredBox(color: background, child: canvas);
+    if (backdrop == null) return ColoredBox(color: background, child: canvas);
+    return ColoredBox(
+      color: background,
+      child: Stack(
+        fit: StackFit.expand,
+        children: [
+          // Behind the canvas: fills the whole panel, so the letterbox bars
+          // pick up the (blurred, darkened) hero art. IgnorePointer so it never
+          // steals D-pad/tap input from the canvas above it.
+          Positioned.fill(child: IgnorePointer(child: backdrop!)),
+          canvas,
+        ],
+      ),
+    );
   }
 }

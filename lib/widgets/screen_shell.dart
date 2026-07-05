@@ -17,12 +17,18 @@ class ScreenShell extends StatefulWidget {
   final bool showChrome;
   final Color? background;
 
+  /// Full-screen layer painted behind the letterboxed canvas (see
+  /// [TvScaler.backdrop]) — Home passes a blurred hero backdrop so the hero
+  /// fills the physical width on non-16:9 panels.
+  final Widget? backdrop;
+
   const ScreenShell({
     super.key,
     required this.current,
     required this.child,
     this.showChrome = true,
     this.background,
+    this.backdrop,
   });
 
   @override
@@ -79,6 +85,7 @@ class _ScreenShellState extends State<ScreenShell> {
     );
 
     return TvScaler(
+      backdrop: widget.backdrop,
       child: ColoredBox(
         color: widget.background ?? AppColors.bg1,
         child: Stack(children: [

@@ -1,3 +1,4 @@
+import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../models/content_item.dart';
@@ -11,6 +12,7 @@ import '../theme/theme.dart';
 import '../utils/daily_shuffle.dart';
 import '../utils/genre_translations.dart';
 import '../utils/image_prefetch.dart';
+import '../widgets/catalog_image.dart';
 import '../widgets/content_card.dart';
 import '../widgets/content_row.dart';
 import '../widgets/ensure_visible.dart';
@@ -24,6 +26,32 @@ class HomeScreen extends ConsumerStatefulWidget {
 }
 
 class _HomeScreenState extends ConsumerState<HomeScreen> {
+  // Current hero backdrop URL, mirrored into the letterbox bars on non-16:9
+  // panels so the hero reads edge-to-edge (see [_heroBackdropLayer]).
+  String? _heroBackdrop;
+
+  /// A blurred, darkened full-screen copy of the current hero art, painted by
+  /// the shell behind the letterboxed canvas. Null (no fill) until the hero
+  /// reports a backdrop. On a true 16:9 panel there are no bars, so it never
+  /// shows regardless.
+  Widget? _heroBackdropLayer() {
+    final url = _heroBackdrop;
+    if (url == null || url.isEmpty) return null;
+    return ImageFiltered(
+      imageFilter: ui.ImageFilter.blur(sigmaX: 48, sigmaY: 48),
+      child: Stack(fit: StackFit.expand, children: [
+        CatalogImage(url: url),
+        const ColoredBox(color: Color(0x99070914)),
+      ]),
+    );
+  }
+
+  void _onHeroBackdrop(String url) {
+    if (url != _heroBackdrop && mounted) {
+      setState(() => _heroBackdrop = url);
+    }
+  }
+
   @override
   void initState() {
     super.initState();
@@ -51,55 +79,65 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   String _genreLine(ContentItem s) =>
       s.genres.take(2).map(translateGenre).join(' · ');
 
-  /// Everything mode: a lean set of live WCOFlix rows (async). Each row loads
-  /// independently; the whole-catalog A–Z lists are sampled here and reachable
-  /// in full via Browse/Search.
+  /// Everything mode: leads with the most TMDB-famous titles (with posters +
+  /// backdrops), the same way the Arabic Home ranks by popularity — a backdrop
+  /// hero + a few fame-ranked rows. Deliberately NOT the raw A–Z lists or a
+  /// "new episodes of any show" feed; the full catalog is in Browse + Search.
   Widget _everythingHome(BuildContext context, Map<String, String> t) {
     void open(ContentItem i) => AppNav.detail(context, i);
+    final settings = ref.watch(settingsProvider);
+    final user = ref.watch(userProvider);
+    final famous = ref.watch(wcoFamousProvider);
+    final heroItems = ref.watch(wcoHeroProvider).valueOrNull ?? const [];
 
-    Widget row(String title, AsyncValue<List<ContentItem>> a, {int take = 30}) {
-      return a.when(
-        loading: () => _wcoLoadingRow(title),
+    Widget slice(String title, int skip, int take) {
+      return famous.when(
+        loading: () => skip == 0 ? _wcoLoadingRow(title) : const SizedBox.shrink(),
         error: (_, _) => const SizedBox.shrink(),
-        data: (items) => items.isEmpty
-            ? const SizedBox.shrink()
-            : ContentRow(
-                title: title,
-                count: items.length,
-                cards: [
-                  for (final i in items.take(take))
-                    PosterCard(
-                        item: i, movieLabel: t['movie']!, onPressed: () => open(i)),
-                ],
-              ),
+        data: (items) {
+          final part = items.skip(skip).take(take).toList();
+          return part.isEmpty
+              ? const SizedBox.shrink()
+              : ContentRow(
+                  title: title,
+                  count: part.length,
+                  cards: [
+                    for (final i in part)
+                      PosterCard(
+                          item: i, movieLabel: t['movie']!, onPressed: () => open(i)),
+                  ],
+                );
+        },
       );
     }
 
     final rows = <Widget>[
-      row(t['row_popular']!, ref.watch(wcoPopularProvider)),
-      row(t['row_new']!, ref.watch(wcoLatestProvider)),
-      row(t['nav_tv']!, ref.watch(wcoCartoonsProvider)),
-      row(t['dubbed_anime']!, ref.watch(wcoDubbedProvider)),
-      row(t['nav_movies']!, ref.watch(wcoMoviesProvider)),
+      slice(t['most_popular']!, 0, 24),
+      slice(t['row_popular']!, 24, 24),
+      slice(t['topten']!, 48, 24),
     ];
+
+    final hero = heroItems.isEmpty
+        ? const SizedBox(height: 130)
+        : HeroCarousel(
+            items: heroItems,
+            t: t,
+            isRtl: settings.isRtl,
+            autoplay: settings.prefs['autoplay'] != 'off',
+            onPlay: (i) => playItem(context, ref, i),
+            onMoreInfo: open,
+            onToggleList: (i) => ref.read(userProvider.notifier).toggle(i.id),
+            isInList: (i) => user.watchlistIds.contains(i.id),
+            onBackdrop: _onHeroBackdrop,
+          );
 
     return ScreenShell(
       current: 'home',
+      backdrop: _heroBackdropLayer(),
       child: CustomScrollView(
         slivers: [
-          const SliverToBoxAdapter(child: SizedBox(height: 130)),
-          SliverToBoxAdapter(
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(Spacing.pad, 0, Spacing.pad, 8),
-              child: Text(t['everything_title']!,
-                  style: const TextStyle(
-                      fontFamily: Fonts.display,
-                      fontFamilyFallback: Fonts.fallback,
-                      fontWeight: FontWeight.w600,
-                      fontSize: 40,
-                      color: AppColors.ink)),
-            ),
-          ),
+          SliverToBoxAdapter(child: hero),
+          const SliverToBoxAdapter(child: SizedBox(height: 24)),
           SliverList(
             delegate:
                 SliverChildBuilderDelegate((c, i) => rows[i], childCount: rows.length),
@@ -346,6 +384,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
 
     return ScreenShell(
       current: 'home',
+      backdrop: _heroBackdropLayer(),
       // CustomScrollView so off-screen rows (the genre rows especially) build
       // lazily as they scroll into view instead of all at once.
       child: CustomScrollView(
@@ -367,6 +406,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                 onToggleList: (i) =>
                     ref.read(userProvider.notifier).toggle(i.id),
                 isInList: (i) => user.watchlistIds.contains(i.id),
+                onBackdrop: _onHeroBackdrop,
               ),
             ),
           ),

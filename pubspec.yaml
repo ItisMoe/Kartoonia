@@ -2,7 +2,7 @@ name: kartoonia
 description: "Kartoonia - Arabic cartoons for Android TV"
 publish_to: 'none'
 
-version: 2.0.1+14
+version: 2.1.0+15
 
 environment:
   sdk: ^3.12.1
@@ -66,6 +66,7 @@ flutter:
     - assets/arabictoons_catalog.json
     - assets/stardima_catalog.json
     - assets/wcoflix_snapshot.json
+    - assets/wcoflix_catalog.json
     # Room art with the CRT screen punched out (transparent hole): the theme
     # video is drawn UNDER these so the painted TV frame covers its edges.
     - assets/tv-clean-cut.png
