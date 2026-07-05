@@ -56,22 +56,26 @@ vs "English Subbed" is encoded in the slug/title.
 The episode page contains one player iframe, found by id in order `anime-js-0`, `anime-js-1`,
 `cizgi-js-0`. `src` = the embed URL.
 
-**Type A — "getvid" (wcostream), ad‑gated, needs JS:**
+**Type A — "getvid" (wcostream), ad‑gated — but solvable with PURE HTTP (no browser):**
 `embed.wcostream.com/inc/embed/index.php?file=…&fullhd=1&pid=…&h=…&t=…&embed=neptun`.
-`index.php` is an **ad announcement gate** (`<title>Announcement</title>`, a 10s countdown
-Close button). `pre-init.js` generates a random `nonce`, runs adblock‑bait detection, POSTs
-`/ad-verify` `{nonce,status:'clear'|'blocked',id:pid}`, then redirects to
-`video-js.php?<same query>&n=<nonce>`. The real player runs
-`$.getJSON("<getvidlink URL>", function(response){ … })` where the response is
-`{enc, hd, fhd, server, cdn}`. Playable URL = `server + "/getvid?evid=" + token`:
-`enc`→576p, `hd`→**720p**, `fhd`→**1080p** (progressive mp4; served after HEAD 302 redirects).
-Required media headers: exact `User-Agent` + `Referer: https://embed.wcostream.com/`.
+`index.php` is an ad gate. The **current WatchNixtoons2 addon (kodi19 branch v0.25, June 2026)**
+bypasses it entirely over plain HTTP — verified live 2026‑07‑05:
+  1. GET the ad‑bait `…/assets/ads/advertisement.js?flag=__abd_<hex>&_=<ms>` (Referer = embed).
+  2. `pid` = the embed's `pid`; `nonce` = 32 hex. POST `…/ad-verify` body
+     `{"nonce":<nonce>,"status":"clear","id":<pid>}` (Content‑Type json, Referer = embed).
+  3. Swap `inc/embed/index.php` → **`inc/embed/video-js-old.php`** (the LEGACY, non‑ad‑walled
+     player) and append `&n=<nonce>`. **Wait ~5 s** (the gate needs the dwell), then GET it.
+  4. The player HTML has `$.getJSON("/inc/embed/getvidlink.php?v=neptun/<file>.mp4&embed=neptun&fullhd=1")`
+     (the `getRedirectedUrl(videoUrl)` shape). GET that URL prefixed with the embed host and
+     suffixed `&json` (Referer = embed, `X-Requested-With: XMLHttpRequest`) → JSON
+     `{enc, hd, fhd, server, cdn, sub}`. Playable URL = `server + "/getvid?evid=" + token`:
+     `enc`→576p, `hd`→**720p**, `fhd`→**1080p** (progressive mp4; the CDN 302‑redirects to an
+     edge node — libmpv follows it). Required media headers: exact `User-Agent` +
+     `Referer: https://embed.wcostream.com/`. Verified: 720p returns `206 video/mp4`.
 
-Replaying the ad‑verify handshake over plain HTTP was **insufficient** (204 from `/ad-verify`,
-but `video-js.php` still returned the gate) — the gate is genuinely server‑side/session‑bound.
-ZenDownloader, the reference tool, drives a **real headless browser** for exactly this step and
-comments *"IDK how to execute the js, so we still have to use selenium."* → We do the same with
-a hidden Android **WebView** (see §5.3).
+The earlier assumption that this needed a WebView was WRONG: `video-js.php` is walled, but
+`video-js-old.php` (with the bait + ad‑verify + dwell) is not. **No WebView / no iframe** — the
+resolver is plain HTTP, exactly like Kodi. (Owner constraint: no embedded/iframe playback.)
 
 **Type B — "m3u8" (`anime-js-1`), pure HTTP, no ad gate:**
 Frame contains `<source src="…index.m3u8">` (or a `getRedirectedUrl("…")` / `"src":"…index.m3u8"`).
@@ -148,10 +152,10 @@ available quality, tagged `576p/720p/1080p`, with the correct CDN headers. Pipel
 2. **m3u8 mode (pure HTTP):** fetch frame → extract `index.m3u8` → parse master → one server per
    `x576/x720/x1080` variant (+ English audio rendition passed to libmpv). `type='hls'`.
    Referer = frame origin.
-3. **getvid mode (WebView):** run the headless WebView resolver (§5.5) to obtain
-   `server/getvid?evid=<token>` for `enc/hd/fhd`. One `PlayableServer` per returned quality.
-   `type='mp4'`, headers `{User-Agent, Referer: https://embed.wcostream.com/}`. Cache the frame's
-   getvidlink so re‑resolving other qualities is instant.
+3. **getvid mode (PURE HTTP):** run the ad‑bait → `ad-verify` nonce → `video-js-old.php` → 
+   `getvidlink.php` JSON flow (§2.3 Type A) to obtain `server/getvid?evid=<token>` for
+   `enc/hd/fhd`. One `PlayableServer` per returned quality. `type='mp4'`, headers
+   `{User-Agent, Referer: https://embed.wcostream.com/}`. No browser/WebView.
 4. Order results best‑first but let the **player default to 720p** (see §5.4). Provide a public
    pure `parseHlsMaster(text)` and `parseGetvidJson(json)` for unit tests.
 
@@ -171,19 +175,11 @@ entries by resolution; (c) persist the user's last chosen resolution as a prefer
 audio handling are unchanged (Arabic audio only applies to Arabic sources; WCOFlix streams pick
 English audio).
 
-### 5.5 Headless WebView resolver (Android) — `lib/services/wcoflix/adgate_webview.dart`
-A hidden `HeadlessInAppWebView` (package `flutter_inappwebview`) that mirrors ZenDownloader's
-selenium step for getvid embeds only:
-1. Load the `index.php` embed URL (browser UA).
-2. Wait for `#announcement` / `#close-btn`; inject `HIDE_AD` JS (redirects to `video-js.php`).
-3. In the video‑js page, read the frame source, find `$.getJSON("<getvidlink>"`; inject the
-   `changeUrlToVideoFunction` JS that fetches getvidlink and posts back
-   `{enc,hd,fhd,server}` via a JS handler channel.
-4. Return the quality→url map; tear down the WebView.
-Timeout‑guarded (~20s), single reused instance, off the video render path. This is the one
-piece that **requires on‑device/emulator verification** and is therefore isolated behind a
-narrow interface (`Future<Map<Quality,String>> resolveGetvid(String embedUrl)`) so the rest of
-the resolver is testable without it.
+### 5.5 (REMOVED) Headless WebView resolver
+Superseded by the pure‑HTTP getvid flow (§2.3 Type A / §5.3 step 3). No WebView, no
+`flutter_inappwebview` dependency — the owner explicitly does not want embedded/iframe playback,
+and the Kodi addon proves plain HTTP works. The whole resolver is `http`‑only and unit‑testable
+via an injected `WcoHttp` seam.
 
 ### 5.6 UI integration
 - **Mode toggle:** Settings switch "Show everything (beta)" + a header/browse affordance to flip
@@ -211,16 +207,17 @@ the resolver is testable without it.
 
 ## 7. Phasing (each phase = its own plan/PR, independently valuable)
 
-- **Phase 1 — Foundation (off‑device, fully unit‑tested):** `CatalogSource.wcoflix`; all pure
-  parsers for catalog (§5.1) and stream sources (`parseHlsMaster`, `parseGetvidJson`, iframe/
-  getvidlink extraction) validated against captured live fixtures; `WcoflixCatalog` networking +
-  cache; the m3u8 (HTTP) resolver path; `resolvePlayback` wcoflix branch for m3u8; Quality model
-  + 720p default. **No UI, no WebView yet** — safe, additive, verifiable now.
-- **Phase 2 — getvid WebView resolver (needs device):** `flutter_inappwebview` headless ad‑gate
-  resolver (§5.5); wire into the resolver; quality caching. Verify on emulator/device.
-- **Phase 3 — Everything‑mode UI:** mode toggle + provider; home/browse/search wired to
-  `WcoflixCatalog`; resolution picker labels + persisted preference.
-- **Phase 4 — Unified audio switch:** Arabic ↔ original matching + detail control.
+- **Phase 1 — Foundation + full pure‑HTTP resolver (DONE, off‑device unit‑tested):**
+  `CatalogSource.wcoflix`; all pure catalog parsers (§5.1) validated against live fixtures;
+  `WcoflixCatalog` networking + cache; stream parsers (`pickEmbedIframe`, `getvidLinkUrl`,
+  `hlsSourceUrl`, `parseHlsMaster`, `parseGetvidJson`); the **complete getvid pure‑HTTP resolver**
+  (bait → ad‑verify → `video-js-old.php` → getvidlink JSON) AND the HLS path, ordered 720p‑first;
+  `resolvePlayback` wcoflix branch. No WebView. Resolver logic unit‑tested via an injected
+  `WcoHttp` seam; the live flow was verified end‑to‑end by hand (720p → `206 video/mp4`).
+- **Phase 2 — Everything‑mode UI:** mode toggle + provider; home/browse/search wired to
+  `WcoflixCatalog`; resolution picker labels + persisted 720p preference. (Needs device to verify
+  the TV UX.)
+- **Phase 3 — Unified audio switch:** Arabic ↔ original matching + detail control.
 
 ## 8. Risks & mitigations
 - **Site markup / domain churn:** isolate every scrape in a named pure parser with fixtures;

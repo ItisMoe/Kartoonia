@@ -1,28 +1,47 @@
+import 'wcoflix_config.dart';
 import 'wcoflix_quality.dart';
 
-/// Pure stream-source parsers for the WCOFlix player. Two embed shapes exist:
-/// the ad-gated "getvid" player (a `$.getJSON` returning enc/hd/fhd tokens) and
-/// a plain HLS embed (`anime-js-1`). These functions cover the parts that can
-/// be tested without a browser; the ad-gate itself is Phase 2 (WebView).
+/// Pure stream-source parsers for the WCOFlix player, mirroring the current
+/// WatchNixtoons2 (kodi19 v0.25) resolver — all pure HTTP, no browser. The
+/// episode page holds a `*-js-N` player iframe (usually the wcostream
+/// `index.php` ad-gate embed); the resolver swaps it to `video-js-old.php` (see
+/// wcoflix_resolver.dart) and the resulting player HTML yields either a getvid
+/// `$.getJSON` link (enc/hd/fhd tokens) or a plain HLS `<source>`.
 
-/// The player iframe on an episode page, tried by id in the order ZenDownloader
-/// uses (`anime-js-0` → `anime-js-1` → `cizgi-js-0`). Returns the frame `src`,
-/// or null when no known player frame exists.
-String? pickEmbedIframe(String episodeHtml) {
-  for (final id in ['anime-js-0', 'anime-js-1', 'cizgi-js-0']) {
-    final m = RegExp('id="$id"[^>]*\\ssrc="([^"]+)"').firstMatch(episodeHtml) ??
-        RegExp('src="([^"]+)"[^>]*\\sid="$id"').firstMatch(episodeHtml);
-    if (m != null) return m.group(1);
+/// The player iframe `src` on an episode page: `<iframe id="xxx-js-N" src=...>`
+/// (cizgi-js-0 / anime-js-0 / anime-js-1). Null when no player frame exists.
+final _reJsIframe = RegExp(
+  r'<iframe\s*(?:rel="nofollow")?\s*id="[a-zA-Z]+-js-[0-9]+"\s*src="([^"]+)"',
+  dotAll: true,
+);
+String? pickEmbedIframe(String episodeHtml) =>
+    _reJsIframe.firstMatch(episodeHtml)?.group(1);
+
+/// From the `video-js-old.php` player HTML, the absolute getvidlink JSON URL to
+/// call (with the `X-Requested-With` header). Handles both the current
+/// `getRedirectedUrl(videoUrl)` shape (`$.getJSON("<path>")` + `&json`) and the
+/// legacy inline `/inc/embed/getvidlink...` shape. Null when neither is present.
+String? getvidLinkUrl(String playerHtml) {
+  if (playerHtml.contains('getRedirectedUrl(videoUrl)')) {
+    final m = RegExp(r'\$\.getJSON\("([^"]+)"').firstMatch(playerHtml);
+    if (m != null) {
+      final u = m.group(1)!;
+      return '$kWcoflixEmbedHost/${u.startsWith('/') ? u.substring(1) : u}&json';
+    }
   }
+  final m = RegExp(r'"(/inc/embed/getvidlink[^"]+)').firstMatch(playerHtml);
+  if (m != null) return '$kWcoflixEmbedHost${m.group(1)}';
   return null;
 }
 
-/// True when the active frame is `anime-js-1` (the pure-HTTP HLS embed) and the
-/// getvid frame `anime-js-0` is absent — anime-js-0 wins when both are present.
-bool isM3u8Embed(String episodeHtml) {
-  final hasM3u8 = RegExp(r'id="anime-js-1"').hasMatch(episodeHtml);
-  if (!hasM3u8) return false;
-  return !RegExp(r'id="anime-js-0"').hasMatch(episodeHtml);
+/// A plain HLS `<source src="...m3u8">` (or `getRedirectedUrl("...")`) in the
+/// player HTML, for the non-getvid embeds. Null when the player is getvid-based.
+String? hlsSourceUrl(String playerHtml) {
+  final s = RegExp(r'<source\s*src="([^"]+\.m3u8[^"]*)"').firstMatch(playerHtml);
+  if (s != null) return s.group(1);
+  final g = RegExp(r'getRedirectedUrl\("([^"]+\.m3u8[^"]*)')
+      .firstMatch(playerHtml);
+  return g?.group(1);
 }
 
 /// One playable HLS variant + its (optional) separate English audio rendition.

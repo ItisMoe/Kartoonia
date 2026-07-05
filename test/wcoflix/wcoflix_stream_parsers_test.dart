@@ -7,26 +7,33 @@ import 'package:kartoonia/services/wcoflix/wcoflix_stream_parsers.dart';
 String fx(String n) => File('test/fixtures/wcoflix/$n').readAsStringSync();
 
 void main() {
-  test('pickEmbedIframe finds cizgi-js-0 frame src', () {
+  test('pickEmbedIframe finds the *-js-N frame src', () {
     const html =
-        '<iframe id="cizgi-js-0" src="https://embed.wcostream.com/inc/embed/index.php?x=1"></iframe>';
-    expect(pickEmbedIframe(html), contains('index.php?x=1'));
-    expect(isM3u8Embed(html), isFalse);
+        '<iframe rel="nofollow" id="cizgi-js-0" src="https://embed.wcostream.com/inc/embed/index.php?x=1"></iframe>';
+    expect(pickEmbedIframe(html), 'https://embed.wcostream.com/inc/embed/index.php?x=1');
   });
 
-  test('isM3u8Embed true for anime-js-1 alone', () {
-    const html = '<iframe id="anime-js-1" src="https://h.example/frame"></iframe>';
-    expect(isM3u8Embed(html), isTrue);
+  test('getvidLinkUrl handles the getRedirectedUrl(videoUrl) shape', () {
+    const html = 'blah getRedirectedUrl(videoUrl) ... '
+        r'$.getJSON("/inc/embed/getvidlink.php?v=neptun/x.mp4&embed=neptun&fullhd=1", function(){})';
+    expect(getvidLinkUrl(html),
+        'https://embed.wcostream.com/inc/embed/getvidlink.php?v=neptun/x.mp4&embed=neptun&fullhd=1&json');
   });
 
-  test('isM3u8Embed false when anime-js-0 also present', () {
-    const html = '<iframe id="anime-js-0" src="a"></iframe>'
-        '<iframe id="anime-js-1" src="b"></iframe>';
-    expect(isM3u8Embed(html), isFalse);
+  test('getvidLinkUrl handles the legacy inline shape', () {
+    const html = 'x "/inc/embed/getvidlink.php?evid=abc" y';
+    expect(getvidLinkUrl(html),
+        'https://embed.wcostream.com/inc/embed/getvidlink.php?evid=abc');
+  });
+
+  test('hlsSourceUrl finds a <source> m3u8', () {
+    const html = '<video><source src="https://h.example/vid/master.m3u8"></video>';
+    expect(hlsSourceUrl(html), 'https://h.example/vid/master.m3u8');
   });
 
   test('parseHlsMaster returns 576/720/1080 + english audio', () {
-    final v = parseHlsMaster(fx('hls_master.m3u8'), 'https://h.example/vid/master.m3u8');
+    final v =
+        parseHlsMaster(fx('hls_master.m3u8'), 'https://h.example/vid/master.m3u8');
     expect(v.map((e) => e.quality).toSet(),
         {WcoQuality.p576, WcoQuality.p720, WcoQuality.p1080});
     final p720 = v.firstWhere((e) => e.quality == WcoQuality.p720);
