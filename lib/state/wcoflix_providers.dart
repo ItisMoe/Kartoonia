@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../models/content_item.dart';
 import '../services/wcoflix/wcoflix_adapter.dart';
@@ -27,47 +28,41 @@ class EverythingModeNotifier extends Notifier<bool> {
 final everythingModeProvider =
     NotifierProvider<EverythingModeNotifier, bool>(EverythingModeNotifier.new);
 
-/// Single live WCOFlix catalog client (its own TTL cache) for the app's life.
+/// Single live WCOFlix catalog client (snapshot fallback + session cache).
 final wcoflixCatalogProvider = Provider<WcoflixCatalog>((ref) => WcoflixCatalog());
 
 List<ContentItem> _cards(List<WcoLink> links) =>
     [for (final l in links) wcoflixShowStub(l)];
 
-/// Curated home rows (each a list of card stubs). Cached by the catalog client.
+/// Snapshot-first: return the bundled snapshot immediately so a row never shows
+/// empty, and kick off a background live fetch that refreshes this provider
+/// (swapping in fresh titles) once it lands. Live wins once available.
+Future<List<WcoLink>> _liveOrSnapshot(Ref ref, String key) async {
+  final cat = ref.read(wcoflixCatalogProvider);
+  final live = cat.live(key);
+  if (live != null) return live;
+  unawaited(cat.fetchLive(key).then((_) {
+    if (cat.live(key) != null) ref.invalidateSelf();
+  }));
+  return cat.snapshot(key);
+}
+
 final wcoPopularProvider = FutureProvider<List<ContentItem>>(
-    (ref) async => _cards(await ref.read(wcoflixCatalogProvider).popular()));
+    (ref) async => _cards(await _liveOrSnapshot(ref, 'popular')));
 final wcoLatestProvider = FutureProvider<List<ContentItem>>(
-    (ref) async => _cards(await ref.read(wcoflixCatalogProvider).latest()));
+    (ref) async => _cards(await _liveOrSnapshot(ref, 'latest')));
 final wcoCartoonsProvider = FutureProvider<List<ContentItem>>(
-    (ref) async => _cards(await ref.read(wcoflixCatalogProvider).cartoons()));
+    (ref) async => _cards(await _liveOrSnapshot(ref, 'cartoons')));
 final wcoDubbedProvider = FutureProvider<List<ContentItem>>(
-    (ref) async => _cards(await ref.read(wcoflixCatalogProvider).dubbedAnime()));
+    (ref) async => _cards(await _liveOrSnapshot(ref, 'dubbed')));
 final wcoMoviesProvider = FutureProvider<List<ContentItem>>(
-    (ref) async => _cards(await ref.read(wcoflixCatalogProvider).movies()));
+    (ref) async => _cards(await _liveOrSnapshot(ref, 'movies')));
 
-/// A browse category by key ('cartoons'|'dubbed'|'movies'|'ova').
-final wcoCategoryProvider =
-    FutureProvider.family<List<ContentItem>, String>((ref, key) async {
-  final c = ref.read(wcoflixCatalogProvider);
-  switch (key) {
-    case 'dubbed':
-      return _cards(await c.dubbedAnime());
-    case 'movies':
-      return _cards(await c.movies());
-    case 'ova':
-      return _cards(await c.ova());
-    case 'cartoons':
-    default:
-      return _cards(await c.cartoons());
-  }
-});
-
-/// Combined "TV Shows" browse pool for Everything mode: cartoons + dubbed
-/// anime, deduped by id. The grid renders lazily, so the large list is cheap.
+/// Combined "TV Shows" browse pool for Everything mode: cartoons + dubbed anime,
+/// deduped by id. Snapshot-first for each half.
 final wcoTvBrowseProvider = FutureProvider<List<ContentItem>>((ref) async {
-  final c = ref.read(wcoflixCatalogProvider);
-  final cartoons = await c.cartoons();
-  final dubbed = await c.dubbedAnime();
+  final cartoons = await _liveOrSnapshot(ref, 'cartoons');
+  final dubbed = await _liveOrSnapshot(ref, 'dubbed');
   final seen = <String>{};
   final out = <ContentItem>[];
   for (final l in [...cartoons, ...dubbed]) {
@@ -77,7 +72,7 @@ final wcoTvBrowseProvider = FutureProvider<List<ContentItem>>((ref) async {
   return out;
 });
 
-/// Live full-catalog search (series). Debounce at the call site.
+/// Live full-catalog search (series). Soft-fails to an empty list.
 final wcoSearchProvider =
     FutureProvider.family<List<ContentItem>, String>((ref, query) async {
   final q = query.trim();
@@ -108,12 +103,13 @@ final wcoSeriesProvider =
     FutureProvider.family<Show, String>((ref, pageUrl) async {
   final c = ref.read(wcoflixCatalogProvider);
   final series = await c.seriesDetail(pageUrl);
-  // Title: reuse the stub's cleaned title derived from the slug if the page
-  // has none. The series page rarely exposes a clean title, so fall back to the
-  // slug's words.
   final slug = wcoflixId(pageUrl).replaceAll('-', ' ');
   final title = slug.isEmpty
       ? pageUrl
-      : slug.split(' ').map((w) => w.isEmpty ? w : '${w[0].toUpperCase()}${w.substring(1)}').join(' ');
+      : slug
+          .split(' ')
+          .map((w) =>
+              w.isEmpty ? w : '${w[0].toUpperCase()}${w.substring(1)}')
+          .join(' ');
   return wcoflixShowFromSeries(pageUrl, series, title);
 });

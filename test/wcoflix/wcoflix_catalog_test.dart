@@ -5,17 +5,34 @@ import 'package:kartoonia/services/wcoflix/wcoflix_catalog.dart';
 String fx(String n) => File('test/fixtures/wcoflix/$n').readAsStringSync();
 
 void main() {
-  test('popular() parses homepage via injected fetch + caches', () async {
+  test('snapshot loads from the injected asset', () async {
+    final cat = WcoflixCatalog(
+        loadAsset: (_) async =>
+            '{"popular":[{"u":"https://www.wcoflix.tv/anime/a","t":"A"}]}');
+    final s = await cat.snapshot('popular');
+    expect(s.single.title, 'A');
+    expect(await cat.snapshot('missing'), isEmpty);
+  });
+
+  test('fetchLive stores a non-empty live result; live() returns it', () async {
     var calls = 0;
     final cat = WcoflixCatalog(fetch: (url, {post}) async {
       calls++;
       return fx('home.html');
     });
-    final a = await cat.popular();
-    final b = await cat.popular(); // cache hit, no 2nd fetch
-    expect(a, isNotEmpty);
+    expect(cat.live('popular'), isNull);
+    await cat.fetchLive('popular');
+    expect(cat.live('popular'), isNotEmpty);
+    await cat.fetchLive('popular'); // cached — no 2nd fetch
     expect(calls, 1);
-    expect(a.length, b.length);
+  });
+
+  test('fetchLive soft-fails on a Cloudflare challenge (live stays null)',
+      () async {
+    final cat = WcoflixCatalog(
+        fetch: (url, {post}) async => '<html><title>Just a moment...</title>');
+    await cat.fetchLive('popular');
+    expect(cat.live('popular'), isNull);
   });
 
   test('search posts catara/konuara', () async {
@@ -30,7 +47,12 @@ void main() {
     expect(seenPost?['konuara'], 'series');
   });
 
-  test('seriesDetail parses episodes using slug from url', () async {
+  test('search soft-fails to empty on network error', () async {
+    final cat = WcoflixCatalog(fetch: (url, {post}) async => throw 'net down');
+    expect(await cat.search('x'), isEmpty);
+  });
+
+  test('seriesDetail parses episodes using the slug from the url', () async {
     final cat = WcoflixCatalog(fetch: (url, {post}) async => fx('series.html'));
     final s = await cat.seriesDetail('https://www.wcoflix.tv/anime/black-torch');
     expect(s.episodes, isNotEmpty);

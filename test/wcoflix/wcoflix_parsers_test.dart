@@ -19,6 +19,15 @@ void main() {
     expect(list.every((e) => e.url.startsWith('http')), isTrue);
   });
 
+  test('parseDdmccList handles the <li data-id="N"> (Dubbed) shape', () {
+    const html = '<div class="ddmcc"><ul class="tooltip">'
+        '<li data-id="3">\n<a href="/anime/bleach?lang=dub">Bleach</a></li>'
+        '<li><a href="/anime/naruto">Naruto</a></li>'
+        '</ul></div><script>x</script>';
+    final list = parseDdmccList(html);
+    expect(list.map((e) => e.title), containsAll(['Bleach', 'Naruto']));
+  });
+
   test('parseSearchResults finds results', () {
     final list = parseSearchResults(fx('search.html'));
     expect(list, isNotEmpty);

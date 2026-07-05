@@ -23,6 +23,8 @@ String _abs(String href) {
 String _unescape(String s) => s
     .replaceAll('&amp;', '&')
     .replaceAll('&#038;', '&')
+    .replaceAll('&#039;', "'")
+    .replaceAll('&#39;', "'")
     .replaceAll('&#8217;', '’')
     .replaceAll('&#8216;', '‘')
     .replaceAll('&#8211;', '–')
@@ -61,7 +63,11 @@ List<WcoLink> parseSidebarTitles(String html) =>
 /// opens with A–Z jump links (`href="#A"`); those are skipped.
 List<WcoLink> parseDdmccList(String html) {
   final block = _block(html, 'class="ddmcc"', '<script');
-  final re = RegExp(r'<li><a href="([^"]+)"[^>]*>(.*?)</a>', dotAll: true);
+  // Some lists (e.g. Dubbed Anime) wrap items as `<li data-id="N"><a …>` with
+  // the anchor on the next line, so allow the optional attribute + whitespace.
+  final re = RegExp(
+      r'<li(?:\s+data-id="[0-9]+")?>\s*<a href="([^"]+)"[^>]*>(.*?)</a>',
+      dotAll: true);
   return [
     for (final m in re.allMatches(block))
       if (!m.group(1)!.startsWith('#'))
