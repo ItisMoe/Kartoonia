@@ -14,6 +14,14 @@ enum CatalogSource {
   stardima(
     id: 'stardima',
     assetPath: 'assets/stardima_catalog.json',
+  ),
+
+  /// WCOFlix (wcoflix.tv) — the "Everything" universe. Live-scraped, so there is
+  /// no bundled asset; items only carry a page URL that the wcoflix resolver
+  /// turns into a stream right before playback.
+  wcoflix(
+    id: 'wcoflix',
+    assetPath: '',
   );
 
   const CatalogSource({required this.id, required this.assetPath});

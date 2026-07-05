@@ -47,7 +47,7 @@ titles. It must be fetched on demand and cached. Verified live markers:
 | Genres                | `/search-by-genre`, `/search-by-genre/<g>` | dropdown `ddmcc` |
 | Search (series)       | POST `/search` `{catara:q, konuara:'series'}`, Referer `/` | result anchors |
 | Search (episodes)     | POST `/search` `{catara:q, konuara:'episodes'}` | result anchors |
-| Series → episodes     | GET series page            | `"sidebar_right3"` block anchors; `og:image`=poster; `Info:` `<p>`=plot |
+| Series → episodes     | GET `/anime/<slug>`        | flat `<a>` anchors whose path starts with `<slug>` and contains `episode` (dub+sub variants), main column, no wrapper class; `og:image`=poster; `Info:` `<p>`=plot. NOTE: the old addon's `sidebar_right3` block is now the site‑wide "recent releases" right sidebar, NOT this series' episodes — verified live 2026‑07‑05. |
 
 Titles carry **English** names (e.g. `black-torch-episode-1-english-dubbed`). "English Dubbed"
 vs "English Subbed" is encoded in the slug/title.

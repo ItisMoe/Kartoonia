@@ -48,6 +48,7 @@ class CatalogUpdater {
   /// or bundled data keeps serving).
   static Future<void> refreshAll() async {
     for (final src in CatalogSource.values) {
+      if (src.assetPath.isEmpty) continue; // live-scraped source, no asset
       try {
         await _refresh(src);
       } catch (_) {}

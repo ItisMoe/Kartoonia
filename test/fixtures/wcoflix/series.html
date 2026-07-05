@@ -1,0 +1,1431 @@
+<!DOCTYPE html>
+<!--[if lt IE 7]> <html class="no-js lt-ie9 lt-ie8 lt-ie7" lang="en"> <![endif]-->
+<!--[if IE 7]>    <html class="no-js lt-ie9 lt-ie8" lang="en"> <![endif]-->
+<!--[if IE 8]>    <html class="no-js lt-ie9" lang="en"> <![endif]-->
+<!--[if gt IE 8]><!--> <html class="no-js" lang="en"  data-theme="dark"> <!--<![endif]-->
+<head>
+  <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1,minimum-scale=1,maximum-scale=1" />
+    <meta name="apple-touch-fullscreen" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black" />
+     <link rel="shortcut icon" href="https://www.wcoflix.tv/favicon.ico" type="image/x-icon" />
+<style>
+@media only screen and (max-width: 599px) { #ac-lre-wrapper{max-width: 300px;} #sidebar_r1{display: inline-block; width: 100%; max-width: 313px; height: 280px;} }
+@media only screen and (min-width: 600px) { #sidebar_r1{float:right; display: inline-block; width: 100%; max-width: 313px; height: 280px;} }
+*{-webkit-box-sizing:border-box;-moz-box-sizing:border-box;box-sizing:border-box}body{color:#333;font-size:13px;font-family:Verdana,Geneva,sans-serif;background:#202020;margin-top:-2px}.logo{float:left}.header-top{height:40px;background:#1b1b1b;color:#FFF;line-height:35px;padding-left:20px;margin-top:20px}.header-top a{color:#FFF;font-weight:400}.header-top a:hover{color:#b85128}.header-top a:visited{color:#FFF}.catara{width:250px;height:20px}.searching{float:right;margin-top:70px}.searching-bar{max-width:250px;height:25px;border-radius:3px}.button1{background-color:#F87101;color:white;border:1px solid #DF5006}.button1:hover{background-color:#DF5006;color:white}.aramabutonu{border-radius:2px;text-align:center;text-decoration:none;display:inline-block;font-size:14px;width:60px;height:25px;-webkit-transition-duration:1.4s;transition-duration:0.4s;cursor:pointer}.sidebar-all{border-style:solid;border-color:#FF7C00;border-width:2px;background:#1E262D;border-radius:8px 8px 8px 8px}.sidebar-header{background:#FF7C00;height:35px;border-radius:4px 4px 0 0;color:#FFF;font-size:15px;text-align:left;font-weight:700;padding-top:9px;padding-left:7px}.sidebar-titles{padding-left:2px;padding-right:10px;color:#FFF;margin-top:-4px}.recent-release{overflow: hidden; background:#FF7C00;height:37px;border-radius:8px 8px 0 0;color:#FFF;font-size:15px;text-align:left;font-weight:700;padding-top:9px;padding-left:10px;clear:left;clear:right}.recent-release a{color:#FFF}.recent-release2{color:#FFF;font-size:15px;text-align:left;font-weight:700;clear:left;clear:right}.recent-release2 a{color:#FFF}.category{border:#FF7C00 solid 2px;border-radius:8px 8px 8px 8px}.kategory-desc{padding:8px}.today-buton{background:#FF7C00;padding:4px 8px 4px 8px;border-radius:4px}.today-buton:hover{background:#f9af6f}.genre-buton{background:#FF7C00;padding:2px 8px 2px 8px;border-radius:4px;line-height:25px}.genre-buton:hover{background:#f9af6f}.genre-buton2 a{background:#FFF;padding:10px 8px 10px 8px;margin-left:2px;border-radius:4px;line-height:40px}.genre-buton2 a:hover{background:#f9af6f}.video-title2{clear:right;background:#FF7C00;height:37px;color:#FFF;font-size:15px;margin-bottom:5px;text-align:left;border-radius:4px;font-weight:700;padding-top:10px;padding-left:5px;clear:left;clear:right}.episode-descp{color:#FFF;font-size:13px}.episode-descp a{color:#EC8304;font-size:15px;font-weight:700}.header-tag{color:#FFF}.header-tag a{color:#EC8304}.header-tag h2{font-weight:400;font-size:16px;color:#EC8304;margin:30px 0 0 0;padding:0;display:inline}.h1-tag{padding:10px 0 0 10px}.video-title{background:#FF7C00;min-height:37px;color:#FFF;}.video-title h1{font-size:15px;display:inline;padding:5px 0 10px 0}.video-title a{color:#FFF;font-size:15px}.video-title h2{font-size:15px;display:inline;padding:5px 0 10px 0}#sidebar_right{overflow:hidden;background-color:#1E262D;padding:8px;padding-bottom:20px;position:relative;border-right:solid;border-left:solid;border-bottom:solid;border-radius:0 0 8px 8px;border-color:#FF7C00;border-width:2px;color:aliceblue;margin-bottom:10px;}#sidebar_today{background-color:#202020;padding:8px;padding-bottom:20px;position:relative;border-right:solid;border-left:solid;border-bottom:solid;border-radius:0 0 8px 8px;border-color:#FF7C00;border-width:2px;color:aliceblue;margin-bottom:10px;overflow:auto}#sidebar_cat{background-color:#1E262D;padding:8px;padding-bottom:20px;position:relative;border-right:solid;border-left:solid;border-bottom:solid;border-radius:0 0 8px 8px;border-color:#FF7C00;border-width:2px;color:aliceblue;margin-bottom:10px;overflow:auto}#sidebar_cat a{color:#FFF;font-weight:700;font-size:14px}#sidebar_today a{color:#FFF;font-weight:700;font-size:14px}#sidebar_right2{background-color:#1E262D;padding:8px 8px 0 8px;position:relative;border-right:solid;border-left:solid;border-bottom:solid;border-radius:0 0 8px 8px;border-color:#FF7C00;border-width:2px;color:aliceblue;margin-bottom:10px;overflow:auto}#sidebar_right3{background-color:#1E262D;padding:8px 8px 15px 8px;position:relative;border-right:solid;border-left:solid;border-
+bottom:solid;border-radius:0 0 8px 8px;border-color:#FF7C00;border-width:2px;color:aliceblue;overflow:auto;margin-bottom:20px}#sidebar_right3 a:visited{color:#f5a383}#sidebar_right4{padding:8px 8px 0 8px;position:relative;border-right:solid;border-left:solid;border-bottom:solid;border-radius:0 0 8px 8px;border-color:#FF7C00;border-width:2px;margin-bottom:10px;overflow:auto}.img2{padding-right:10px;padding-bottom:10px}.recent-release-main{clear:both;padding-top:10px}.recent-releases{clear:both}.video-page-main{clear:both}.todays-text{max-width:200px;float:left}.left{float:left}.div1{width:100px;height:50px;margin:10px;border:3px solid #73AD21;float:left}.div2{float:right}.cat-eps{max-width:940px;border-bottom:1px dashed #FF7C00;padding:5px 0 5px 0}.cat-eps a{color:#FFF;font-size:17px}.cat-eps:hover{background:#FF7C00}.ad300{width:300px;height:250px;border:1px solid black;margin-bottom:15px}.right{float:right}.left{margin-bottom:20px}.footer-kismi{border-top:#FF7C00 solid 2px;margin-top:20px;min-height:50px;color:aliceblue;text-align:center;line-height:40px}.cerceve{min-width:220px;height:20px;background:#1E262D;float:left;text-align:center}.cerceve:hover{background-color:#635b6b}.cerceve2{min-width:153px;min-height:280px;max-width:168px;max-height:330px;background:#1E262D;margin:2px 2px 2px 2px;float:left;text-align:center}.cerceve2:hover{background-color:#635b6b}.cerceve2 a{color:#FF7C00;font-size:12px;text-decoration:none;margin:0 0 0 0}.cerceve2 a:visited{color:#AE5400;font-size:12px;text-decoration:none;margin:0 0 0 0}.cerceve2 a:hover{color:#d74207;font-size:12px;text-decoration:none}.iccerceve{margin:2px 2px 4px 2px;text-align:center}.iccerceve2{margin:2px 2px 4px 2px;text-align:center}.cerceve-tur-ve-genre{margin-left:10px;margin-bottom:10px}.cerceve a{color:#FF7C00;font-size:12px;text-decoration:none;margin:0 0 0 0}.cerceve a:visited{color:#AE5400;font-size:12px;text-decoration:none;margin:0 0 0 0}.cerceve a:hover{color:#d74207;font-size:12px;text-decoration:none}.todays-anime-main{min-width:300px;border:#FF7C00 solid 2px;width:100%;height:300px;float:left;border-radius:8px 8px 8px 8px;background:#1E262D;color:#FFF}.video-top{min-width:300px;border:#FF7C00 solid 2px;width:57%;height:250px;float:left;border-radius:8px 8px 8px 8px;background:#1E262D;color:#FFF}.todays-anime{background:#FF7C00;height:37px;border-radius:4px 4px 0 0;color:#FFF;font-size:15px;text-align:left;font-weight:700;padding-top:7px;padding-left:5px;width:100%}.clearfix{overflow:auto}.img2{float:left;padding-top:30px}.img3{float:left;margin:10px;max-width:200px;height:200px}.img5{float:left;margin:10px;max-width:240px;max-height:340px}.img4{max-width:150px}#map_canvas embed{max-width:none}.sidebar-titles li{margin-left:-22px;padding:5px 0 5px 0;min-height:18px;border-bottom:1px dashed #FF7C00}.sidebar-titles a,.sidebar-titles a:visited{color:#FFF;font-size:12px;text-decoration:none;margin:0 0 0 0}.sidebar-titles a:hover{color:#d74207;font-size:12px;text-decoration:none}.episode-titles{margin-top:-8px}.episode-titles li{margin-left:-23px;padding:10px 10px 5px;min-height:40px}.episode-titles a,.episode-titles a:visited{color:#FFF;font-size:15px;text-decoration:none;margin:0 0 0 0}.episode-titles a:hover{color:#d74207;font-size:15px;text-decoration:none}ul.sidebar{list-style-image:url(tabs.jpg)}ul.episode-titles{list-style-image:url(tabs.jpg)}ul.episode-titles li{border-bottom:solid #FF7C00 1px}.episode-titles li:hover{background-color:#F3E2A9}#map_canvas img{max-width:none}#map_canvas object{max-width:none}h1{font-size:44px}h2{font-size:37px}h3{font-size:27px}h5{font-size:17px}h6{font-size:14px}.row{width:980px;max-width:100%;min-width:768px;margin:0 auto;background:#272424;border-right:solid #202020 2px;border-left:solid #202020 2px}.row .row{width:auto;max-width:none;min-width:0;margin:0 -6px}.row.collapse .column,.row.collapse .columns{padding:0}.row .row{width:auto;max-width:none;min-width:0;margin:0 -6px}.row .row.collapse{margin:0}.column,.columns{float:left;min-height:1px;padding:0 4px;position:relative}.column.centered,.columns.centered{
+float:none;margin:0 auto}[class*="column"] + [class*="column"]:last-child{float:right}[class*="column"] + [class*="column"].end{float:left}.row .one{width:8.333%}.row .two{width:16.667%}.row .three{width:25%}.row .four{width:24.333%}.row .fifteen{width:17.35%}.row .five{width:41.667%}.row .six{width:50%}.row .seven{width:58.333%}.row .eight{width:75.65%}.row .fourteen{width:82.65%}.row .nine{width:75%}.row .ten{width:83.333%}.row .eleven{width:91.667%}.row .twelve{width:100%}.row .offset-by-one{margin-left:8.333%}.row .offset-by-two{margin-left:16.667%}.row .offset-by-three{margin-left:25%}.row .offset-by-four{margin-left:25.333%}.row .offset-by-five{margin-left:41.667%}.row .offset-by-six{margin-left:50%}.row .offset-by-seven{margin-left:58.333%}.row .offset-by-eight{margin-left:74.65%}.row .offset-by-nine{margin-left:75%}.row .offset-by-ten{margin-left:83.333%}.push-two{left:16.667%}.pull-two{right:16.667%}.push-three{left:25%}.pull-three{right:25%}.push-four{left:33.333%}.pull-four{right:33.333%}.push-five{left:41.667%}.pull-five{right:41.667%}.push-six{left:50%}.pull-six{right:50%}.push-seven{left:58.333%}.pull-seven{right:58.333%}.push-eight{left:66.667%}.pull-eight{right:66.667%}.push-nine{left:75%}.pull-nine{right:75%}.push-ten{left:83.333%}.pull-ten{right:83.333%}img,object,embed{max-width:100%;height:auto}img{-ms-interpolation-mode:bicubic}#map_canvas img,.map_canvas img{max-width:none!important}.row{*zoom:1}.row:before,.row:after{content:"";display:table}.row:after{clear:both}@media only screen and (max-width :768px) {body{-webkit-text-size-adjust:none;-ms-text-size-adjust:none;width:100%;min-width:0;margin-left:0;margin-right:0;padding-left:0;padding-right:0}.row{width:auto;min-width:0;margin-left:0;margin-right:0}.column,.columns{width:auto!important;float:none}.column:last-child,.columns:last-child{float:none}[class*="column"] + [class*="column"]:last-child{float:none}.column:before,.columns:before,.column:after,.columns:after{content:"";display:table}.column:after,.columns:after{clear:both}.no-left-margin,.offset-by-one,.offset-by-two,.offset-by-three,.offset-by-four,.offset-by-five,.offset-by-six,.offset-by-seven,.offset-by-eight,.offset-by-nine,.offset-by-ten{margin-left:0!important}.left-auto,.push-two,.push-three,.push-four,.push-five,.push-six,.push-seven,.push-eight,.push-nine,.push-ten{left:auto}.right-auto,.pull-two,.pull-three,.pull-four,.pull-five,.pull-six,.pull-seven,.pull-eight,.pull-nine,.pull-ten{right:auto}.row .mobile-one{width:25%!important;float:left;padding:0 5px}.row .mobile-one:last-child{float:right}.row.collapse .mobile-one{padding:0}.row .mobile-two{width:50%!important;float:left;padding:0 5px}.row .mobile-two:last-child{float:right}.row.collapse .mobile-two{padding:0}.row .mobile-three{width:75%!important;float:left;padding:0 5px}.row .mobile-three:last-child{float:right}.row.collapse .mobile-three{padding:0}.row .mobile-four{width:100%!important;float:left;padding:0 5px}.row .mobile-four:last-child{float:right}.row.collapse .mobile-four{padding:0}.push-one-mobile{left:25%}.pull-one-mobile{right:25%}.push-two-mobile{left:50%}.pull-two-mobile{right:50%}.push-three-mobile{left:75%}.pull-three-mobile{right:75%}}.block-grid{display:block;overflow:hidden;padding:0}.block-grid>li{display:block;height:auto;float:left}.block-grid.two-up{margin:0 -15px}.block-grid.two-up>li{width:50%;padding:0 15px 15px}.block-grid.three-up{margin:0 -12px}.block-grid.three-up>li{width:33.33%;padding:0 12px 12px}.block-grid.four-up{margin:0 -10px}.block-grid.four-up>li{width:25%;padding:0 10px 10px}.block-grid.five-up{margin:0 -8px}.block-grid.five-up>li{width:20%;padding:0 8px 8px}@media only screen and (max-width :768px) {.block-grid.mobile{margin-left:0}.block-grid.mobile>li{float:none;width:100%;margin-left:0}}.nav-bar{height:40px;background:#FF7C00;margin-top:5px;padding:0;padding-left:8px}.nav-bar>li{max-width:200px;float:left;display:block;position:relative;padding:0;line-height:40px}.nav-bar>li.active{background:#AE5400;border-color:#FF7C00}.nav-bar>li.active>a{color:
+white;cursor:default}.nav-bar>li.active:hover{background:#AE5400;cursor:default}.nav-bar>li:hover{background:#AE5400}.nav-bar>li a{color:#e6e6e6}.nav-bar>li ul{margin-bottom:0}.nav-bar>li .flyout{display:none}.nav-bar>li.has-flyout>a:first-child{padding-right:36px;position:relative}.nav-bar>li.has-flyout>a:first-child:after{content:"";display:block;width:0;height:0;border:solid 4px;border-color:#e6e6e6 transparent transparent transparent;position:absolute;right:20px;top:17px}.nav-bar>li.has-flyout>a.flyout-toggle{border-left:0!important;position:absolute;right:0;top:0;padding:22px;z-index:2;display:block}.nav-bar>li.has-flyout.is-touch>a:first-child{padding-right:55px}.nav-bar>li.has-flyout.is-touch>a.flyout-toggle{border-left:1px dashed #FF7C00}.nav-bar>li>a:first-child{position:relative;padding:0 15px;display:block;text-decoration:none;font-size:14px}.nav-bar>li>input{margin:0 10px}.nav-bar.vertical{height:auto;margin-top:0}.nav-bar.vertical>li{float:none;border-bottom:none}.nav-bar.vertical>li.has-flyout>a:first-child:after{content:"";display:block;width:0;height:0;border:solid 4px;border-color:transparent transparent transparent #e6e6e6}.nav-bar.vertical>li .flyout{left:100%;top:-1px}.nav-bar.vertical>li .flyout.right{left:auto;right:100%}@media only screen and (max-device-width:1280px) {.touch .nav-bar li.has-flyout>a{padding-right:36px!important}}@media only screen and (max-width:1279px) and (min-width:768px) {.touch .nav-bar li a{font-size:13px;font-size:1.3rem}.touch .nav-bar li.has-flyout>a.flyout-toggle{padding:20px!important}.touch .nav-bar li.has-flyout>a{padding-right:36px!important}}@media only screen and (max-width :768px) {.nav-bar{height:auto}.nav-bar>li{float:none;display:block;border-right:none}.nav-bar>li>a.main{text-align:left;border-top:1px solid #ddd;border-right:none}.nav-bar>li:first-child>a.main{border-top:none}.nav-bar>li.has-flyout>a.flyout-toggle{position:absolute;right:0;top:0;padding:22px;z-index:2;display:block}.nav-bar>li.has-flyout.is-touch>a.flyout-toggle span{content:"";width:0;height:0;display:block}.nav-bar>li.has-flyout>a.flyout-toggle:hover span{border-top-color:#141414}.nav-bar.vertical>li.has-flyout>.flyout{left:0}.flyout{position:relative;width:100%!important;top:auto;margin-right:-2px;border-width:1px 1px 0 1px}.flyout.right{float:none;right:auto;left:-1px}.flyout.small,.flyout.large{width:100%!important}.flyout p:last-child{margin-bottom:18px}}form{margin:0 0 19.416px}.row form .row{margin:0 -6px}.row form .row .column,.row form .row .columns{padding:0 6px}.row form .row.collapse{margin:0}.row form .row.collapse .column,.row form .row.collapse .columns{padding:0}label{font-size:14px;color:#4d4d4d;cursor:pointer;display:block;font-weight:500;margin-bottom:3px}label.right{float:none;text-align:right}label.inline{line-height:32px;margin:0 0 12px 0}@media only screen and (max-width :768px) {label.right{text-align:left}}.prefix,.postfix{display:block;position:relative;z-index:2;text-align:center;width:100%;padding-top:0;padding-bottom:0;height:32px;line-height:31px}a.button.prefix,a.button.postfix{padding-left:0;padding-right:0;text-align:center}span.prefix,span.postfix{background:#f2f2f2;border:1px solid #ccc}.prefix{left:2px;-moz-border-radius-topleft:2px;-webkit-border-top-left-radius:2px;border-top-left-radius:2px;-moz-border-radius-bottomleft:2px;-webkit-border-bottom-left-radius:2px;border-bottom-left-radius:2px}.postfix{right:2px;-moz-border-radius-topright:2px;-webkit-border-top-right-radius:2px;border-top-right-radius:2px;-moz-border-radius-bottomright:2px;-webkit-border-bottom-right-radius:2px;border-bottom-right-radius:2px}textarea{height:auto}select{width:100%}@media only screen and (max-width :768px) {.reveal-modal-bg{position:absolute}.reveal-modal,.reveal-modal.small,.reveal-modal.medium,.reveal-modal.large,.reveal-modal.xlarge{width:80%;top:15px;left:50%;margin-left:-40%;padding:20px;height:auto}}.items{margin-left:-40px}ul.items{margin-top:20px}ul.items li{float:left;position:relative;margin-left:1.867%;width:23.5849%;text-align:center;list-style:none;margin-
+bottom:20px;vertical-align:top}ul.items li .img{overflow:hidden;position:relative}ul.items li .img:before{content:"";display:block;padding-top:125%}ul.items li .img img{width:100%;max-width:100%;height:auto}ul.items li .img a{position:absolute;top:0;left:0;display:block;width:100%;height:100%;overflow:hidden}ul.items li:nth-child(4n+1){margin-left:0}ul.items li p.name{line-height:16px;height:34px;overflow:hidden}ul.items li p.name a{color:#ffc119;font-size:13px;font-family:mySecondFont}ul.items li p.name a:hover{color:#FFF}.recent-release-episodes{height:50px;padding-top:2px}.recent-release-episodes a{color:#FFF;font-weight:700;font-size:11px}.recent-release-episodes a:hover{color:#FF7C00}.recent-release-episodes a:visited{color:#f5a383}@media only screen and (max-width:449px) {ul.items li{margin-left:3%;width:48.5%}ul.items li:nth-child(2n+1){margin-left:0}.recent-release-episodes{height:50px}}@media only screen and (min-width:450px) and (max-width:650px) {ul.items li{margin-left:2%;width:32%}ul.items li:nth-child(4n+1){margin-left:2%}ul.items li:nth-child(3n+1){margin-left:0}.recent-release-episodes{height:50px}}@media only screen and (max-width:650px) {.img5{height:200px;max-width:200px}}@media only screen and (max-width:970px) {.sidebar-header{font-size:13px}} @media only screen and (min-width:767px) and (max-width:970px) {.cat-eps a{font-size:15px}}@media only screen and (min-width:100px) and (max-width:650px) {.cat-eps a{font-size:13px}}@media only screen and (max-width:768px) {.saklasanabunu{display:none}}@media only screen and (max-width:500px) {.addthis_sharing_toolbox_i7jo{display:none}}.slider-titles{height:52px}.prev-fln{padding-top:10px;max-width:100%;min-height:60px;color:#FFF;font-size:13px;text-align:left;font-weight:300}.prev-next{min-height:30px;max-width:390px;margin-bottom:10px;background:#d45928;padding:2px 8px 2px 8px;border-radius:4px}.prev-fln a{color:#FFF}.prev-next:hover{background:#f9af6f}.slider-titles a{color:#FFF}.addthis_sharing_toolbox_i7jo{margin-top:3px}.anti-ad{clear:both;max-width:800px;height:30px;line-height:25px;border:dashed 1px;border-color:#d45928;text-align:center;vertical-align:middle;margin-bottom:10px}.anti-ad a{color:#d45928;font-weight:700}.jcarousel-wrapper{position:relative}.jcarousel{position:relative;overflow:hidden;width:100%}.jcarousel ul{width:20000em;position:relative;list-style:none;margin:0;padding:0}.jcarousel li{width:200px;float:left;border:3px solid #1e262d;-moz-box-sizing:border-box;-webkit-box-sizing:border-box;box-sizing:border-box}.jcarousel img{display:block;max-width:100%;height:auto!important}.jcarousel-control-prev,.jcarousel-control-next{position:absolute;top:50%;margin-top:-15px;width:30px;height:30px;text-align:center;background:#4E443C;color:#fff;text-decoration:none;text-shadow:0 0 1px #000;font:24px/27px Arial,sans-serif;-webkit-border-radius:30px;-moz-border-radius:30px;border-radius:30px;-webkit-box-shadow:0 0 4px #F0EFE7;-moz-box-shadow:0 0 4px #F0EFE7;box-shadow:0 0 4px #F0EFE7}.jcarousel-control-prev{left:15px}.jcarousel-control-next{right:15px}.jcarousel-pagination{position:absolute;bottom:-40px;left:50%;-webkit-transform:translate(-50%,0);-ms-transform:translate(-50%,0);transform:translate(-50%,0);margin:0}.jcarousel-pagination a{text-decoration:none;display:inline-block;font-size:11px;height:10px;width:10px;line-height:10px;background:#fff;color:#4E443C;border-radius:10px;text-indent:-9999px;margin-right:7px;-webkit-box-shadow:0 0 2px #4E443C;-moz-box-shadow:0 0 2px #4E443C;box-shadow:0 0 2px #4E443C}.jcarousel-pagination a.active{background:#4E443C;color:#fff;opacity:1;-webkit-box-shadow:0 0 2px #F0EFE7;-moz-box-shadow:0 0 2px #F0EFE7;box-shadow:0 0 2px #F0EFE7}a.reklam_kapat{float:right;cursor:pointer;color:#fff;border:1px solid #AEAEAE;border-radius:20px;background:#605F61;font-size:15px;font-weight:700;display:inline-block;line-height:0;padding:9px 3px}.reklam_kapat:before{content:"x"}.wco-footer{color:#d45928;font-weight:700}.wco-footer a{color:#d45928;font-weight:700}
+.pcat-jwplayer {margin-top:43px;}
+#btnTopPage {
+  display: none;
+  position: fixed;
+  bottom: 5px;
+  right: 10px;
+  z-index: 99;
+  font-size: 18px;
+  border: none;
+  outline: none;
+  background-color: red;
+  color: white;
+  cursor: pointer;
+  padding: 5px;
+  border-radius: 4px;
+  width: 130px;
+}
+#btnTopPage:hover {
+  background-color: #555;
+}
+.share-button { clear: both; }
+.share-button a {
+	color: unset;
+	text-decoration: none;
+}
+.alert {
+    padding: 20px;
+    background-color: #484FA2;
+    color: white;
+    opacity: 1;
+    transition: opacity 0.6s;
+    margin-bottom: 15px;
+}
+.alert.info {background-color: #2196F3;}
+.closebtn {
+    margin-left: 15px;
+    color: white;
+    font-weight: bold;
+    float: right;
+    font-size: 22px;
+    line-height: 20px;
+    cursor: pointer;
+    transition: 0.3s;
+}
+.img:hover { background: url("/theme/Icon_3-512.png") no-repeat center !important;}
+.buton-hover:hover {
+  /* 
+  border: 4px solid orange;
+  border-radius: 4px;
+  box-shadow: 0 4px 8px 0 rgba(0, 0, 0, 0.2), 0 6px 20px 0 rgba(0, 0, 0, 0.19);
+  */
+  opacity: 0.3;
+  transition: .5s ease;
+}
+div.cat-subscribe {
+  width: 100%;
+  min-height: 105px;
+  background: #F2DAD8;
+  border-radius: 8px;
+  margin-bottom: 10px;
+  display: flex;
+  align-items: center;
+  flex-flow: row wrap;  
+  justify-content: space-around;
+}
+img.img-subscribe {
+  width: 85px;
+  height: 85px;
+  border-radius: 50%;
+  margin: 10px;
+}
+span.btn-s-b {
+  margin: 15px;
+}
+div.cat-h-t {
+  flex-grow: 2;
+  max-width: 670px;
+}
+div.cat-subscribers {
+  font-size: 12px;
+}
+div.cat-header-tag a {font-weight: normal; color: black; text-decoration: none}
+div.cat-header-tag h2 {font-weight:normal; font-size:18px;color: black;padding: 0px; display: inline; }
+div.cat-header-tag { }
+.user-update-header {background:#FF7C00; height:30px; border-radius: 4px 4px 0px 0px; color:#FFFFFF; font-size:13px; text-align:left; font-weight:bold; padding-left:10px;}
+.user-update-header a {color:#FFFFFF}
+.user-update-header a:hover {color:#AD471F}
+.user-update-titles {overflow-y: auto; max-height:300px; background:#FCFCF9; border-bottom:solid 1px #dbdbd6;border-right:solid 1px #dbdbd6;border-left:solid 1px #dbdbd6; padding-left:2px; color:#1E262F;}
+.user-update-titles li {margin-left: -22px; border-bottom:1px dashed #FF7C00; line-height:22px}.user-update-titles a, .user-update-titles a:visited {color: #1E262F; font-weight:400; font-size:12px;text-decoration: none;margin:0px 0px 0px 0px;}.user-update-titles a:hover {color: #d74207;font-size:12px;text-decoration: none; font-weight:400;} 
+.navbar {
+  position: fixed;
+  bottom: 0;
+  right:0;
+  max-width:300px; 
+  min-width:83px;
+  margin: 10px 10px 0px 10px;
+}
+.subscribe-button {
+  line-height: 1.8;
+  vertical-align: top;
+  padding: 8px 12px;
+  margin-left:10px;
+  color: white;
+  background: #238C00;
+  border: none;
+  border-radius: 3px;
+  cursor: pointer;
+  font-size: 18px;
+}
+.subscribe-button:hover {background-color:#AE5400}
+.subscribe-button:active {
+  background: #FF7C00;
+}
+
+.subscribe-button.subbed {
+  background: #FF7C00;
+}
+.subscribe-button.subbed svg {
+  width: 16px;
+}
+.subscribe-button.subbed svg .plus__line1 {
+  -webkit-transform: translate(14px, 0) rotate(45deg) translate(-5px, 0) scaleY(1.16667);
+          transform: translate(14px, 0) rotate(45deg) translate(-5px, 0) scaleY(1.16667);
+}
+.subscribe-button.subbed svg .plus__line2 {
+  -webkit-transform: translate(2px, 5px) rotate(45deg) scaleX(0.5) translate(0px, -5px);
+          transform: translate(2px, 5px) rotate(45deg) scaleX(0.5) translate(0px, -5px);
+}
+.subscribe-button svg {
+  display: inline-block;
+  width: 12px;
+  height: 12px;
+  fill: white;
+  -webkit-transition: width 0.25s;
+  transition: width 0.25s;
+}
+.subscribe-button svg .plus__line1,
+.subscribe-button svg .plus__line2 {
+  -webkit-transition: -webkit-transform 0.25s;
+  transition: -webkit-transform 0.25s;
+  transition: transform 0.25s;
+  transition: transform 0.25s, -webkit-transform 0.25s;
+}
+.subscribe-button svg .plus__line1 {
+  -webkit-transform-origin: 0 0;
+          transform-origin: 0 0;
+}
+.subscribe-button svg .plus__line2 {
+  -webkit-transform-origin: 0 0;
+          transform-origin: 0 0;
+}
+.subscribe-button * {
+  vertical-align: middle;
+}
+#box_whats_new {
+  width: 300px;
+  height: 277px;
+  position: fixed;
+  bottom: 0px;
+  right: 10px; 
+  z-index: 999;  
+}
+#box_whats_new_small {
+  width: 80px;
+  height: 25px;
+  position: fixed;
+  bottom: 0px;
+  right: 10px; 
+  z-index: 999;  
+}
+#box_wn_top {
+  background:#238c01; 
+  min-height:25px; 
+  color:#FFFFFF; 
+  border-radius: 8px 8px 0px 0px;
+  -moz-border-radius: 8px 8px 0px 0px;
+  -webkit-border-radius: 8px 8px 0px 0px;
+  padding-top: 3px;
+}
+#bwn_top_left { float: left; padding-left: 5px; }
+#bwn_top_right { float: right; padding-right: 6px; }
+#bwn_top_right a { color: #FFF; text-decoration: none; font-weight: bold; }
+#box_wn_bottom {
+  height: 225px;
+  border: 2px solid #238c01;
+  background:#FCFCF9;
+  overflow-y: auto;
+}
+#box_wn_bottom ul { 
+  /*display: flex; 
+  flex-direction: column;  
+  list-style: inside disc;
+  list-style-position: inside;
+  padding-left: 0px;
+  */
+  list-style: none;
+  padding: 0;
+  margin: 0;
+ }
+#box_wn_bottom li {
+  border-bottom:  2px dashed #FF7C00;
+  padding-left:   5px;
+  padding-top:    5px;  
+  padding-bottom: 5px;
+  /* min-height: 56px; */
+}
+#box_wn_bottom li::before {
+  content: "\2022";
+  padding-right: 5px;
+  color: black;  
+}
+#box_wn_bottom ul li:last-child {
+  border-bottom: none
+}
+.li_cat {
+  background-color: lightyellow;
+}
+#box_wn_bottom ul > li:nth-of-type(odd) {
+    /* background-color: #F2DAD8; */
+}
+#box_wn_bottom a { color:#000; font-weight:normal; text-decoration: none; }
+#box_wn_bottom a:hover { color:#000; font-weight:normal; }
+#box_wn_bottom a:visited { color:#000; font-weight:normal; text-decoration: none; }
+#box_watch_later {
+  border: 2px solid #999999;
+  width: 300px;
+  height: 250px;
+  position: fixed;
+  bottom: 0px;
+  right: 10px; 
+  background-color: #ffffff;
+  overflow-y: scroll;
+  z-index: 999;
+  border: 2px solid #999999;
+  /*
+  -moz-border-radius: 10px 10px 0px 0px;
+  -webkit-border-radius: 10px 10px 0px 0px;
+  border-radius: 10px 10px 0px 0px;
+  */  
+}
+#box_watch_later_small {
+  width: 300px;
+  height: 50px;
+  position: fixed;
+  bottom: 0px;
+  right: 10px; 
+  z-index: 998;
+  background-color: #ffffff;
+  border: 2px solid #999999;
+  -moz-border-radius: 10px 10px 0px 0px;
+  -webkit-border-radius: 10px 10px 0px 0px;
+  border-radius: 10px 10px 0px 0px;
+/*IE 7 AND 8 DO NOT SUPPORT BORDER RADIUS*/  
+}
+.li-btn-delete { padding: 0; border: 0; background: transparent; }
+#div-logout {
+  position: fixed;
+  top: 10px;
+  right: 10px; 
+  z-index: 999;  
+}
+.header-top-right { display: inline-block; float:right; }
+.header-top-right a { color:#E6E6E6; font-size:13px; font-weight:bold; text-decoration: none; }
+.header-top-right span { color: white; font-size:13px; font-weight:bold;}
+
+.download-player {
+  clear:both; height: 30px; padding-top:5px; padding-bottom:5px; border:1px solid #F1DADA; border-radius:3px; background: #F1DADA; padding-left: 20px;
+}
+.download-player a { color: black; }
+/* Style the tab */
+.tab {
+  overflow: hidden;
+  border-left: 2px solid #238c01;
+  border-right: 2px solid #238c01;
+  background-color: #f1f1f1;
+}
+
+/* Style the buttons inside the tab */
+.tab button {
+  background-color: inherit;
+  float: left;
+  border: none;
+  outline: none;
+  cursor: pointer;
+  transition: 0.3s;
+  padding-top: 6px;
+  padding-bottom: 6px;
+  font-size: 13px;
+  font-weight: bold;
+}
+
+/* Change background color of buttons on hover */
+.tab button:hover {
+  background-color: #ddd;
+}
+
+/* Create an active/current tablink class */
+.tab button.active {
+  background-color: #ccc;
+}
+
+/* Style the tab content */
+.tabcontent {
+  display: none;
+  padding: 6px 12px;
+  -webkit-animation: fadeEffect 1s;
+  animation: fadeEffect 1s;
+}
+
+/* Fade in tabs */
+@-webkit-keyframes fadeEffect {
+  from {opacity: 0;}
+  to {opacity: 1;}
+}
+
+@keyframes fadeEffect {
+  from {opacity: 0;}
+  to {opacity: 1;}
+}
+.switch-watched {
+  position: relative;
+  display: inline-block;
+  width: 56px;
+  height: 30px;
+}
+
+.switch-watched input { 
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+
+.slider-watched {
+  position: absolute;
+  cursor: pointer;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: #ccc;
+  -webkit-transition: .4s;
+  transition: .4s;
+}
+
+.slider-watched:before {
+  position: absolute;
+  content: "";
+  height: 22px;
+  width: 22px;
+  left: 4px;
+  bottom: 4px;
+  background-color: white;
+  -webkit-transition: .4s;
+  transition: .4s;
+}
+
+input:checked + .slider-watched {
+  background-color: #FF7C00;
+}
+
+input:focus + .slider-watched {
+  box-shadow: 0 0 1px #FF7C00;
+}
+
+input:checked + .slider-watched:before {
+  -webkit-transform: translateX(26px);
+  -ms-transform: translateX(26px);
+  transform: translateX(26px);
+}
+
+/* Rounded sliders */
+.slider-watched.round {
+  border-radius: 34px;
+}
+
+.slider-watched.round:before {
+  border-radius: 50%;
+}
+.div-watched {
+  line-height: 34px;
+  font-size: 18px;
+}
+
+.badge2 {
+  position: absolute;
+  left:0px;
+  top: 8px;
+  font: 600 12px/1.1 ui-sans-serif, system-ui;
+  z-index: 2;
+}
+.badge2--type {
+  color: #FFF;
+  padding: 4px 8px;
+  text-transform: uppercase;
+}
+.badge2--type[data-type="dub"]     { background: #994e96; }
+.badge2--type[data-type="sub"]     { background: #3da1d2; }
+.badge2--type[data-type="cartoon"] { background: #ff6600; }
+.poster__episodes {
+  position: absolute;
+  left: 8px;
+  right: 8px;
+  bottom: 60px;
+  display: flex;
+  justify-content: center;
+  padding: 10px 0;
+  font: 700 13px/1 ui-sans-serif, system-ui;
+  color: #ffffff;
+  background: #000000c7;
+  z-index: 2;
+}
+.badge3--quality {
+  position: absolute;
+  right: 0px;
+  top: -6px;
+  font-weight: 800;
+  font-size: 13px;
+  color: #fff;
+  z-index: 2;
+}
+.badge3--quality[data-quality="480"] { background: #777; }
+.badge3--quality[data-quality="720"] { background: #777; }
+.badge3--quality[data-quality="1080"] {
+  background: url("fullhd.svg") no-repeat center center / contain;
+  width: 40px;
+  height: 41px;
+  display: inline-block;
+}
+.badge3--quality[data-quality="4k"] {
+  background: url("4k.svg") no-repeat center center / contain;
+  width: 40px;
+  height: 41px;
+  display: inline-block;
+}
+</style>
+<script type="text/javascript" src="/inc/jquery/jquery-3.7.0.min.js"></script>
+<script type='text/javascript' src='https://platform-api.sharethis.com/js/sharethis.js#property=65277c246781c90019aaba23&product=sop' async='async'></script>
+<link rel="stylesheet" href="/inc/jquery/jRating.jquery.css" type="text/css" />
+<script type="text/javascript" src="/inc/jquery/jRating.jquery.js"></script>
+<script type="text/javascript" src="/inc/jquery/jquery.cookie.js"></script>
+<script type="text/javascript" src="/inc/jquery/starrating.js"></script>
+<title>Black Torch - Watch Cartoons and Anime Online in HD for Free</title>
+<meta name="description" content="Seventeen-year-old Jirou Azuma lives a quiet life with his grandfather, utilizing his supernatural ability to speak with animals to befriend and protect th.." />
+<link rel="canonical" href="https://www.wcoflix.tv/anime/black-torch" />
+<meta property="og:title" content="Watch Black Torch Online - Black Torch" />
+<meta property="og:type" content="article" />
+<meta property="og:url" content="https://www.wcoflix.tv/anime/black-torch" />
+<meta property="og:image" content="https://www.wcoflix.tv/wp-content/catimg/934463.jpg" />
+<meta property="og:description" content="Black Torch online for Free in HD/High Quality. Watch Black Torch full episodes." /> 
+</head>
+<body>
+	<div class="row">
+	<div class="header-top">
+    <a href="https://www.wcoflix.tv">Home</a> | 
+    <a href="https://www.wcoflix.tv/contact">Contact</a> | <a href="https://www.wcostatus.com" target="_blank">WCO Status</a>
+<span><a href="https://user.wcoflix.tv">Log-In</a> | </span><span><a href="https://user.wco.tv/wp-login.php?action=register">Register</a></span>		<div style="margin-top:-30px" class="sharethis-inline-share-buttons"></div>
+	</div>
+	
+		<div class="twelve columns">
+		<a href="https://www.wcoflix.tv"><img class="img2" src="https://www.wcoflix.tv/logo.gif"></a>
+	<br>
+ <div class="searching">
+<form action="https://www.wcoflix.tv/search" method="post" id="konuara">
+        <input type="search" name="catara" maxlength="40" id="searchbox" placeholder="What are you looking for?" class="searching-bar">
+        <input type="submit" value="Search" class="aramabutonu button1">
+        <div class="searchboxtop">
+<select name="konuara" form="konuara">
+<option value="series">Anime Search</option>
+<option value="episodes">Episode Search</option>
+</select>
+</div>
+    </form>
+    </div>	
+		</div>
+	</div>
+	<div class="row">
+	
+		<div class="twelve columns">
+    <ul class="nav-bar" style="font-weight:bold">                
+<li><a href="/">Home</a></li><li><a href="/dubbed-anime-list">Dubbed Anime</a></li><li><a href="/cartoon-list">Cartoons</a></li><li><a href="/subbed-anime-list">Subbed Anime</a></li><li><a href="/movie-list">Movies</a></li><li><a href="/ova-list">Ova Series</a></li></ul>		</div>
+	</div>
+    <div class="row">
+ 
+				<div class="twelve columns">
+			<div class="row">
+                       
+  <script type="text/javascript">
+window.addEventListener("DOMContentLoaded", (event) => {
+    if(getCookie("closed") == "alert") {
+        document.getElementById("top-alert").style.display = "none";
+    }
+});
+function closeAlert() {
+    document.getElementById("top-alert").style.display = "none";
+    var exp = new Date();
+    exp.setTime(exp.getTime()+(6*60*60*1000));
+    setCookie("closed", "alert", {expires: exp});
+}
+function setCookie(name, value, options = {}) {
+    options = {
+        path: '/',
+        ...options
+    };
+    if (options.expires instanceof Date) {
+        options.expires = options.expires.toUTCString();
+    }
+    let updatedCookie = encodeURIComponent(name) + "=" + encodeURIComponent(value);
+    for (let optionKey in options) {
+        updatedCookie += "; " + optionKey;
+        let optionValue = options[optionKey];
+        if (optionValue !== true) {
+            updatedCookie += "=" + optionValue;
+        }
+    }
+    document.cookie = updatedCookie;
+}    
+function getCookie(name) {
+    let matches = document.cookie.match(new RegExp(
+        "(?:^|; )" + name.replace(/([\.$?*|{}\(\)\[\]\\\/\+^])/g, '\\$1') + "=([^;]*)"
+    ));
+    return matches ? decodeURIComponent(matches[1]) : undefined;
+}
+</script>				<div class="eight columns">	
+												<div class="video-title">				
+<h1>
+<div class="h1-tag"><a href="https://www.wcoflix.tv/anime/black-torch"><span class="film-name dynamic-name" data-jname="">Black Torch</span></a></div>
+</h1>
+</div>
+<div id="sidebar_cat">
+<img class="img5" src="//cdn.animationexplorer.com/catimg/934463.jpg" alt="" />
+
+<h3>Info:</h3>
+<div style="float:right; padding:10px;">
+                  <script async data-cfasync="false" src="https://platform.pubadx.one/pubadx-ad.js" type="text/javascript"></script>
+<div id="bg-ssp-pre-7784"></div>
+<div id="bg-ssp-7784">
+<script data-cfasync="false" data-no-optimize="1">
+var adx_id_7784 = document.getElementById('bg-ssp-7784');
+adx_id_7784.id = 'bg-ssp-7784-' + Math.floor(Math.random() * Date.now());
+window.pubadxtag = window.pubadxtag || [];
+window.pubadxtag.push({zoneid: 7784, id: adx_id_7784.id, wu: window.location.href})
+</script>
+</div>                 <br />
+                </div>
+<p>Seventeen-year-old Jirou Azuma lives a quiet life with his grandfather, utilizing his supernatural ability to speak with animals to befriend and protect them. Both Jirou and his grandfather are descendants of a long-standing shinobi clan, training in combat to keep the art of battle alive within their family. Jirou&#8217;s life is thrown into upheaval after rescuing a seemingly normal black cat, Ragou, only to discover that the cat is actually a mononoke—a demonic spirit that has long been at war with mankind. When a hostile mononoke comes looking for Ragou, Jirou uses his shinobi training to jump to the cat&#8217;s defense, but immediately suffers a mortal wound.</p>
+<p>Faced with the decision of whether or not to devour Jirou&#8217;s fading energy and restore himself to full power, Ragou instead chooses to give his remaining energy to Jirou. Reviving the boy, the transfer also grants him great supernatural powers that complement his own shinobi fighting style. This act is witnessed by Ryousuke Shiba, an officer in the Bureau of Espionage whose job revolves around dispatching aggressive mononoke. Shiba extends Jirou and his grandfather an offer: to join the Bureau&#8217;s new squad, Black Torch, and help them battle powerful mononoke who seek to devour innocent people.</p>
+<b>Genres:</b>
+<a href="https://www.wcoflix.tv/search-by-genre/page/14" class="genre-buton">Action</a> <a href="https://www.wcoflix.tv/search-by-genre/page/26" class="genre-buton">Supernatural</a><br />
+<br />
+<script type="text/javascript">
+  $( document ).ready(function() {  
+    $( "#ackapa" ).click(function() {
+      $( "#cat-report" ).show();
+    });
+    $( "#mesaj-1" ).click(function() {
+      var f_id = "#f-mesaj";
+      if($("#t-mesaj").val()) {
+        var istek = $.ajax({
+          url: "/inc/embed/report-anime.php",
+          method: "POST",
+          data: $(f_id).serializeArray(),
+          dataType: "json",
+          cache: false
+        });
+         
+        istek.done(function( msg ) {
+          if (msg == "okey") {
+            $("#cat-report").remove();
+            $("#ackapa").remove();
+            alert("Report Sent.");
+          } else {
+            alert("Error !");         
+          }
+        });
+         
+        istek.fail(function( jqXHR, textStatus ) {
+          alert( "Request failed: " + textStatus );
+        });
+      } else {
+        alert("Please write something !");
+      }      
+    });    
+    $('form').submit(function() {
+      return false;
+    });
+  });
+</script>
+  <!-- <div class="genre-buton" style="margin: 2px auto auto 5px;" id="d-ackapa"> -->
+    <a href="#mesaj" id="ackapa" class="genre-buton">Report</a>
+  <!-- </div> -->
+  <div id="cat-report" style="padding: 1em; display: none;">
+    <fieldset class="pure-group">
+    <div class="pure-g" id="r-baslik" style="">
+      <div class="pure-u-1" style="justify-content: center; text-align: center;">          
+        <h3><span class="white">Do you see a problem ?</span></h3>
+        <form id="f-mesaj" class="pure-form">                  
+          <div class="form-group">
+            <textarea rows="5" name="mesaj" id="t-mesaj" placeholder="Do you want to tell us ?" style="width: 500px;"></textarea>
+          </div>
+          <input type="hidden" name="zaman" value="1783231310" id="r-zaman">
+          <input type="hidden" name="hash" value="65375cf3f5f3f5a6cedf1199e05dd636"  id="r-hash">
+          <input type="hidden" name="pid" value="934463" id="r-pid">
+          <button class="pure-button pure-input-1-2 pure-button-primary b-gonder" id="mesaj-1">Submit</button>                  
+        </form>        
+      </div>
+    </div>
+    </fieldset>
+  </div>
+</div>
+
+    
+<div class="recent-release-main">
+
+<style>
+/* ========== CONTAINER ========== */
+.dark-episode-box {
+  background: #151515;
+  max-width: 100%;
+  margin: 0 auto 40px auto;
+  border: 1px solid #ff7c00;
+  overflow: hidden;
+  box-shadow: 0 6px 14px rgba(255, 124, 0, 0.14);
+  font-family: 'Segoe UI', sans-serif;
+  border-radius: 7px;
+}
+
+/* ========== HEADER ========== */
+.dark-episode-header {
+  background: #ff7c00;
+  color: white;
+  font-size: 19px;
+  font-weight: 700;
+  padding: 7px 20px;
+  border-radius: 7px 7px 0 0;;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+/* ========== FILTER BAR ========== */
+.filter-bar {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 8px;
+  background: #0f0f0f;
+  border-bottom: 1px solid #222;
+}
+.filter-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+select.master-sub-dropdown,
+#dark-episode-search {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 10px 14px;
+  font-size: 15px;
+  background: #1e1e1e;
+  color: #ddd;
+  border: 1px solid #333;
+  outline: none;
+}
+
+/* ========== LANGUAGE CHIPS (NO "ALL") ========== */
+.lang-chips {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  padding-left:5px;
+}
+.lang-chip {
+  user-select: none;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  padding: 6px 10px;
+  border-radius: 5px;
+  border: 1px solid #333;
+  background: #1c1c1c;
+  color: #eaeaea;
+  transition: background .2s, color .2s, border-color .2s, transform .02s;
+}
+.lang-chip:active { transform: translateY(1px); }
+.lang-chip[aria-pressed="true"] {
+  background: #ff7c00;
+  color: #121212;
+  border-color: #ff7c00;
+}
+
+/* ========== EPISODE ITEM ========== */
+.dark-episode-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 14px 20px;
+  background: #222;
+  color: #eee;
+  text-decoration: none;
+  font-size: 16px;
+  font-weight: 600;
+  border-top: 1px solid rgba(255, 255, 255, 0.05);
+  transition: background 0.2s, color 0.2s;
+}
+.dark-episode-item:first-of-type { border-top: none; }
+.dark-episode-item:hover { background: #2c2c2c; color: #ffa74d; }
+.dark-episode-item:visited { color: #c04e07; border: 1px solid #ddd;}
+
+/* ========== ICON & BADGE CONTAINER ========== */
+.item-right { display: flex; align-items: center; gap: 10px; }
+
+/* ========== PLAY ICON ========== */
+.dark-episode-item svg.play-icon {
+  width: 20px; height: 20px; fill: #aaa; transition: fill 0.2s ease;
+}
+.dark-episode-item:hover svg.play-icon { fill: #ffa74d; }
+
+/* ========== BADGES (QUALITY) ========== */
+.badge {
+  font-size: 11px; font-weight: 700; padding: 4px 5px 4px 5px;
+  border-radius: 5px; color: white; display: inline-flex; align-items: center;
+  gap: 6px; text-transform: uppercase; line-height: 1; letter-spacing: .3px;
+}
+.badge.sd { background: #777; }
+.badge.hd { background: #4caf50; }
+.badge.fhd { background: #2196f3; }
+.badge svg { width: 12px; height: 12px; fill: white; }
+
+/* ========== SEASON FINAL BADGE ========== */
+.badge.final {
+  background: linear-gradient(135deg, #ffd54f, #ffb300);
+  color: #1a1a1a;
+  box-shadow: 0 0 0 1px rgba(0,0,0,.15) inset;
+}
+
+/* ========== META / EMPTY ========== */
+.result-meta {
+  padding: 8px 20px; background: #1a1a1a; color: #9b9b9b;
+  font-size: 13px; border-top: 1px solid #222;
+}
+.empty-state { padding: 24px 20px; color: #bbb; font-size: 14px; }
+
+/* ========== MOBILE ========== */
+@media (max-width: 600px) {
+  .dark-episode-header { font-size: 17px; padding: 12px 16px; }
+  .dark-episode-item { font-size: 15px; padding: 12px 16px; }
+  .dark-episode-item svg.play-icon { width: 18px; height: 18px; }
+}
+.badge.dl { cursor: pointer; }
+.badge.dl:focus-visible { outline: 2px solid #ff7c00; outline-offset: 2px; }
+</style>
+       
+<!--<option value="s1-0">Season 1</option>
+Array
+(
+    [1] => Array
+        (
+            [0] => 
+        )
+
+)
+--><div class="dark-episode-box" id="episodes">
+  <div class="dark-episode-header"><span>🎬 Episode List</span></div>
+
+  <div class="filter-bar" role="region" aria-label="Episode filters">
+    <div class="filter-row">
+      <select id="seasonFilter" class="master-sub-dropdown" aria-label="Filter by season">
+        <optgroup label="Seasons">
+          <option value="all">All Seasons</option>
+          <option value="s1-0">Season 1</option>
+        </optgroup>
+      </select>
+    </div>
+
+    <!-- LANGUAGE: only Dub/Sub/Multi, no All -->
+    <div class="filter-row" aria-label="Filter by language">
+      <div class="lang-chips" id="langChips" role="group" aria-label="Language">
+                <button type="button" class="lang-chip" data-lang="dub"   aria-pressed="false" aria-label="English Dubbed">Audio: English</button>
+                        <button type="button" class="lang-chip" data-lang="sub"   aria-pressed="false" aria-label="English Subbed">Audio: Japanese + Subs</button>
+                                        
+      </div>
+    </div>
+
+    <div class="filter-row">
+      <input id="dark-episode-search" type="text" placeholder="Search episodes..." inputmode="search" aria-label="Search episodes by title or number" />
+    </div>
+  </div>
+
+  <!-- LIST -->
+  <div id="episodeList">
+    <a href="/black-torch-episode-1-english-dubbed" class="dark-episode-item" data-season="s1-0" data-lang="dub"><span>Episode 1 English Dubbed</span><div class="item-right"><span class="badge fhd dl" role="link" tabindex="0" aria-label="Download FullHD" data-dl=""><svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg> FullHD</span></div></a><a href="/black-torch-episode-1-english-subbed" class="dark-episode-item" data-season="s1-0" data-lang="sub"><span>Episode 1 English Subbed</span><div class="item-right"><span class="badge fhd dl" role="link" tabindex="0" aria-label="Download FullHD" data-dl=""><svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg> FullHD</span></div></a>  </div>
+
+  <div class="result-meta" id="resultMeta" aria-live="polite"></div>
+  <div class="empty-state" id="emptyState" hidden>No episodes match your filters.</div>
+</div>
+
+<script>
+(function() {
+  const qs  = (sel, ctx=document) => ctx.querySelector(sel);
+  const qsa = (sel, ctx=document) => Array.from(ctx.querySelectorAll(sel));
+
+  const seasonEl   = qs('#seasonFilter');
+  const searchEl   = qs('#dark-episode-search');
+  const chipsWrap  = qs('#langChips');
+  const listEl     = qs('#episodeList');
+  const resultMeta = qs('#resultMeta');
+  const emptyState = qs('#emptyState');
+
+  // Choose what URL format to WRITE:
+  // 'query' => /anime/x/?season=...
+  // 'path'  => /anime/x/season=...   (may 404 on WP category archives unless you add rewrites)
+  const WRITE_MODE = 'query';
+
+  // lang: null means "no language filter applied"
+  const state = { season: 'all', lang: null, q: '' };
+
+  const LANG_ALLOWED = new Set(['dub','sub','multi','cartoon']);
+  const looksLikeFilters = (s) => /(^|&)season=|(^|&)lang=|(^|&)q=/.test(String(s || ''));
+
+  function getBasePath() {
+    // If current URL is /anime/{slug}/season=... remove the last segment
+    const segs = window.location.pathname.split('/').filter(Boolean);
+    const last = segs[segs.length - 1] || '';
+    if (looksLikeFilters(last)) segs.pop();
+    return '/' + segs.join('/') + (segs.length ? '/' : '');
+  }
+
+  // READ: supports both ?season=... and /season=...
+  function readURL() {
+    const url = new URL(window.location.href);
+    const mem = JSON.parse(localStorage.getItem('episodeFilters') || '{}');
+
+    // 1) Prefer real querystring if present
+    let params = url.searchParams;
+
+    // 2) Else try the last path segment
+    if (!(params.has('season') || params.has('lang') || params.has('q'))) {
+      const segs = url.pathname.split('/').filter(Boolean);
+      const last = segs[segs.length - 1] || '';
+      if (looksLikeFilters(last)) params = new URLSearchParams(last);
+    }
+
+    state.season = params.get('season') || mem.season || 'all';
+
+    const l = params.get('lang');
+    state.lang = (l && LANG_ALLOWED.has(l)) ? l : (mem.lang ?? null);
+
+    state.q = params.get('q') ?? mem.q ?? '';
+
+    seasonEl.value = state.season;
+    setLangUI(state.lang, false);
+    searchEl.value = state.q;
+  }
+
+  // WRITE: can output either ?season=... or /season=...
+  function syncURL() {
+    const basePath = getBasePath();
+    const url = new URL(window.location.href);
+
+    // Build clean params
+    const sp = new URLSearchParams();
+    sp.set('season', state.season);
+    if (state.lang) sp.set('lang', state.lang);
+    if (state.q && state.q.trim()) sp.set('q', state.q.trim());
+
+    if (WRITE_MODE === 'path') {
+      // Put filters into last path segment, clear real query
+      url.pathname = basePath + sp.toString();
+      url.search = '';
+    } else {
+      // Put filters into real querystring, keep clean base path
+      url.pathname = basePath.replace(/\/+$/, '/') || '/';
+      url.search = sp.toString();
+    }
+
+    history.replaceState(null, '', url.toString());
+  }
+
+  function applyFilters() {
+    const q = state.q.toLowerCase().trim();
+    const season = state.season;
+    const lang = state.lang; // null | 'dub' | 'sub' | 'multi'
+
+    let visibleCount = 0;
+    qsa('.dark-episode-item', listEl).forEach(el => {
+      const text = el.textContent.toLowerCase();
+      const itemSeason = el.dataset.season || 's1';
+
+      const itemLangs = (el.dataset.lang || '').split(/\s+/).filter(Boolean);
+      const langs = itemLangs.length ? itemLangs : ['dub'];
+
+      const matchesText = !q || text.includes(q);
+      const matchesSeason = (season === 'all') || (itemSeason === season);
+      const matchesLang = (lang == null) || langs.includes(lang);
+
+      const isVisible = matchesText && matchesSeason && matchesLang;
+      el.style.display = isVisible ? 'flex' : 'none';
+      if (isVisible) visibleCount++;
+    });
+
+    const total = qsa('.dark-episode-item', listEl).length;
+    resultMeta.textContent = `${visibleCount} / ${total} episodes`;
+    emptyState.hidden = visibleCount !== 0;
+
+    syncURL();
+    //localStorage.setItem('episodeFilters', JSON.stringify(state));
+  }
+
+  // UI wiring
+  seasonEl.addEventListener('change', () => { state.season = seasonEl.value; applyFilters(); });
+
+  let t;
+  searchEl.addEventListener('input', () => {
+    clearTimeout(t);
+    t = setTimeout(() => { state.q = searchEl.value; applyFilters(); }, 120);
+  });
+
+  function setLangUI(lang, focusChip = true) {
+    qsa('.lang-chip', chipsWrap).forEach(btn => {
+      const active = (lang && btn.dataset.lang === lang);
+      btn.setAttribute('aria-pressed', active ? 'true' : 'false');
+      if (active && focusChip) btn.focus();
+    });
+  }
+
+  chipsWrap.addEventListener('click', (e) => {
+    const btn = e.target.closest('.lang-chip');
+    if (!btn) return;
+    const chosen = btn.dataset.lang;
+    state.lang = (state.lang === chosen) ? null : chosen;
+    setLangUI(state.lang);
+    applyFilters();
+  });
+
+  chipsWrap.addEventListener('keydown', (e) => {
+    const chips = qsa('.lang-chip', chipsWrap);
+    const idx = Math.max(0, chips.findIndex(b => b.getAttribute('aria-pressed') === 'true'));
+    if (e.key === 'ArrowRight' || e.key === 'ArrowLeft') {
+      e.preventDefault();
+      const current = (idx === -1) ? 0 : idx;
+      const next = e.key === 'ArrowRight' ? (current + 1) : (current - 1 + chips.length);
+      chips[(next % chips.length + chips.length) % chips.length].focus();
+    } else if (e.key === ' ' || e.key === 'Enter') {
+      e.preventDefault();
+      const btn = document.activeElement.closest('.lang-chip');
+      if (!btn) return;
+      const chosen = btn.dataset.lang;
+      state.lang = (state.lang === chosen) ? null : chosen;
+      setLangUI(state.lang);
+      applyFilters();
+    }
+  });
+
+  listEl.addEventListener('click', (e) => {
+    const btn = e.target.closest('.badge.dl');
+    if (!btn) return;
+    e.preventDefault();
+    e.stopPropagation();
+    const url = btn.getAttribute('data-dl');
+    if (url) window.open(url, '_blank');
+  });
+
+  listEl.addEventListener('keydown', (e) => {
+    const btn = e.target.closest('.badge.dl');
+    if (!btn) return;
+    if (e.key === 'Enter' || e.key === ' ') {
+      e.preventDefault();
+      e.stopPropagation();
+      const url = btn.getAttribute('data-dl');
+      if (url) window.open(url, '_blank');
+    }
+  });
+
+  readURL();
+  applyFilters();
+})();
+</script>
+
+ 
+</div>
+</div>
+
+<!-- Season Ends -->
+
+             <!-- </div> -->
+				<div class="four columns">
+				 <div class="sidebar-all">
+<div class="sidebar-header">
+Recent Releases
+</div>
+<div class="sidebar-titles">
+    <ul>
+            <li>
+            <a href="https://www.wcoflix.tv/magilumiere-magical-girls-inc-season-2-episode-1-english-dubbed" title="Magilumiere Magical Girls Inc. Season 2 Episode 1 English Dubbed">
+                Magilumiere Magical Girls Inc. Season 2 Episode 1 English Dubbed            </a>
+        </li>
+            <li>
+            <a href="https://www.wcoflix.tv/the-dukes-son-claims-he-wont-love-me-yet-showers-me-with-adoration-episode-1-english-subbed" title="The Duke’s Son Claims He Won’t Love Me Yet Showers Me with Adoration Episode 1 English Subbed">
+                The Duke’s Son Claims He Won’t Love Me Yet Showers Me with Adoration Episode 1 English Subbed            </a>
+        </li>
+            <li>
+            <a href="https://www.wcoflix.tv/magilumiere-magical-girls-inc-season-2-episode-1-english-subbed" title="Magilumiere Magical Girls Inc. Season 2 Episode 1 English Subbed">
+                Magilumiere Magical Girls Inc. Season 2 Episode 1 English Subbed            </a>
+        </li>
+            <li>
+            <a href="https://www.wcoflix.tv/the-simpsons-season-37-episode-17-simpsley" title="The Simpsons Season 37 Episode 17 Simpsley">
+                The Simpsons Season 37 Episode 17 Simpsley            </a>
+        </li>
+            <li>
+            <a href="https://www.wcoflix.tv/ascendance-of-a-bookworm-season-4-episode-10-english-dubbed" title="Ascendance of a Bookworm Season 4 Episode 10 English Dubbed">
+                Ascendance of a Bookworm Season 4 Episode 10 English Dubbed            </a>
+        </li>
+            <li>
+            <a href="https://www.wcoflix.tv/rilakkuma-episode-14-english-dubbed" title="Rilakkuma Episode 14 English Dubbed">
+                Rilakkuma Episode 14 English Dubbed            </a>
+        </li>
+            <li>
+            <a href="https://www.wcoflix.tv/needy-girl-overdose-episode-10-english-dubbed" title="Needy Girl Overdose Episode 10 English Dubbed">
+                Needy Girl Overdose Episode 10 English Dubbed            </a>
+        </li>
+            <li>
+            <a href="https://www.wcoflix.tv/black-torch-episode-1-english-dubbed" title="Black Torch Episode 1 English Dubbed">
+                Black Torch Episode 1 English Dubbed            </a>
+        </li>
+            <li>
+            <a href="https://www.wcoflix.tv/mistress-kanan-is-devilishly-easy-episode-12-english-dubbed" title="Mistress Kanan is Devilishly Easy Episode 12 English Dubbed">
+                Mistress Kanan is Devilishly Easy Episode 12 English Dubbed            </a>
+        </li>
+            <li>
+            <a href="https://www.wcoflix.tv/pokemon-horizons-the-search-for-laqua-episode-123-english-dubbed" title="Pokemon Horizons: The Search for Laqua Episode 123 English Dubbed">
+                Pokemon Horizons: The Search for Laqua Episode 123 English Dubbed            </a>
+        </li>
+            <li>
+            <a href="https://www.wcoflix.tv/pokemon-horizons-the-search-for-laqua-episode-115-english-dubbed" title="Pokemon Horizons: The Search for Laqua Episode 115 English Dubbed">
+                Pokemon Horizons: The Search for Laqua Episode 115 English Dubbed            </a>
+        </li>
+            <li>
+            <a href="https://www.wcoflix.tv/pokemon-horizons-the-series-episode-142-english-subbed" title="Pokemon Horizons: The Series Episode 142 English Subbed">
+                Pokemon Horizons: The Series Episode 142 English Subbed            </a>
+        </li>
+            <li>
+            <a href="https://www.wcoflix.tv/welcome-to-demon-school-iruma-kun-season-4-episode-14-english-dubbed" title="Welcome to Demon School! Iruma-kun Season 4 Episode 14 English Dubbed">
+                Welcome to Demon School! Iruma-kun Season 4 Episode 14 English Dubbed            </a>
+        </li>
+            <li>
+            <a href="https://www.wcoflix.tv/daemons-of-the-shadow-realm-episode-12-english-dubbed" title="Daemons of the Shadow Realm Episode 12 English Dubbed">
+                Daemons of the Shadow Realm Episode 12 English Dubbed            </a>
+        </li>
+            <li>
+            <a href="https://www.wcoflix.tv/akane-banashi-episode-9-english-dubbed" title="Akane-banashi Episode 9 English Dubbed">
+                Akane-banashi Episode 9 English Dubbed            </a>
+        </li>
+            <li>
+            <a href="https://www.wcoflix.tv/grow-up-show-sunflower-circus-episode-1-english-dubbed" title="Grow Up Show: Sunflower Circus Episode 1 English Dubbed">
+                Grow Up Show: Sunflower Circus Episode 1 English Dubbed            </a>
+        </li>
+            <li>
+            <a href="https://www.wcoflix.tv/draw-this-then-die-episode-1-english-dubbed" title="Draw This, Then Die! Episode 1 English Dubbed">
+                Draw This, Then Die! Episode 1 English Dubbed            </a>
+        </li>
+            <li>
+            <a href="https://www.wcoflix.tv/rich-girl-caretaker-im-secretly-the-caregiver-of-the-most-popular-girl-in-this-rich-kid-school-episode-1-english-subbed" title="Rich Girl Caretaker: I&#039;m Secretly the Caregiver of the Most Popular Girl in This Rich Kid School Episode 1 English Subbed">
+                Rich Girl Caretaker: I&#039;m Secretly the Caregiver of the Most Popular Girl in This Rich Kid School Episode 1 English Subbed            </a>
+        </li>
+            <li>
+            <a href="https://www.wcoflix.tv/onegai-aipri-episode-13-english-subbed" title="Onegai AiPri Episode 13 English Subbed">
+                Onegai AiPri Episode 13 English Subbed            </a>
+        </li>
+            <li>
+            <a href="https://www.wcoflix.tv/mao-episode-14-english-subbed" title="Mao Episode 14 English Subbed">
+                Mao Episode 14 English Subbed            </a>
+        </li>
+            <li>
+            <a href="https://www.wcoflix.tv/the-ogres-bride-episode-1-english-subbed" title="The Ogre&#039;s Bride Episode 1 English Subbed">
+                The Ogre&#039;s Bride Episode 1 English Subbed            </a>
+        </li>
+            <li>
+            <a href="https://www.wcoflix.tv/magical-girl-lyrical-nanoha-exceeds-gun-blaze-vengeance-episode-1-english-subbed" title="Magical Girl Lyrical Nanoha EXCEEDS Gun Blaze Vengeance Episode 1 English Subbed">
+                Magical Girl Lyrical Nanoha EXCEEDS Gun Blaze Vengeance Episode 1 English Subbed            </a>
+        </li>
+            <li>
+            <a href="https://www.wcoflix.tv/daemons-of-the-shadow-realm-episode-13-english-subbed" title="Daemons of the Shadow Realm Episode 13 English Subbed">
+                Daemons of the Shadow Realm Episode 13 English Subbed            </a>
+        </li>
+            <li>
+            <a href="https://www.wcoflix.tv/the-laid-off-demon-king-episode-26-english-subbed" title="The Laid Off Demon King Episode 26 English Subbed">
+                The Laid Off Demon King Episode 26 English Subbed            </a>
+        </li>
+            <li>
+            <a href="https://www.wcoflix.tv/adventure-time-side-quests-episode-20-car-wars" title="Adventure Time: Side Quests Episode 20 Car Wars">
+                Adventure Time: Side Quests Episode 20 Car Wars            </a>
+        </li>
+            <li>
+            <a href="https://www.wcoflix.tv/adventure-time-side-quests-episode-1-bros-arrows" title="Adventure Time: Side Quests Episode 1 Bros &amp; Arrows">
+                Adventure Time: Side Quests Episode 1 Bros &amp; Arrows            </a>
+        </li>
+            <li>
+            <a href="https://www.wcoflix.tv/grow-up-show-sunflower-circus-episode-1-english-subbed" title="Grow Up Show: Sunflower Circus Episode 1 English Subbed">
+                Grow Up Show: Sunflower Circus Episode 1 English Subbed            </a>
+        </li>
+            <li>
+            <a href="https://www.wcoflix.tv/jaadugar-a-witch-in-mongolia-episode-2-english-subbed" title="Jaadugar: A Witch in Mongolia Episode 2 English Subbed">
+                Jaadugar: A Witch in Mongolia Episode 2 English Subbed            </a>
+        </li>
+            <li>
+            <a href="https://www.wcoflix.tv/jaadugar-a-witch-in-mongolia-episode-1-english-subbed" title="Jaadugar: A Witch in Mongolia Episode 1 English Subbed">
+                Jaadugar: A Witch in Mongolia Episode 1 English Subbed            </a>
+        </li>
+            <li>
+            <a href="https://www.wcoflix.tv/black-torch-episode-1-english-subbed" title="Black Torch Episode 1 English Subbed">
+                Black Torch Episode 1 English Subbed            </a>
+        </li>
+            <li>
+            <a href="https://www.wcoflix.tv/recommendations-from-iwamoto-senpai-episode-1-english-subbed" title="Recommendations from Iwamoto-Senpai Episode 1 English Subbed">
+                Recommendations from Iwamoto-Senpai Episode 1 English Subbed            </a>
+        </li>
+            <li>
+            <a href="https://www.wcoflix.tv/skeleton-knight-in-another-world-season-2-episode-1-english-subbed" title="Skeleton Knight in Another World Season 2 Episode 1 English Subbed">
+                Skeleton Knight in Another World Season 2 Episode 1 English Subbed            </a>
+        </li>
+            <li>
+            <a href="https://www.wcoflix.tv/welcome-to-demon-school-iruma-kun-season-4-episode-14-english-subbed" title="Welcome to Demon School! Iruma-kun Season 4 Episode 14 English Subbed">
+                Welcome to Demon School! Iruma-kun Season 4 Episode 14 English Subbed            </a>
+        </li>
+            <li>
+            <a href="https://www.wcoflix.tv/mushoku-tensei-jobless-reincarnation-season-3-episode-2-english-subbed" title="Mushoku Tensei: Jobless Reincarnation Season 3 Episode 2 English Subbed">
+                Mushoku Tensei: Jobless Reincarnation Season 3 Episode 2 English Subbed            </a>
+        </li>
+            <li>
+            <a href="https://www.wcoflix.tv/mushoku-tensei-jobless-reincarnation-season-3-episode-1-english-subbed" title="Mushoku Tensei: Jobless Reincarnation Season 3 Episode 1 English Subbed">
+                Mushoku Tensei: Jobless Reincarnation Season 3 Episode 1 English Subbed            </a>
+        </li>
+            <li>
+            <a href="https://www.wcoflix.tv/the-cat-and-the-dragon-episode-2-english-subbed" title="The Cat and the Dragon Episode 2 English Subbed">
+                The Cat and the Dragon Episode 2 English Subbed            </a>
+        </li>
+            <li>
+            <a href="https://www.wcoflix.tv/rilakkuma-episode-14-english-subbed" title="Rilakkuma Episode 14 English Subbed">
+                Rilakkuma Episode 14 English Subbed            </a>
+        </li>
+            <li>
+            <a href="https://www.wcoflix.tv/the-warrior-princess-and-the-barbaric-king-episode-11-english-dubbed" title="The Warrior Princess and the Barbaric King Episode 11 English Dubbed">
+                The Warrior Princess and the Barbaric King Episode 11 English Dubbed            </a>
+        </li>
+            <li>
+            <a href="https://www.wcoflix.tv/that-time-i-got-reincarnated-as-a-slime-season-4-episode-10-english-dubbed" title="That Time I Got Reincarnated as a Slime Season 4 Episode 10 English Dubbed">
+                That Time I Got Reincarnated as a Slime Season 4 Episode 10 English Dubbed            </a>
+        </li>
+            <li>
+            <a href="https://www.wcoflix.tv/the-drops-of-god-episode-11-english-dubbed" title="The Drops of God Episode 11 English Dubbed">
+                The Drops of God Episode 11 English Dubbed            </a>
+        </li>
+            <li>
+            <a href="https://www.wcoflix.tv/hell-mode-the-hardcore-gamer-dominates-in-another-world-with-garbage-balancing-season-2-episode-1-english-subbed" title="Hell Mode: The Hardcore Gamer Dominates in Another World with Garbage Balancing Season 2 Episode 1 English Subbed">
+                Hell Mode: The Hardcore Gamer Dominates in Another World with Garbage Balancing Season 2 Episode 1 English Subbed            </a>
+        </li>
+            <li>
+            <a href="https://www.wcoflix.tv/the-drops-of-god-episode-13-english-subbed" title="The Drops of God Episode 13 English Subbed">
+                The Drops of God Episode 13 English Subbed            </a>
+        </li>
+            <li>
+            <a href="https://www.wcoflix.tv/draw-this-then-die-episode-1-english-subbed" title="Draw This, Then Die! Episode 1 English Subbed">
+                Draw This, Then Die! Episode 1 English Subbed            </a>
+        </li>
+            <li>
+            <a href="https://www.wcoflix.tv/please-excuse-my-younger-brothers-episode-1-english-subbed" title="Please Excuse My Younger Brothers Episode 1 English Subbed">
+                Please Excuse My Younger Brothers Episode 1 English Subbed            </a>
+        </li>
+            <li>
+            <a href="https://www.wcoflix.tv/the-frontier-lord-begins-with-zero-subjects-episode-1-english-subbed" title="The Frontier Lord Begins with Zero Subjects Episode 1 English Subbed">
+                The Frontier Lord Begins with Zero Subjects Episode 1 English Subbed            </a>
+        </li>
+            <li>
+            <a href="https://www.wcoflix.tv/i-became-a-legend-after-my-10-year-long-last-stand-episode-1-english-subbed" title="I Became a Legend After My 10 Year-Long Last Stand. Episode 1 English Subbed">
+                I Became a Legend After My 10 Year-Long Last Stand. Episode 1 English Subbed            </a>
+        </li>
+            <li>
+            <a href="https://www.wcoflix.tv/that-time-i-got-reincarnated-as-a-slime-season-4-episode-13-english-subbed" title="That Time I Got Reincarnated as a Slime Season 4 Episode 13 English Subbed">
+                That Time I Got Reincarnated as a Slime Season 4 Episode 13 English Subbed            </a>
+        </li>
+            <li>
+            <a href="https://www.wcoflix.tv/undead-unluck-winter-arc-english-dubbed" title="Undead Unluck: Winter Arc English Dubbed">
+                Undead Unluck: Winter Arc English Dubbed            </a>
+        </li>
+            <li>
+            <a href="https://www.wcoflix.tv/tamons-b-side-episode-9-english-dubbed" title="Tamon&#039;s B-Side Episode 9 English Dubbed">
+                Tamon&#039;s B-Side Episode 9 English Dubbed            </a>
+        </li>
+            <li>
+            <a href="https://www.wcoflix.tv/the-ramparts-of-ice-episode-14-english-dubbed" title="The Ramparts of Ice Episode 14 English Dubbed">
+                The Ramparts of Ice Episode 14 English Dubbed            </a>
+        </li>
+        </ul>
+</div>
+<p>
+</div>
+					</div>
+			</div>
+		</div>
+	</div>
+<script>
+window.addEventListener('load', function() {
+	$(".reklam_kapat").click(function(){$(this).closest("div").remove();});
+	$("#close-this-ad").click(function(){
+		try {
+	  		var sil1 = window.parent.document.getElementById("div-1-1396189855");
+	  		sil1.parentNode.removeChild(sil1);	
+	  	}
+		catch(ex)
+	    {
+	        console.log(ex.message);
+	    }  		  	
+	});	
+});  
+</script>  
+<div class="row">
+
+		<div style="height:30px; background:#FF7C00; color: #1E262F; margin-top:20px; margin-bottom:20px; line-height:30px">
+			<style>
+			.ftr_p a { color: #FFFF; }
+			.ftr_p a:visited { color: #FFFF; }
+			</style>
+<p style="color:#FFF; font-size:13px;" align="center" class="ftr_p">
+        <button id="titleLangToggle" type="button" style="
+  margin-right: 20px;
+  background-color: #222222; /* bright orange to match theme */
+  color: #fff; /* white text for contrast on dark bg */
+  border: none;
+  border-radius: 2px;
+  padding: 5px 7px;
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  box-shadow: 0 3px 6px rgba(0, 0, 0, 0.3); /* subtle depth on dark bg */
+">
+  Titles: English
+</button>
+
+<style>
+  #titleLangToggle:hover {
+    background-color: #e66a00; /* slightly darker orange on hover */
+    transform: translateY(-2px);
+  }
+
+  #titleLangToggle:active {
+    background-color: #cc5b00; /* deeper orange when pressed */
+    transform: translateY(0);
+  }
+</style>  
+	<a href="/legal-disclaimer">Disclaimer</a> - <a href="/privacy-policy-and-terms">Privacy Policy</a> - <a href="/terms-and-conditions">Terms</a> ©2021. Designed for WcoFun.Net - Watch Anime Online
+</p>
+
+	</div>
+	</div>
+<button onclick="topFunction()" id="btnTopPage" title="Go to top">Scroll to Top</button>
+<!-- Google tag (gtag.js) -->
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-FYW0EF71MR"></script>
+<script>
+window.dataLayer = window.dataLayer || [];
+function gtag(){dataLayer.push(arguments);}
+gtag('js', new Date());
+
+gtag('config', 'G-FYW0EF71MR');
+</script>
+
+<script>
+
+// When the user scrolls down 40px from the top of the document, show the button
+window.onscroll = function() {scrollFunction()};
+
+function scrollFunction() {
+    if (document.body.scrollTop > 40 || document.documentElement.scrollTop > 40) {
+        document.getElementById("btnTopPage").style.display = "block";
+        setTimeout(
+          function() {
+            document.getElementById("btnTopPage").style.display = "none";
+          }, 10000);
+    } else {
+        document.getElementById("btnTopPage").style.display = "none";
+    }
+}
+
+// When the user clicks on the button, scroll to the top of the document
+function topFunction() {
+    document.body.scrollTop = 0;
+    document.documentElement.scrollTop = 0;
+}
+</script>
+<script type="text/javascript">if(top.location != window.location){window.location='https://www.wcoflix.tv/error_iframe.html';}</script>
+<script async data-cfasync="false" src="https://platform.pubadx.one/pubadx-ad.js" type="text/javascript"></script>
+        <div id="bg-ssp-10418">
+        <script data-cfasync="false" data-no-optimize="1">
+        var adx_id_10418 = document.getElementById('bg-ssp-10418');
+        adx_id_10418.id = 'bg-ssp-10418-' + Math.floor(Math.random() * Date.now());
+        window.pubadxtag = window.pubadxtag || [];
+        window.pubadxtag.push({zoneid: 10418, id: adx_id_10418.id, wu: window.location.href})
+        </script>
+        </div>
+<!-- <iframe src="https://user.wcoflix.tv/check-login" style="display: none;" id="login-checker"></iframe> -->
+<script>
+window.addEventListener("message", function(event) {
+  if (event.origin === "https://user.wcoflix.tv" && event.data === "loggedIn") {
+    // Get the current path from the public site
+    const currentPath = window.location.pathname + window.location.search + window.location.hash;
+    // Redirect to the same path on the user site
+    window.location.href = "https://user.wcoflix.tv" + currentPath;
+  }
+});
+</script>
+<script>
+(function() {
+    const TOGGLE_ID     = 'titleLangToggle';
+    const STORAGE_KEY   = 'prefTitleLang'; // 'en' | 'jp'
+    const SELECTOR      = '.dynamic-name';
+
+    // Cache current preference (default: 'en')
+    let current = (localStorage.getItem(STORAGE_KEY) === 'jp') ? 'jp' : 'en';
+
+    // Prepare a node (store EN once; rely on data-jname for JP)
+    function primeNode(el) {
+      if (!el || !el.dataset) return;
+      // Save original (English) text if not saved
+      if (!el.dataset.en) {
+        el.dataset.en = (el.textContent || '').trim();
+      }
+      // If there's no JP provided, just keep EN for both to avoid blanking
+      if (!el.dataset.jname && !el.dataset.jp) {
+        el.dataset.jp = el.dataset.en;
+      } else if (el.dataset.jname && !el.dataset.jp) {
+        // allow both data-jname and data-jp; prefer data-jname if present
+        el.dataset.jp = el.dataset.jname;
+      }
+    }
+
+    // Apply language to a single node
+    function applyNode(el, lang) {
+      if (!el || !el.dataset) return;
+      const txt = (lang === 'jp') ? (el.dataset.jp || el.dataset.en || '') : (el.dataset.en || '');
+      if (txt && el.textContent !== txt) el.textContent = txt;
+      el.setAttribute('lang', lang === 'jp' ? 'ja' : 'en');
+    }
+
+    // Apply language to all current nodes
+    function applyAll(lang) {
+      document.querySelectorAll(SELECTOR).forEach(el => {
+        primeNode(el);
+        applyNode(el, lang);
+      });
+      updateToggleLabel(lang);
+    }
+
+    function updateToggleLabel(lang) {
+      const btn = document.getElementById(TOGGLE_ID);
+      if (btn) btn.textContent = 'Show: ' + (lang === 'jp' ? 'EN' : 'JP');
+    }
+
+    // Toggle handler
+    function toggleLang() {
+      current = (current === 'jp') ? 'en' : 'jp';
+      localStorage.setItem(STORAGE_KEY, current);
+      applyAll(current);
+    }
+
+    // Observe late-added items (infinite scroll, ajax, etc.)
+    const observer = new MutationObserver(mutations => {
+      for (const m of mutations) {
+        m.addedNodes.forEach(node => {
+          if (!(node instanceof Element)) return;
+          // Newly added single .dynamic-name
+          if (node.matches && node.matches(SELECTOR)) {
+            primeNode(node);
+            applyNode(node, current);
+          }
+          // Or any descendants
+          node.querySelectorAll?.(SELECTOR).forEach(el => {
+            primeNode(el);
+            applyNode(el, current);
+          });
+        });
+      }
+    });
+
+    // Init
+    document.addEventListener('DOMContentLoaded', () => {
+      // Attach click once
+      const btn = document.getElementById(TOGGLE_ID);
+      if (btn && !btn._bound) {
+        btn.addEventListener('click', toggleLang);
+        btn._bound = true;
+      }
+
+      // Prime & render current content fast (O(n) text swap)
+      applyAll(current);
+
+      // Start observing the whole document (efficient defaults)
+      observer.observe(document.documentElement, { childList: true, subtree: true });
+    });
+  })();
+
+  function setNewPathWco(urlString, newPath) {
+    const url = new URL(urlString);
+    url.pathname = newPath;
+    return url.toString();
+  }
+  </script>
+<!-- Cheecking -->
+<script>(function(){function c(){var b=a.contentDocument||a.contentWindow.document;if(b){var d=b.createElement('script');d.innerHTML="window.__CF$cv$params={r:'a164306eadf41d0c',t:'MTc4MzIzMTY0Mw=='};var a=document.createElement('script');a.src='/cdn-cgi/challenge-platform/scripts/jsd/main.js';document.getElementsByTagName('head')[0].appendChild(a);";b.getElementsByTagName('head')[0].appendChild(d)}}if(document.body){var a=document.createElement('iframe');a.height=1;a.width=1;a.style.position='absolute';a.style.top=0;a.style.left=0;a.style.border='none';a.style.visibility='hidden';document.body.appendChild(a);if('loading'!==document.readyState)c();else if(window.addEventListener)document.addEventListener('DOMContentLoaded',c);else{var e=document.onreadystatechange||function(){};document.onreadystatechange=function(b){e(b);'loading'!==document.readyState&&(document.onreadystatechange=e,c())}}}})();</script></body>
+</html>

@@ -157,6 +157,20 @@ class CatalogService {
   }
 
   Future<void> _loadSource(CatalogSource src) async {
+    // WCOFlix is a live-scraped catalog served by WcoflixCatalog, not a bundled
+    // asset — it is never loaded into this in-memory CatalogService. Guard here
+    // so the enum stays exhaustive without touching the Arabic-mode paths.
+    if (src == CatalogSource.wcoflix) {
+      source = src;
+      _rawShows = const [];
+      _rawMovies = const [];
+      shows = const [];
+      movies = const [];
+      all = const [];
+      _byId = const {};
+      _invalidateDerived();
+      return;
+    }
     final data = await CatalogUpdater.loadJson(src);
     source = src;
     switch (src) {
@@ -175,6 +189,8 @@ class CatalogService {
         final (s, m) = StardimaAdapter.parse(data);
         shows = s;
         movies = m;
+      case CatalogSource.wcoflix:
+        break; // unreachable — handled by the early return above
     }
     all = [...shows, ...movies];
     _byId = {for (final i in all) i.id: i};

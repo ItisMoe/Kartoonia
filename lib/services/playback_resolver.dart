@@ -1,6 +1,7 @@
 import '../models/catalog_source.dart';
 import 'stardima_resolver.dart';
 import 'token_service.dart';
+import 'wcoflix/wcoflix_resolver.dart';
 
 /// One playable server option for the player: a ready-to-open URL plus the
 /// headers the CDN requires, with a small label/number for the server picker.
@@ -50,6 +51,19 @@ Future<List<PlayableServer>> resolvePlayback(
             number: i + 1,
             label: streams[i].server,
             url: streams[i].streamUrl,
+            headers: streams[i].headers,
+          ),
+      ];
+    case CatalogSource.wcoflix:
+      // Resolved streams are already ordered 720p-first, so the player's
+      // server picker doubles as a resolution picker (label = '720p', etc.).
+      final streams = await resolveWcoflix(pageOrPlayUrl);
+      return [
+        for (var i = 0; i < streams.length; i++)
+          PlayableServer(
+            number: i + 1,
+            label: streams[i].quality.tag,
+            url: streams[i].url,
             headers: streams[i].headers,
           ),
       ];
