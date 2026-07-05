@@ -51,6 +51,8 @@ class StorageService {
   static const _kPrefs = 'kt/prefs'; // motion/autoplay
   static const _kYtKey = 'kt/ytKey'; // user-set YouTube Data API key override
   static const _kCatalogSource = 'kt/catalogSource'; // arabicToons | stardima
+  static const _kEverythingMode = 'kt/everythingMode'; // WCOFlix "Everything"
+  static const _kWcoflixQuality = 'kt/wcoflixQuality'; // 576p|720p|1080p
   static const _kShaaratBoosts = 'kt/shaaratBoosts';
   static const _kShaaratVideoIds = 'kt/shaaratVideoIds';
   static const _kSkippedUpdate = 'kt/skippedUpdate'; // release the user dismissed
@@ -202,6 +204,17 @@ class StorageService {
       CatalogSource.fromId(_prefs.getString(_kCatalogSource));
   Future<void> setCatalogSource(CatalogSource s) =>
       _prefs.setString(_kCatalogSource, s.id);
+
+  // "Everything" mode — when on, the app browses the live WCOFlix library
+  // instead of the bundled Arabic-dubbed catalog. Defaults OFF (Arabic-first).
+  bool getEverythingMode() => _prefs.getBool(_kEverythingMode) ?? false;
+  Future<void> setEverythingMode(bool on) =>
+      _prefs.setBool(_kEverythingMode, on);
+
+  // Preferred WCOFlix resolution tag ('576p'|'720p'|'1080p'); default 720p.
+  String getWcoflixQuality() => _prefs.getString(_kWcoflixQuality) ?? '720p';
+  Future<void> setWcoflixQuality(String tag) =>
+      _prefs.setString(_kWcoflixQuality, tag);
 
   // YouTube Data API key override. Empty => use the bundled default key.
   String getYoutubeKey() => _prefs.getString(_kYtKey) ?? '';

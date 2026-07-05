@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../models/content_item.dart';
 import '../../state/app_state.dart';
+import '../../state/wcoflix_providers.dart';
 import '../../theme/theme.dart';
 import '../../widgets/phone/phone_poster_card.dart';
 import '../../widgets/voice_search_sheet.dart';
@@ -58,9 +59,18 @@ class _PhoneSearchScreenState extends ConsumerState<PhoneSearchScreen> {
     }
 
     final q = s.query.trim();
-    final results = q.isEmpty
-        ? catalog.all.where((x) => x.tmdb != null).where(passFilter).take(18).toList()
-        : catalog.search(q).where(passFilter).toList();
+    final everything = ref.watch(everythingModeProvider);
+    final wcoAsync = everything ? ref.watch(wcoSearchProvider(q)) : null;
+    final bool wcoLoading = everything && q.isNotEmpty && wcoAsync!.isLoading;
+    final List<ContentItem> results = everything
+        ? (wcoAsync!.asData?.value ?? const <ContentItem>[])
+        : (q.isEmpty
+            ? catalog.all
+                .where((x) => x.tmdb != null)
+                .where(passFilter)
+                .take(18)
+                .toList()
+            : catalog.search(q).where(passFilter).toList());
 
     return SafeArea(
       bottom: false,
@@ -142,7 +152,10 @@ class _PhoneSearchScreenState extends ConsumerState<PhoneSearchScreen> {
         ),
         const SizedBox(height: 8),
         Expanded(
-          child: results.isEmpty
+          child: wcoLoading
+              ? const Center(
+                  child: CircularProgressIndicator(color: AppColors.primary))
+              : results.isEmpty
               ? _empty(t, q.isEmpty)
               : GridView.builder(
                   padding: const EdgeInsets.fromLTRB(16, 4, 16, 24),

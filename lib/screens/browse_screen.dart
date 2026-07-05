@@ -5,6 +5,7 @@ import '../navigation.dart';
 import '../services/catalog_service.dart';
 import '../services/fame_ranking.dart';
 import '../state/app_state.dart';
+import '../state/wcoflix_providers.dart';
 import '../theme/theme.dart';
 import '../theme/layout.dart';
 import '../utils/daily_shuffle.dart';
@@ -34,14 +35,23 @@ class BrowseScreen extends ConsumerWidget {
     final user = ref.watch(userProvider);
 
     final isMyList = kind == 'mylist';
+    final everything = ref.watch(everythingModeProvider);
+    // My List always uses the local library; TV/Movies follow the active mode.
+    final wco = everything && !isMyList;
     final title = kind == 'movies'
         ? t['browse_movies']!
         : isMyList
             ? t['browse_mylist']!
             : t['browse_tv']!;
 
+    AsyncValue<List<ContentItem>>? wcoAsync;
     List<ContentItem> typeItems;
-    if (kind == 'movies') {
+    if (wco) {
+      final a = ref.watch(
+          kind == 'movies' ? wcoMoviesProvider : wcoTvBrowseProvider);
+      wcoAsync = a;
+      typeItems = a.asData?.value ?? const [];
+    } else if (kind == 'movies') {
       typeItems = catalog.movies;
     } else if (isMyList) {
       typeItems = user.watchlistIds
@@ -57,7 +67,8 @@ class BrowseScreen extends ConsumerWidget {
     final category = browse.category;
 
     // Sectioned (Mode A) only for the default, unfiltered Movies/TV view.
-    final sectioned = !isMyList && letter == null && category == null;
+    // WCOFlix has no fame pool, so it always uses the flat A–Z grid.
+    final sectioned = !isMyList && !wco && letter == null && category == null;
 
     // Genre-filtered base — feeds both the grid and the alpha bar present-set.
     final base = (category == null)
@@ -254,16 +265,19 @@ class BrowseScreen extends ConsumerWidget {
                       const EdgeInsets.symmetric(horizontal: Spacing.pad),
                   children: [
                     // Filter button — shows the active genre when one is set.
-                    _railChip(SelectableChip(
-                      label: category == null
-                          ? t['browse_filter']!
-                          : translateGenre(category),
-                      selected: category != null,
-                      radius: 13,
-                      onPressed: () =>
-                          _openFilter(context, ref, typeItems, category, t),
-                    )),
-                    const SizedBox(width: 16),
+                    // WCOFlix items carry no genres, so the filter is hidden.
+                    if (!wco) ...[
+                      _railChip(SelectableChip(
+                        label: category == null
+                            ? t['browse_filter']!
+                            : translateGenre(category),
+                        selected: category != null,
+                        radius: 13,
+                        onPressed: () =>
+                            _openFilter(context, ref, typeItems, category, t),
+                      )),
+                      const SizedBox(width: 16),
+                    ],
                     // script toggle
                     _railChip(SelectableChip(
                       label: t['kbLatin']!,
@@ -306,6 +320,14 @@ class BrowseScreen extends ConsumerWidget {
           const SliverToBoxAdapter(child: SizedBox(height: 24)),
           if (sectioned)
             SliverList(delegate: SliverChildListDelegate(sectionRows()))
+          else if (wco && (wcoAsync?.isLoading ?? false))
+            const SliverToBoxAdapter(
+              child: SizedBox(
+                  height: 400,
+                  child: Center(
+                      child: CircularProgressIndicator(
+                          color: AppColors.primary))),
+            )
           else
             grid(shown),
         ],

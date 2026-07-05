@@ -6,6 +6,7 @@ import '../playback.dart';
 import '../services/recommendations.dart';
 import '../services/storage_service.dart';
 import '../state/app_state.dart';
+import '../state/wcoflix_providers.dart';
 import '../theme/theme.dart';
 import '../utils/daily_shuffle.dart';
 import '../utils/genre_translations.dart';
@@ -49,6 +50,92 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
 
   String _genreLine(ContentItem s) =>
       s.genres.take(2).map(translateGenre).join(' · ');
+
+  /// Everything mode: a lean set of live WCOFlix rows (async). Each row loads
+  /// independently; the whole-catalog A–Z lists are sampled here and reachable
+  /// in full via Browse/Search.
+  Widget _everythingHome(BuildContext context, Map<String, String> t) {
+    void open(ContentItem i) => AppNav.detail(context, i);
+
+    Widget row(String title, AsyncValue<List<ContentItem>> a, {int take = 30}) {
+      return a.when(
+        loading: () => _wcoLoadingRow(title),
+        error: (_, _) => const SizedBox.shrink(),
+        data: (items) => items.isEmpty
+            ? const SizedBox.shrink()
+            : ContentRow(
+                title: title,
+                count: items.length,
+                cards: [
+                  for (final i in items.take(take))
+                    PosterCard(
+                        item: i, movieLabel: t['movie']!, onPressed: () => open(i)),
+                ],
+              ),
+      );
+    }
+
+    final rows = <Widget>[
+      row(t['row_popular']!, ref.watch(wcoPopularProvider)),
+      row(t['row_new']!, ref.watch(wcoLatestProvider)),
+      row(t['nav_tv']!, ref.watch(wcoCartoonsProvider)),
+      row(t['dubbed_anime']!, ref.watch(wcoDubbedProvider)),
+      row(t['nav_movies']!, ref.watch(wcoMoviesProvider)),
+    ];
+
+    return ScreenShell(
+      current: 'home',
+      child: CustomScrollView(
+        slivers: [
+          const SliverToBoxAdapter(child: SizedBox(height: 130)),
+          SliverToBoxAdapter(
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(Spacing.pad, 0, Spacing.pad, 8),
+              child: Text(t['everything_title']!,
+                  style: const TextStyle(
+                      fontFamily: Fonts.display,
+                      fontFamilyFallback: Fonts.fallback,
+                      fontWeight: FontWeight.w600,
+                      fontSize: 40,
+                      color: AppColors.ink)),
+            ),
+          ),
+          SliverList(
+            delegate:
+                SliverChildBuilderDelegate((c, i) => rows[i], childCount: rows.length),
+          ),
+          const SliverToBoxAdapter(child: SizedBox(height: 90)),
+        ],
+      ),
+    );
+  }
+
+  Widget _wcoLoadingRow(String title) => Padding(
+        padding: const EdgeInsets.symmetric(
+            horizontal: Spacing.pad, vertical: 22),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(title,
+                style: const TextStyle(
+                    fontFamily: Fonts.display,
+                    fontFamilyFallback: Fonts.fallback,
+                    fontWeight: FontWeight.w500,
+                    fontSize: 30,
+                    color: AppColors.ink)),
+            const SizedBox(height: 20),
+            const SizedBox(
+              height: 40,
+              child: Center(
+                  child: SizedBox(
+                      width: 34,
+                      height: 34,
+                      child: CircularProgressIndicator(
+                          strokeWidth: 3, color: AppColors.primary))),
+            ),
+          ],
+        ),
+      );
 
   /// Press-and-hold a Continue Watching card: Resume, or Remove (clears all of
   /// the title's progress so it leaves the row).
@@ -94,8 +181,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   @override
   Widget build(BuildContext context) {
     ref.watch(catalogRevProvider); // rebuild after imports
-    final catalog = ref.watch(catalogProvider);
     final t = ref.watch(stringsProvider);
+    if (ref.watch(everythingModeProvider)) return _everythingHome(context, t);
+    final catalog = ref.watch(catalogProvider);
     final settings = ref.watch(settingsProvider);
     final user = ref.watch(userProvider);
 

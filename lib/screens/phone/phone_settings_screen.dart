@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../state/app_state.dart';
+import '../../state/wcoflix_providers.dart';
 import '../../theme/theme.dart';
 
 /// Portrait settings: the same options as the TV settings, laid out as a simple
@@ -38,6 +39,15 @@ class PhoneSettingsScreen extends ConsumerWidget {
               const SizedBox(width: 12),
               _Opt('العربية', settings.lang == 'ar', () => sn.setLang('ar')),
             ]),
+          ),
+          _Group(
+            label: t['everything_mode']!,
+            hint: t['everything_desc']!,
+            child: _OnOff(
+                on: ref.watch(everythingModeProvider),
+                t: t,
+                onChanged: (v) =>
+                    ref.read(everythingModeProvider.notifier).set(v)),
           ),
           _Group(
             label: t['set_autoplay']!,

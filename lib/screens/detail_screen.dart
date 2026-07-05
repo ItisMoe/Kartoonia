@@ -8,6 +8,7 @@ import '../services/fame_ranking.dart';
 import '../services/resume.dart';
 import '../services/storage_service.dart';
 import '../state/app_state.dart';
+import '../state/wcoflix_providers.dart';
 import '../theme/layout.dart';
 import '../theme/theme.dart';
 import '../utils/genre_translations.dart';
@@ -22,7 +23,12 @@ import '../widgets/selectable_chip.dart';
 
 class DetailScreen extends ConsumerStatefulWidget {
   final String itemId;
-  const DetailScreen({super.key, required this.itemId});
+
+  /// The item to render when it isn't in the in-memory catalog (WCOFlix cards).
+  /// Arabic/Stardima items are still looked up by [itemId] so post-import data
+  /// stays fresh; WCOFlix falls back to this passed object.
+  final ContentItem? item;
+  const DetailScreen({super.key, required this.itemId, this.item});
   @override
   ConsumerState<DetailScreen> createState() => _DetailScreenState();
 }
@@ -39,6 +45,9 @@ class _DetailScreenState extends ConsumerState<DetailScreen> {
   String? _simForId;
   List<ContentItem>? _simCache;
   List<ContentItem> _similar(ContentItem item) {
+    // WCOFlix items aren't in the in-memory catalog, so there's nothing to
+    // match against — skip the "More Like This" rail for them.
+    if (item.source == CatalogSource.wcoflix) return const [];
     if (_simForId != item.id) {
       _simCache = similarTo(item, ref.read(catalogProvider).all);
       _simForId = item.id;
@@ -77,7 +86,16 @@ class _DetailScreenState extends ConsumerState<DetailScreen> {
     final catalog = ref.watch(catalogProvider);
     final t = ref.watch(stringsProvider);
     final user = ref.watch(userProvider);
-    final base = catalog.getById(widget.itemId);
+    // Arabic/Stardima resolve from the catalog; WCOFlix cards fall back to the
+    // passed item and lazily fetch their episodes from the live site.
+    var base = catalog.getById(widget.itemId) ?? widget.item;
+    if (base != null &&
+        base.source == CatalogSource.wcoflix &&
+        base is Show &&
+        base.episodes.isEmpty &&
+        (base.pageUrl ?? '').isNotEmpty) {
+      base = ref.watch(wcoSeriesProvider(base.pageUrl!)).asData?.value ?? base;
+    }
 
     if (base == null) {
       return ScreenShell(

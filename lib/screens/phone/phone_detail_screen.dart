@@ -7,6 +7,7 @@ import '../../playback.dart';
 import '../../services/fame_ranking.dart';
 import '../../services/storage_service.dart';
 import '../../state/app_state.dart';
+import '../../state/wcoflix_providers.dart';
 import '../../theme/theme.dart';
 import '../../utils/genre_translations.dart';
 import '../../widgets/catalog_image.dart';
@@ -17,7 +18,11 @@ import 'phone_nav.dart';
 /// vertical episode list (for shows) with a season selector.
 class PhoneDetailScreen extends ConsumerStatefulWidget {
   final String itemId;
-  const PhoneDetailScreen({super.key, required this.itemId});
+
+  /// Passed for WCOFlix cards (not in the in-memory catalog); Arabic/Stardima
+  /// still resolve by [itemId].
+  final ContentItem? item;
+  const PhoneDetailScreen({super.key, required this.itemId, this.item});
   @override
   ConsumerState<PhoneDetailScreen> createState() => _PhoneDetailScreenState();
 }
@@ -30,6 +35,7 @@ class _PhoneDetailScreenState extends ConsumerState<PhoneDetailScreen> {
   String? _simForId;
   List<ContentItem>? _simCache;
   List<ContentItem> _similar(ContentItem item) {
+    if (item.source == CatalogSource.wcoflix) return const [];
     if (_simForId != item.id) {
       _simCache = similarTo(item, ref.read(catalogProvider).all);
       _simForId = item.id;
@@ -55,7 +61,14 @@ class _PhoneDetailScreenState extends ConsumerState<PhoneDetailScreen> {
     final catalog = ref.watch(catalogProvider);
     final t = ref.watch(stringsProvider);
     final user = ref.watch(userProvider);
-    final base = catalog.getById(widget.itemId);
+    var base = catalog.getById(widget.itemId) ?? widget.item;
+    if (base != null &&
+        base.source == CatalogSource.wcoflix &&
+        base is Show &&
+        base.episodes.isEmpty &&
+        (base.pageUrl ?? '').isNotEmpty) {
+      base = ref.watch(wcoSeriesProvider(base.pageUrl!)).asData?.value ?? base;
+    }
 
     if (base == null) {
       return Scaffold(

@@ -4,6 +4,7 @@ import '../../models/content_item.dart';
 import '../../playback.dart';
 import '../../services/storage_service.dart';
 import '../../state/app_state.dart';
+import '../../state/wcoflix_providers.dart';
 import '../../theme/theme.dart';
 import '../../utils/daily_shuffle.dart';
 import '../../utils/genre_translations.dart';
@@ -33,11 +34,59 @@ class _PhoneHomeScreenState extends ConsumerState<PhoneHomeScreen> {
   String _genreLine(ContentItem s) =>
       s.genres.take(2).map(translateGenre).join(' · ');
 
+  Widget _everythingHome(BuildContext context, Map<String, String> t) {
+    void open(ContentItem i) => openPhoneDetail(context, i);
+    final movieLabel = t['movie']!;
+    PhonePosterCard card(ContentItem i) =>
+        PhonePosterCard(item: i, movieLabel: movieLabel, onPressed: () => open(i));
+
+    Widget row(String title, AsyncValue<List<ContentItem>> a) => a.when(
+          loading: () => Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+            child: Row(children: [
+              Text(title,
+                  style: const TextStyle(
+                      fontFamily: Fonts.display,
+                      fontFamilyFallback: Fonts.fallback,
+                      fontWeight: FontWeight.w600,
+                      fontSize: 20,
+                      color: AppColors.ink)),
+              const SizedBox(width: 16),
+              const SizedBox(
+                  width: 20,
+                  height: 20,
+                  child: CircularProgressIndicator(
+                      strokeWidth: 2.5, color: AppColors.primary)),
+            ]),
+          ),
+          error: (_, _) => const SizedBox.shrink(),
+          data: (items) => items.isEmpty
+              ? const SizedBox.shrink()
+              : PhoneRow(
+                  title: title, cards: [for (final i in items.take(30)) card(i)]),
+        );
+
+    return Stack(children: [
+      ListView(
+        padding: const EdgeInsets.only(top: 70, bottom: 24),
+        children: [
+          row(t['row_popular']!, ref.watch(wcoPopularProvider)),
+          row(t['row_new']!, ref.watch(wcoLatestProvider)),
+          row(t['nav_tv']!, ref.watch(wcoCartoonsProvider)),
+          row(t['dubbed_anime']!, ref.watch(wcoDubbedProvider)),
+          row(t['nav_movies']!, ref.watch(wcoMoviesProvider)),
+        ],
+      ),
+      Positioned(top: 0, left: 0, right: 0, child: _HomeTopBar(t: t)),
+    ]);
+  }
+
   @override
   Widget build(BuildContext context) {
     ref.watch(catalogRevProvider);
-    final catalog = ref.watch(catalogProvider);
     final t = ref.watch(stringsProvider);
+    if (ref.watch(everythingModeProvider)) return _everythingHome(context, t);
+    final catalog = ref.watch(catalogProvider);
     final user = ref.watch(userProvider);
 
     void open(ContentItem i) => openPhoneDetail(context, i);
