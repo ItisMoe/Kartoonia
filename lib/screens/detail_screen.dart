@@ -4,8 +4,10 @@ import '../models/catalog_source.dart';
 import '../models/content_item.dart';
 import '../navigation.dart';
 import '../playback.dart';
+import '../services/catalog_service.dart';
 import '../services/fame_ranking.dart';
 import '../services/resume.dart';
+import '../services/wcoflix/wcoflix_match.dart';
 import '../services/storage_service.dart';
 import '../state/app_state.dart';
 import '../state/wcoflix_providers.dart';
@@ -39,6 +41,21 @@ class _DetailScreenState extends ConsumerState<DetailScreen> {
   // switch so the default recomputes against the new source's seasons.
   int? _seasonIdx;
   CatalogSource? _selectedSource;
+
+  // Audio language for the title: null until chosen, then true = Original
+  // (WCOFlix) / false = Arabic dub. Reset when the alternate is swapped.
+  bool? _original;
+
+  // Memoized Arabic-catalog match for a WCOFlix title (see [_arabicMatch]).
+  String? _arMatchTitle;
+  ContentItem? _arMatchCache;
+  ContentItem? _arabicMatch(String title, CatalogService catalog) {
+    if (_arMatchTitle != title) {
+      _arMatchTitle = title;
+      _arMatchCache = bestArabicMatch(title, catalog.all);
+    }
+    return _arMatchCache;
+  }
 
   // Cache "More Like This" per item — the O(catalog) scan shouldn't re-run on
   // every setState (season change, list toggle). Keyed by the item id.
@@ -112,11 +129,41 @@ class _DetailScreenState extends ConsumerState<DetailScreen> {
     }
 
     final storage = ref.read(storageProvider);
-    final alt = catalog.alternateFor(base);
+
+    // --- Audio language pairing: an Arabic-dubbed side + a WCOFlix "original".
+    final baseIsWco = base.source == CatalogSource.wcoflix;
+    ContentItem? arabicSide;
+    Show? originalSide;
+    if (baseIsWco) {
+      originalSide = base as Show; // already episode-loaded above
+      arabicSide = _arabicMatch(base.title, catalog);
+    } else {
+      arabicSide = base;
+      final en = base.tmdb?.enTitle ?? base.title;
+      originalSide = ref.watch(wcoflixOriginalProvider(en)).asData?.value;
+    }
+    final hasAudioSwitch = arabicSide != null && originalSide != null;
+    _original ??= baseIsWco;
+    final showOriginal = hasAudioSwitch ? _original! : baseIsWco;
+
+    // The item for the chosen language (WCOFlix episodes load lazily).
+    ContentItem langBase;
+    if (showOriginal) {
+      var wco = originalSide!;
+      if (wco.episodes.isEmpty && (wco.pageUrl ?? '').isNotEmpty) {
+        wco = ref.watch(wcoSeriesProvider(wco.pageUrl!)).asData?.value ?? wco;
+      }
+      langBase = wco;
+    } else {
+      langBase = arabicSide!;
+    }
+
+    // Arabic-side Arabic-Toons↔Stardima twin (never present for WCOFlix).
+    final alt = catalog.alternateFor(langBase);
     // Resume-aware default source (computed once per mount).
-    _selectedSource ??= _defaultSource(storage, base, alt);
-    final item = (alt != null && _selectedSource == alt.source) ? alt : base;
-    final primary = catalog.primaryFor(base);
+    _selectedSource ??= _defaultSource(storage, langBase, alt);
+    final item = (alt != null && _selectedSource == alt.source) ? alt : langBase;
+    final primary = catalog.primaryFor(langBase);
 
     final inList = user.watchlistIds.contains(primary.id) ||
         (alt != null && user.watchlistIds.contains(alt.id));
@@ -254,8 +301,12 @@ class _DetailScreenState extends ConsumerState<DetailScreen> {
                   ),
                 ]),
                 const SizedBox(height: 36),
+                if (hasAudioSwitch) ...[
+                  _audioToggle(showOriginal, t),
+                  const SizedBox(height: 28),
+                ],
                 if (alt != null) ...[
-                  _sourceToggle(item.source, base.source, alt.source, t),
+                  _sourceToggle(item.source, langBase.source, alt.source, t),
                   const SizedBox(height: 28),
                 ],
                 if (item is Show) _episodes(item, t),
@@ -394,6 +445,35 @@ class _DetailScreenState extends ConsumerState<DetailScreen> {
         ),
       ],
     );
+  }
+
+  /// Audio picker (Arabic dub ↔ Original), shown only when a title exists in
+  /// both the Arabic catalog and WCOFlix. Switching swaps the whole
+  /// seasons/episodes/Play target to the other language's source.
+  Widget _audioToggle(bool original, Map<String, String> t) {
+    Widget chip(bool isOrig, String label) => Padding(
+          padding: const EdgeInsets.only(right: 10),
+          child: SelectableChip(
+            label: label,
+            selected: isOrig == original,
+            radius: 13,
+            onPressed: () => setState(() {
+              _original = isOrig;
+              _selectedSource = null; // recompute the AT/ST default per language
+              _seasonIdx = null; // recompute the default season
+            }),
+          ),
+        );
+    return Row(mainAxisSize: MainAxisSize.min, children: [
+      Text(t['audio_label']!,
+          style: const TextStyle(
+              fontSize: 19,
+              fontWeight: FontWeight.w800,
+              color: AppColors.inkMute)),
+      const SizedBox(width: 16),
+      chip(false, t['audio_arabic']!),
+      chip(true, t['audio_original']!),
+    ]);
   }
 
   /// Arabic Toons / Stardima picker, shown only for titles that exist in both

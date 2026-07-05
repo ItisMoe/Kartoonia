@@ -2,6 +2,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../models/content_item.dart';
 import '../services/wcoflix/wcoflix_adapter.dart';
 import '../services/wcoflix/wcoflix_catalog.dart';
+import '../services/wcoflix/wcoflix_match.dart';
 import '../services/wcoflix/wcoflix_parsers.dart';
 import 'app_state.dart';
 
@@ -82,6 +83,24 @@ final wcoSearchProvider =
   final q = query.trim();
   if (q.isEmpty) return const [];
   return _cards(await ref.read(wcoflixCatalogProvider).search(q));
+});
+
+/// The WCOFlix "original" (English) match for an Arabic title, found by
+/// searching the live catalog for [enTitle] and title-matching the results.
+/// Returns a card stub (episodes load lazily via [wcoSeriesProvider]) or null
+/// when there's no confident match. Powers the detail Audio: Arabic↔Original
+/// switch. Fails soft: any error just yields null (no switch shown).
+final wcoflixOriginalProvider =
+    FutureProvider.family<Show?, String>((ref, enTitle) async {
+  final q = enTitle.trim();
+  if (q.length < 2) return null;
+  try {
+    final links = await ref.read(wcoflixCatalogProvider).search(q);
+    final match = bestWcoflixMatch(q, links);
+    return match == null ? null : wcoflixShowStub(match);
+  } catch (_) {
+    return null;
+  }
 });
 
 /// Full show (poster/plot/episodes) for a WCOFlix series page URL.
