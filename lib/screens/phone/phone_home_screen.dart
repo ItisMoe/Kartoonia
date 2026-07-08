@@ -178,14 +178,14 @@ class _PhoneHomeScreenState extends ConsumerState<PhoneHomeScreen> {
     rows.add(
         PhoneRow(title: t['row_new']!, cards: [for (final s in newShows) card(s)]));
 
+    // genreRows is already fame-sorted + memoized in CatalogService.
     for (final entry in catalog.genreRows()) {
-      final byPop = entry.value.toList()
-        ..sort((a, b) => b.fameScore.compareTo(a.fameScore));
       rows.add(PhoneRow(
         title: translateGenre(entry.key),
         cards: [
-          for (final i
-              in dailyShuffled(byPop.take(24).toList(), salt: entry.key).take(20))
+          for (final i in dailyShuffled(
+                  entry.value.take(24).toList(), salt: entry.key)
+              .take(20))
             card(i),
         ],
       ));

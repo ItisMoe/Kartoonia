@@ -1,5 +1,5 @@
-import 'package:http/http.dart' as http;
 import 'wcoflix_config.dart';
+import 'wcoflix_http.dart';
 
 /// Resolves which WCOFlix mirror is actually serving content and rewrites stale
 /// links onto it.
@@ -20,6 +20,10 @@ class WcoflixDomain {
   /// links pointing at any of them can be rehomed onto the live mirror.
   static final Set<String> _mirrorHosts = {
     for (final b in wcoflixBaseUrls) Uri.parse(b).host,
+    'wcostream.tv',
+    'www.wcostream.tv',
+    'wcoforever.net',
+    'www.wcoforever.net',
     'wcoflix.tv',
     'www.wcoflix.tv',
     'wcofun.net',
@@ -69,13 +73,12 @@ class WcoflixDomain {
     return _active!;
   }
 
-  /// Default network probe (real http), used by production callers.
-  static final http.Client _client = http.Client();
+  /// Default network probe — the native TLS-1.2 client (Cloudflare bypass).
   static Future<String> defaultGet(String url) async {
-    final res = await _client.get(Uri.parse(url), headers: {
+    final res = await WcoflixHttp.instance.get(url, headers: {
       'User-Agent': kWcoflixUserAgent,
       'Accept-Language': 'en-US,en;q=0.9',
-    }).timeout(const Duration(seconds: 15));
+    });
     return res.body;
   }
 

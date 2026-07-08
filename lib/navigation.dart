@@ -33,8 +33,10 @@ Route<T> _fade<T>(Widget page) => PageRouteBuilder<T>(
       pageBuilder: (_, _, _) => page,
       transitionsBuilder: (_, anim, _, child) =>
           FadeTransition(opacity: anim, child: child),
-      transitionDuration: const Duration(milliseconds: 220),
-      reverseTransitionDuration: const Duration(milliseconds: 160),
+      // Kept short so navigation feels instant (Kodi-snappy) rather than
+      // waiting on a long cross-fade of two full-screen canvases.
+      transitionDuration: const Duration(milliseconds: 130),
+      reverseTransitionDuration: const Duration(milliseconds: 110),
     );
 
 /// Central navigation. Home is the base route; tab switches reset to it, while

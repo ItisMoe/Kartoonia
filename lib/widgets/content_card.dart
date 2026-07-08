@@ -117,11 +117,15 @@ class PosterCard extends StatelessWidget {
                   child: DecoratedBox(
                     decoration: BoxDecoration(
                       borderRadius: BorderRadius.circular(Radii.card),
+                      // Keep the blur radius modest: large-radius BoxShadows are
+                      // rasterized every frame and are the single biggest GPU
+                      // cost when a row of cards scrolls/animates on a weak TV
+                      // GPU. A tighter shadow reads the same at 10-foot distance.
                       boxShadow: [
                         BoxShadow(
-                          color: Colors.black.withValues(alpha: focused ? 0.8 : 0.55),
-                          blurRadius: focused ? 60 : 40,
-                          offset: const Offset(0, 18),
+                          color: Colors.black.withValues(alpha: focused ? 0.7 : 0.5),
+                          blurRadius: focused ? 22 : 14,
+                          offset: const Offset(0, 10),
                         ),
                       ],
                     ),
@@ -183,13 +187,15 @@ class PosterCard extends StatelessWidget {
           _CardRing(visible: focused, radius: Radii.card),
         ]);
 
-        final content = AnimatedScale(
-          scale: focused ? 1.04 : 1,
-          duration: const Duration(milliseconds: 200),
-          curve: ease,
-          child: Transform.translate(
-            offset: Offset(0, focused ? -3 : 0),
-            child: stack,
+        final content = RepaintBoundary(
+          child: AnimatedScale(
+            scale: focused ? 1.04 : 1,
+            duration: const Duration(milliseconds: 200),
+            curve: ease,
+            child: Transform.translate(
+              offset: Offset(0, focused ? -3 : 0),
+              child: stack,
+            ),
           ),
         );
 
@@ -244,7 +250,8 @@ class BackdropCard extends StatelessWidget {
     return Focusable(
       onPressed: onPressed,
       builder: (context, focused) {
-        return AnimatedScale(
+        return RepaintBoundary(
+          child: AnimatedScale(
           scale: focused ? 1.04 : 1,
           duration: const Duration(milliseconds: 200),
           curve: ease,
@@ -290,6 +297,7 @@ class BackdropCard extends StatelessWidget {
               _CardRing(visible: focused, radius: Radii.card),
             ]),
           ),
+        ),
         );
       },
     );
@@ -313,7 +321,8 @@ class Top10Card extends StatelessWidget {
     return Focusable(
       onPressed: onPressed,
       builder: (context, focused) {
-        return AnimatedScale(
+        return RepaintBoundary(
+          child: AnimatedScale(
           scale: focused ? 1.04 : 1,
           duration: const Duration(milliseconds: 200),
           curve: ease,
@@ -372,6 +381,7 @@ class Top10Card extends StatelessWidget {
               ],
             ),
           ),
+        ),
         );
       },
     );

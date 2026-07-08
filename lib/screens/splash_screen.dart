@@ -37,8 +37,14 @@ class _SplashScreenState extends ConsumerState<SplashScreen>
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) async {
-      // Let the entrance play (and linger a touch) before routing on.
-      await Future.delayed(const Duration(milliseconds: 1550));
+      // Let the entrance play (and linger a touch) before routing on — AND
+      // wait for the background catalog parse, so Home never renders empty.
+      // On fast devices the animation is the longer of the two (unchanged
+      // feel); on a slow box the dot-loader keeps pulsing until data lands.
+      await Future.wait([
+        Future.delayed(const Duration(milliseconds: 1550)),
+        ref.read(catalogReadyProvider),
+      ]);
       if (!mounted) return;
       final isTv = ref.read(isTvProvider);
       Navigator.of(context).pushReplacement(PageRouteBuilder(

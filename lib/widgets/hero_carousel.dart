@@ -115,14 +115,24 @@ class _HeroCarouselState extends State<HeroCarousel> {
         height: Dims.heroH,
         width: double.infinity,
         child: Stack(children: [
-          // cross-fading backdrop
+          // cross-fading backdrop. Overscanned a touch: many TMDB backdrops for
+          // animated titles have thin black pillarbars baked into the 16:9 art,
+          // and because the hero is wider than 16:9 `cover` fills the width
+          // exactly — leaving those bars visible at the left/right edges. A
+          // small scale pushes them off-screen (clipped by the hero box) so the
+          // art reads edge-to-edge.
           Positioned.fill(
-            child: AnimatedSwitcher(
-              duration: const Duration(milliseconds: 800),
-              child: CatalogImage(
-                key: ValueKey(s.id),
-                url: s.backdropUrl,
-                fallbackUrl: s.thumbnailUrl,
+            child: ClipRect(
+              child: AnimatedSwitcher(
+                duration: const Duration(milliseconds: 800),
+                child: Transform.scale(
+                  key: ValueKey(s.id),
+                  scale: 1.06,
+                  child: CatalogImage(
+                    url: s.backdropUrl,
+                    fallbackUrl: s.thumbnailUrl,
+                  ),
+                ),
               ),
             ),
           ),

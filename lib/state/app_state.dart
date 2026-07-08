@@ -23,6 +23,12 @@ final catalogProvider = Provider<CatalogService>(
 /// catalog mutates in place).
 final catalogRevProvider = StateProvider<int>((ref) => 0);
 
+/// Completes once the background catalog parse has populated [catalogProvider]
+/// (overridden in main()). The splash waits on this before routing to Home so
+/// the first Home build always sees real data. Defaults to already-complete
+/// for tests / contexts that inject a pre-loaded catalog.
+final catalogReadyProvider = Provider<Future<void>>((ref) => Future.value());
+
 /// Checks GitHub Releases for a newer build (see [UpdateGate]).
 final updateServiceProvider = Provider<UpdateService>((ref) => UpdateService());
 

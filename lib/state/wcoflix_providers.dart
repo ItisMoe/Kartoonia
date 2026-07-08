@@ -64,10 +64,22 @@ final wcoMoviesProvider = FutureProvider<List<ContentItem>>((ref) async =>
 /// The Everything-mode Home pool: the most TMDB-famous titles (vote_count desc)
 /// across the whole catalog, WITH posters/backdrops — so Home leads with the
 /// familiar, well-known shows exactly like the Arabic Home (which ranks by
-/// fame). Home slices this into rows + a backdrop hero.
+/// fame). Home slices this into rows + a backdrop hero. Deduped by TMDB id/title.
 final wcoFamousProvider = FutureProvider<List<ContentItem>>((ref) async {
   final cat = ref.read(wcoflixCatalogProvider);
-  return _cards(cat, await cat.famousPool(limit: 240));
+  return _cards(cat, await cat.famousPool(limit: 400));
+});
+
+/// Fame-ranked SERIES pool (a dedicated Home row).
+final wcoFamousSeriesProvider = FutureProvider<List<ContentItem>>((ref) async {
+  final cat = ref.read(wcoflixCatalogProvider);
+  return _cards(cat, await cat.famousPool(limit: 120, type: 'tv'));
+});
+
+/// Fame-ranked MOVIES pool (a dedicated Home row).
+final wcoFamousMoviesProvider = FutureProvider<List<ContentItem>>((ref) async {
+  final cat = ref.read(wcoflixCatalogProvider);
+  return _cards(cat, await cat.famousPool(limit: 120, type: 'movie'));
 });
 
 /// Fame-ranked pool restricted to titles that have a backdrop — the Home hero.
@@ -91,14 +103,15 @@ final wcoTvBrowseProvider = FutureProvider<List<ContentItem>>((ref) async {
   return out;
 });
 
-/// Live full-catalog search (series). Soft-fails to an empty list.
+/// Everything-mode search — runs LOCALLY against the bundled enriched catalog
+/// (8k+ titles with TMDB art). Instant, and immune to the Cloudflare wall that
+/// the live POST /search now sits behind. Soft-fails to an empty list.
 final wcoSearchProvider =
     FutureProvider.family<List<ContentItem>, String>((ref, query) async {
   final q = query.trim();
   if (q.isEmpty) return const [];
   final cat = ref.read(wcoflixCatalogProvider);
-  await cat.ensureArt();
-  return _cards(cat, await cat.search(q));
+  return _cards(cat, await cat.searchLocal(q));
 });
 
 /// The WCOFlix "original" (English) match for an Arabic title, found by
@@ -112,8 +125,7 @@ final wcoflixOriginalProvider =
   if (q.length < 2) return null;
   try {
     final cat = ref.read(wcoflixCatalogProvider);
-    await cat.ensureArt();
-    final links = await cat.search(q);
+    final links = await cat.searchLocal(q);
     final match = bestWcoflixMatch(q, links);
     return match == null ? null : wcoflixShowStub(match, tmdb: cat.artFor(match.url));
   } catch (_) {

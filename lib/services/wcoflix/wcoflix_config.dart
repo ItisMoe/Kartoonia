@@ -1,11 +1,14 @@
-/// WCOFlix (wcoflix.tv) live-catalog constants. The base URL is an ordered
-/// fallback list because these sites rename domains often; callers try each in
-/// order until one responds. Verified live 2026-07-05: wcofun.net/.org now
-/// 301-redirect to wcoflix.tv.
+/// WCOFlix live-catalog constants. The base URL is an ordered fallback list
+/// because these sites rename domains often; callers try each in order until one
+/// responds. Verified live 2026-07-08: `wcoflix.tv` is now DNS-dead; the working
+/// mirror is `www.wcostream.tv` (also the WatchNixtoons2 addon default), with
+/// `wcoforever.net` as the live fallback. All mirrors are behind a Cloudflare
+/// managed challenge, so requests go through the native TLS-1.2 client
+/// (see wcoflix_http.dart / NetChannel).
 const List<String> wcoflixBaseUrls = [
+  'https://www.wcostream.tv',
+  'https://www.wcoforever.net',
   'https://www.wcoflix.tv',
-  'https://www.wcofun.net',
-  'https://www.wcofun.org',
 ];
 
 /// The host that serves the getvid player embeds.

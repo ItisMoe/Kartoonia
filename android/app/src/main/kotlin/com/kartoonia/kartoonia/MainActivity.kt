@@ -14,6 +14,7 @@ import io.flutter.plugin.common.MethodChannel
 
 class MainActivity : FlutterActivity() {
     private val channelName = "kartoonia/reco"
+    private val netChannelName = "kartoonia/net"
     private val voiceChannelName = "kartoonia/voice"
     private val voiceEventsName = "kartoonia/voice_events"
     private val audioPermCode = 0x5641 // 'VA'
@@ -96,9 +97,23 @@ class MainActivity : FlutterActivity() {
                 // as opposed to a touch phone/tablet. Drives the UI fork in main():
                 // TVs get the D-pad 1920×1080 canvas, phones get the portrait UI.
                 "isTelevision" -> result.success(isTelevision())
+                // Total device RAM in bytes (-1 if unavailable). Lets Dart size
+                // the image cache to the box: a 1 GB TV stick can't afford the
+                // same cache as a 4 GB phone.
+                "totalMemBytes" -> result.success(totalMemBytes())
                 else -> result.notImplemented()
             }
         }
+
+        // Native TLS-1.2-pinned HTTP, used only for the WCOFlix catalog/search/
+        // playback-resolve requests that Cloudflare 403s a default TLS-1.3 client
+        // on. See NetChannel.
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, netChannelName)
+            .setMethodCallHandler { call, result ->
+                @Suppress("UNCHECKED_CAST")
+                val args = (call.arguments as? Map<String, Any?>) ?: emptyMap()
+                NetChannel.handle(call.method, args, result)
+            }
 
         // Voice search bridged as an in-app SpeechRecognizer session. The app
         // owns the microphone and renders its own listening overlay (from the
@@ -152,6 +167,19 @@ class MainActivity : FlutterActivity() {
 
         // capture the deep link the app may have been launched with
         pendingDeepLink = linkFrom(intent)
+    }
+
+    /// Total device RAM in bytes, or -1 when the query fails (Dart treats that
+    /// as "assume enough").
+    private fun totalMemBytes(): Long {
+        return try {
+            val am = getSystemService(Context.ACTIVITY_SERVICE) as android.app.ActivityManager
+            val mi = android.app.ActivityManager.MemoryInfo()
+            am.getMemoryInfo(mi)
+            mi.totalMem
+        } catch (e: Throwable) {
+            -1L
+        }
     }
 
     /// True on leanback devices (Android TV / Google TV). Falls back to false

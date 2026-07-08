@@ -47,12 +47,12 @@ void main() {
       final hit = <String>[];
       final base = await WcoflixDomain.activeBase((url) async {
         hit.add(url);
-        // First base is Cloudflare-challenged; second serves content.
-        if (url.contains('wcoflix.tv')) return '<html>Just a moment...</html>';
+        // Primary (wcostream.tv) is Cloudflare-challenged; second serves content.
+        if (url.contains('wcostream.tv')) return '<html>Just a moment...</html>';
         return '<html><div class="sidebar-titles"></div></html>';
       });
-      expect(base, 'https://www.wcofun.net');
-      expect(hit.first, contains('wcoflix.tv')); // tried the primary first
+      expect(base, 'https://www.wcoforever.net');
+      expect(hit.first, contains('wcostream.tv')); // tried the primary first
     });
 
     test('caches the resolved mirror (probes once)', () async {
@@ -72,7 +72,7 @@ void main() {
         () async {
       final base = await WcoflixDomain.activeBase(
           (_) async => '<html>Just a moment</html>');
-      expect(base, 'https://www.wcoflix.tv');
+      expect(base, 'https://www.wcostream.tv');
     });
   });
 }

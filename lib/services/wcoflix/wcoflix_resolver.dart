@@ -1,8 +1,8 @@
 import 'dart:convert';
 import 'dart:math';
-import 'package:http/http.dart' as http;
 import 'wcoflix_config.dart';
 import 'wcoflix_domain.dart';
+import 'wcoflix_http.dart';
 import 'wcoflix_quality.dart';
 import 'wcoflix_stream_parsers.dart';
 
@@ -51,8 +51,6 @@ abstract class WcoHttp {
 }
 
 class _RealHttp implements WcoHttp {
-  final http.Client _c = http.Client();
-
   /// Rehome catalog-mirror URLs (the episode page) onto the live mirror; the
   /// playback embed host (`embed.wcostream.com`) is left untouched by [rewrite].
   Future<String> _live(String url) async {
@@ -62,11 +60,11 @@ class _RealHttp implements WcoHttp {
 
   @override
   Future<String> get(String url, {Map<String, String>? headers}) async =>
-      (await _c.get(Uri.parse(await _live(url)), headers: headers)).body;
+      (await WcoflixHttp.instance.get(await _live(url), headers: headers)).body;
   @override
   Future<void> post(String url, String body,
           {Map<String, String>? headers}) async =>
-      _c.post(Uri.parse(await _live(url)), headers: headers, body: body);
+      WcoflixHttp.instance.post(await _live(url), headers: headers, body: body);
   @override
   Future<void> sleep(Duration d) => Future<void>.delayed(d);
 }

@@ -1,7 +1,6 @@
 import '../models/catalog_source.dart';
 import '../models/content_item.dart';
-import '../models/stardima_adapter.dart';
-import 'catalog_updater.dart';
+import 'catalog_loader.dart';
 import 'fame_ranking.dart';
 
 /// Loads, indexes and queries a bundled catalog. The active source (Arabic Toons
@@ -12,16 +11,13 @@ import 'fame_ranking.dart';
 /// ratings).
 
 class CatalogService {
-  List<Map<String, dynamic>> _rawShows = [];
-  List<Map<String, dynamic>> _rawMovies = [];
-
   /// The catalog currently loaded into memory.
   CatalogSource source;
 
-  late List<Show> shows;
-  late List<Movie> movies;
-  late List<ContentItem> all;
-  late Map<String, ContentItem> _byId;
+  List<Show> shows = const [];
+  List<Movie> movies = const [];
+  List<ContentItem> all = const [];
+  Map<String, ContentItem> _byId = const {};
 
   /// tmdbId -> {source: item} for ids present (exactly once) in BOTH sources.
   /// Drives the detail-screen source toggle and the collapsed library.
@@ -37,6 +33,7 @@ class CatalogService {
   List<Movie>? _popularMovies;
   List<ContentItem>? _featuredPool;
   List<MapEntry<String, List<ContentItem>>>? _genreRows;
+  List<(ContentItem, String)>? _searchIndex;
 
   void _invalidateDerived() {
     _popularPool = null;
@@ -44,9 +41,15 @@ class CatalogService {
     _popularMovies = null;
     _featuredPool = null;
     _genreRows = null;
+    _searchIndex = null;
   }
 
   CatalogService._(this.source);
+
+  /// An empty, render-safe catalog — every query returns nothing. The app
+  /// boots against this instantly (the splash shows while the real catalogs
+  /// parse in background isolates), then [loadMergedInPlace] fills it in.
+  factory CatalogService.empty() => CatalogService._(CatalogSource.arabicToons);
 
   static Future<CatalogService> load(CatalogSource source) async {
     final svc = CatalogService._(source);
@@ -60,20 +63,28 @@ class CatalogService {
   /// keep their own [ContentItem.source], so playback dispatches correctly.
   static Future<CatalogService> loadMerged() async {
     final svc = CatalogService._(CatalogSource.arabicToons);
+    await svc.loadMergedInPlace();
+    return svc;
+  }
 
+  /// [loadMerged], but populating THIS instance — so the app can hand an
+  /// [CatalogService.empty] service to the UI immediately and fill it once the
+  /// background parse lands. All heavy work (I/O, JSON decode, model build)
+  /// happens off the UI isolate; sources load sequentially ON PURPOSE — two
+  /// catalogs decoding at once doubles peak memory, which a 1 GB TV box
+  /// can't afford.
+  Future<void> loadMergedInPlace() async {
     // Arabic Toons (legacy schema). Loads the freshest valid data: a cached
-    // GitHub download when present, else the bundled asset (CatalogUpdater).
-    final atData = await CatalogUpdater.loadJson(CatalogSource.arabicToons);
-    final atShows = ((atData['shows'] as List?) ?? const [])
-        .map((e) => Show.fromJson((e as Map).cast<String, dynamic>()))
-        .toList();
-    final atMovies = ((atData['movies'] as List?) ?? const [])
-        .map((e) => Movie.fromJson((e as Map).cast<String, dynamic>()))
-        .toList();
+    // GitHub download when present, else the bundled asset.
+    final at = await loadCatalogModels(CatalogSource.arabicToons);
+    final atShows = at.shows;
+    final atMovies = at.movies;
 
     // Stardima (adapter).
-    final stData = await CatalogUpdater.loadJson(CatalogSource.stardima);
-    final (stShows, stMovies) = StardimaAdapter.parse(stData);
+    final st = await loadCatalogModels(CatalogSource.stardima);
+    final stShows = st.shows;
+    final stMovies = st.movies;
+    final svc = this;
 
     // Index items by tmdbId per source. A tmdbId can map to more than one item
     // within a source (ambiguous/duplicate TMDB matches), so we count them.
@@ -121,7 +132,6 @@ class CatalogService {
       svc._byId.putIfAbsent(i.id, () => i);
     }
     svc._invalidateDerived();
-    return svc;
   }
 
   /// True when this title exists in BOTH sources (so the detail screen offers a
@@ -162,8 +172,6 @@ class CatalogService {
     // so the enum stays exhaustive without touching the Arabic-mode paths.
     if (src == CatalogSource.wcoflix) {
       source = src;
-      _rawShows = const [];
-      _rawMovies = const [];
       shows = const [];
       movies = const [];
       all = const [];
@@ -171,27 +179,12 @@ class CatalogService {
       _invalidateDerived();
       return;
     }
-    final data = await CatalogUpdater.loadJson(src);
+    // Parsed off the UI isolate — a mid-session source switch used to freeze
+    // the settings screen for the whole decode.
+    final parsed = await loadCatalogModels(src);
     source = src;
-    switch (src) {
-      case CatalogSource.arabicToons:
-        _rawShows = ((data['shows'] as List?) ?? const [])
-            .map((e) => (e as Map).cast<String, dynamic>())
-            .toList();
-        _rawMovies = ((data['movies'] as List?) ?? const [])
-            .map((e) => (e as Map).cast<String, dynamic>())
-            .toList();
-        shows = _rawShows.map(Show.fromJson).toList();
-        movies = _rawMovies.map(Movie.fromJson).toList();
-      case CatalogSource.stardima:
-        _rawShows = const [];
-        _rawMovies = const [];
-        final (s, m) = StardimaAdapter.parse(data);
-        shows = s;
-        movies = m;
-      case CatalogSource.wcoflix:
-        break; // unreachable — handled by the early return above
-    }
+    shows = parsed.shows;
+    movies = parsed.movies;
     all = [...shows, ...movies];
     _byId = {for (final i in all) i.id: i};
     _invalidateDerived();
@@ -241,16 +234,29 @@ class CatalogService {
   List<ContentItem> search(String query) {
     final q = normalizeArSearch(query.toLowerCase().trim());
     if (q.isEmpty) return const [];
-    bool has(String s) => normalizeArSearch(s.toLowerCase()).contains(q);
-    return all.where((i) {
-      final t = i.tmdb;
-      return has(i.title) ||
-          has(t?.enTitle ?? '') ||
-          has(t?.originalTitle ?? '') ||
-          has(i.description) ||
-          has(t?.overviewEn ?? '') ||
-          has(t?.overviewAr ?? '');
-    }).toList();
+    // One normalized haystack per item, built once per catalog load (first
+    // search pays it) instead of re-normalizing every field of every item on
+    // EVERY keystroke — that was the whole-catalog × 6-fields typing lag.
+    // Fields are joined with '\n' so a query can't accidentally match across
+    // a field boundary.
+    final index = _searchIndex ??= [
+      for (final i in all)
+        (
+          i,
+          normalizeArSearch([
+            i.title,
+            i.tmdb?.enTitle ?? '',
+            i.tmdb?.originalTitle ?? '',
+            i.description,
+            i.tmdb?.overviewEn ?? '',
+            i.tmdb?.overviewAr ?? '',
+          ].join('\n').toLowerCase()),
+        ),
+    ];
+    return [
+      for (final (item, hay) in index)
+        if (hay.contains(q)) item,
+    ];
   }
 
   // ---- Genres ----
@@ -259,15 +265,26 @@ class CatalogService {
   List<ContentItem> byGenre(String genre) =>
       all.where((i) => i.genres.contains(genre)).toList();
 
-  /// Genre rows for Home: genres with >= [min] items, capped at [cap] rows.
+  /// Genre rows for Home: genres with >= [min] items, capped at [cap] rows,
+  /// each row's items fame-sorted (most famous first). The sort lives here —
+  /// memoized — because both Home screens used to re-sort every genre row on
+  /// EVERY build, which the hero autoplay triggered continuously.
   /// Memoized (default args only) — the whole-catalog genre scan is expensive.
   List<MapEntry<String, List<ContentItem>>> genreRows(
       {int min = 4, int cap = 6}) {
     if (min == 4 && cap == 6) {
-      return _genreRows ??= genreRowsFor(all, min: min, cap: cap);
+      return _genreRows ??= _fameSortedGenreRows(min: min, cap: cap);
     }
-    return genreRowsFor(all, min: min, cap: cap);
+    return _fameSortedGenreRows(min: min, cap: cap);
   }
+
+  List<MapEntry<String, List<ContentItem>>> _fameSortedGenreRows(
+          {required int min, required int cap}) =>
+      [
+        for (final e in genreRowsFor(all, min: min, cap: cap))
+          MapEntry(e.key,
+              e.value..sort((a, b) => b.fameScore.compareTo(a.fameScore))),
+      ];
 
   // ---- Browse filtering + sorting (no rating sort) ----
   List<ContentItem> browse(String kind) {

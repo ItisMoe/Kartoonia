@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'dart:io';
+import 'dart:typed_data';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart' show rootBundle;
 import 'package:http/http.dart' as http;
@@ -34,7 +35,7 @@ class CatalogUpdater {
       final f = await _cacheFile(src);
       if (await f.exists()) {
         final decoded = jsonDecode(await f.readAsString());
-        if (decoded is Map<String, dynamic> && _looksLikeCatalog(decoded)) {
+        if (decoded is Map<String, dynamic> && looksLikeCatalog(decoded)) {
           return decoded;
         }
       }
@@ -66,15 +67,19 @@ class CatalogUpdater {
         .get(Uri.parse('$_rawBase/${src.assetPath}'), headers: headers)
         .timeout(const Duration(minutes: 5));
     if (r.statusCode == 304) return; // unchanged since last download
-    if (r.statusCode != 200 || r.body.isEmpty) return;
+    // bodyBytes, never r.body: the .body getter UTF-8-decodes the whole 30 MB
+    // payload ON the UI isolate — a guaranteed mid-browse freeze every time a
+    // catalog actually updates. Bytes pass to the isolate and disk untouched.
+    final bytes = r.bodyBytes;
+    if (r.statusCode != 200 || bytes.isEmpty) return;
 
     // Validate OFF the UI isolate before committing: a truncated download or
     // an HTML error page must never replace a working cache.
-    if (!await compute(_isValidCatalogBody, r.body)) return;
+    if (!await compute(_isValidCatalogBytes, bytes)) return;
 
     await f.parent.create(recursive: true);
     final tmp = File('${f.path}.tmp');
-    await tmp.writeAsString(r.body, flush: true);
+    await tmp.writeAsBytes(bytes, flush: true);
     if (await f.exists()) await f.delete();
     await tmp.rename(f.path);
     final etag = r.headers['etag'];
@@ -83,14 +88,15 @@ class CatalogUpdater {
     }
   }
 
-  static bool _looksLikeCatalog(Map<String, dynamic> d) =>
+  /// Structural sanity check shared with the isolate loader (catalog_loader).
+  static bool looksLikeCatalog(Map<String, dynamic> d) =>
       // Arabic Toons uses `shows`, Stardima uses `tvshows`; both have `movies`.
       (d['shows'] is List || d['tvshows'] is List) && d['movies'] is List;
 
-  static bool _isValidCatalogBody(String body) {
+  static bool _isValidCatalogBytes(Uint8List bytes) {
     try {
-      final d = jsonDecode(body);
-      return d is Map<String, dynamic> && _looksLikeCatalog(d);
+      final d = utf8.decoder.fuse(json.decoder).convert(bytes);
+      return d is Map<String, dynamic> && looksLikeCatalog(d);
     } catch (_) {
       return false;
     }
