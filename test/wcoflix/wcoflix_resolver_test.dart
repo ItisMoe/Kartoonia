@@ -54,7 +54,8 @@ void main() {
       () async {
     final io = _FakeHttp({
       'black-torch': _episode,
-      'video-js.php': _player,
+      // Matches both `video-js-old.php` and `video-js.php` (either endpoint).
+      'video-js': _player,
       'getvidlink.php': _getvidJson,
       'advertisement.js': '',
       // 2026-07 getvid redirect step: `getvid?evid=TOKEN&json` answers with
@@ -71,9 +72,8 @@ void main() {
     expect(io.posts.single, contains('/ad-verify'));
     expect(io.posts.single, contains('"status":"clear"'));
     expect(io.posts.single, contains('"id":"1012000"'));
-    // Uses the current player endpoint, never the retired ad-walled one.
-    expect(io.gets.any((u) => u.contains('video-js.php')), isTrue);
-    expect(io.gets.any((u) => u.contains('video-js-old.php')), isFalse);
+    // First attempt requests the WatchNixtoons2 `video-js-old.php` endpoint.
+    expect(io.gets.any((u) => u.contains('video-js-old.php')), isTrue);
     // 720p default is first; all three qualities present.
     expect(streams.first.quality, WcoQuality.p720);
     expect(streams.first.type, 'mp4');
@@ -89,7 +89,7 @@ void main() {
       () async {
     final io = _FakeHttp({
       'black-torch': _episode,
-      'video-js.php': _player,
+      'video-js': _player,
       'getvidlink.php': _getvidJson,
       'advertisement.js': '',
       // No &json routes: the fake returns '' for them (endpoint missing).
@@ -110,7 +110,7 @@ void main() {
         'advertisement.js': '',
       },
       dynamicRoutes: {
-        'video-js.php': (n) => n < 2 ? _adWall : _player,
+        'video-js': (n) => n < 2 ? _adWall : _player,
       },
     );
     final streams = await resolveWcoflix(
@@ -127,7 +127,7 @@ void main() {
   test('throws when every attempt hits the ad wall', () async {
     final io = _FakeHttp({
       'black-torch': _episode,
-      'video-js.php': _adWall,
+      'video-js': _adWall,
       'advertisement.js': '',
     });
     expect(

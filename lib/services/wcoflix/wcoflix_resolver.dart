@@ -149,10 +149,14 @@ Future<List<WcoStream>> resolveWcoflix(
         jsonEncode({'nonce': nonce, 'status': 'clear', 'id': pid}),
         headers: {...headers, 'Content-Type': 'application/json', 'Referer': embed},
       );
-      // `video-js.php` is the current player endpoint; `video-js-old.php` is now
-      // the one that is always ad-walled (the two swapped roles).
+      // The player endpoint: `video-js-old.php` is what the current
+      // WatchNixtoons2 addon requests (verified live 2026-07-09 to return the
+      // real player), but the site has swapped `-old` and the plain
+      // `video-js.php` before — so alternate between them across attempts, and
+      // either endpoint's ad-wall just advances to the next attempt.
+      final php = attempt.isEven ? 'video-js-old.php' : 'video-js.php';
       final player =
-          '${embed.replaceFirst('inc/embed/index.php', 'inc/embed/video-js.php')}&n=$nonce';
+          '${embed.replaceFirst('inc/embed/index.php', 'inc/embed/$php')}&n=$nonce';
       await io.sleep(dwell);
       try {
         return await _fromPlayer(io, player, embed);

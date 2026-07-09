@@ -12,7 +12,7 @@ void main() {
     expect(CatalogSource.fromId('nope'), CatalogSource.arabicToons);
   });
   test('config constants', () {
-    expect(wcoflixBaseUrls.first, 'https://www.wcostream.tv');
+    expect(wcoflixBaseUrls.first, 'https://www.wcofun.net');
     expect(kWcoflixEmbedHost, 'https://embed.wcostream.com');
     expect(kWcoflixMediaHeaders['Referer'], 'https://embed.wcostream.com/');
   });

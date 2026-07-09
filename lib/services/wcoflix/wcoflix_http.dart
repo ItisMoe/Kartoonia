@@ -13,14 +13,18 @@ class WcoResponse {
 
 /// HTTP for the WCOFlix live paths (catalog, search, playback resolve).
 ///
-/// On Android it routes through the native `kartoonia/net` channel, which pins
-/// the handshake to **TLS 1.2** — the WCOFlix mirrors sit behind a Cloudflare
-/// managed challenge that 403s a default TLS-1.3 client (which is what Dart's
-/// `dart:io` HttpClient negotiates, with no way to change it). Forcing TLS 1.2
-/// reproduces the fingerprint the WatchNixtoons2 Kodi addon uses to get through.
+/// The WCOFlix mirrors sit behind a Cloudflare managed challenge. Which client
+/// fingerprint Cloudflare trusts is NOT stable over time: it used to 403 the
+/// default TLS-1.3 client and let a forced-TLS-1.2 one through (the reason for
+/// the native `kartoonia/net` channel), but as of 2026-07 it has flipped — it
+/// now challenges the forced-TLS-1.2 fingerprint while the plain Dart HTTP stack
+/// passes on the live `wcofun.net` mirror.
 ///
-/// Everywhere else (tests, desktop tooling) it transparently falls back to the
-/// plain `http` package so the same call sites work with no native side.
+/// So this tries BOTH transports and returns whichever actually clears the
+/// challenge: the native TLS-1.2 channel first (Android), then the plain `http`
+/// client whenever the native result is empty or a Cloudflare challenge page.
+/// Non-Android (tests, desktop tooling) uses the plain client directly. This
+/// makes playback robust to Cloudflare flipping its rules again.
 class WcoflixHttp {
   WcoflixHttp._();
   static final WcoflixHttp instance = WcoflixHttp._();
@@ -31,6 +35,13 @@ class WcoflixHttp {
   /// Whether the native TLS-1.2 channel is available (Android only). Cached
   /// after the first probe; a MissingPluginException flips it off for good.
   bool _nativeOk = !kIsWeb && defaultTargetPlatform == TargetPlatform.android;
+
+  /// A Cloudflare/interstitial challenge instead of real content — the signal
+  /// that this transport did NOT clear and the other should be tried.
+  static bool _isChallenge(String body) =>
+      body.contains('Just a moment') ||
+      body.contains('cf-browser-verification') ||
+      body.contains('Attention Required');
 
   Future<WcoResponse> get(String url, {Map<String, String>? headers}) =>
       _send('get', url, headers: headers);
@@ -50,8 +61,14 @@ class WcoflixHttp {
           'timeoutMs': 15000,
         });
         if (res != null) {
-          return WcoResponse((res['status'] as int?) ?? 0,
+          final native = WcoResponse((res['status'] as int?) ?? 0,
               (res['body'] as String?) ?? '');
+          // If the native (forced-TLS-1.2) client cleared Cloudflare, use it.
+          // Otherwise fall through to the plain client, which currently passes
+          // where the native fingerprint is challenged.
+          if (native.body.isNotEmpty && !_isChallenge(native.body)) {
+            return native;
+          }
         }
       } on MissingPluginException {
         _nativeOk = false; // no native side (e.g. tests) — use fallback forever
