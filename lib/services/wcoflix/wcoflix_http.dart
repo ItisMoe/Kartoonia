@@ -63,12 +63,16 @@ class WcoflixHttp {
         if (res != null) {
           final native = WcoResponse((res['status'] as int?) ?? 0,
               (res['body'] as String?) ?? '');
-          // If the native (forced-TLS-1.2) client cleared Cloudflare, use it.
-          // Otherwise fall through to the plain client, which currently passes
-          // where the native fingerprint is challenged.
-          if (native.body.isNotEmpty && !_isChallenge(native.body)) {
-            return native;
-          }
+          // Fall through to the plain client only when the native
+          // (forced-TLS-1.2) result looks CHALLENGED or FAILED — a Cloudflare
+          // interstitial, a challenge status, or a dead response. A normal
+          // reply (incl. a legitimately empty 200 like `ad-verify`) is used as
+          // is, so non-walled embed requests aren't needlessly sent twice.
+          final challenged = _isChallenge(native.body) ||
+              native.status == 0 ||
+              native.status == 403 ||
+              native.status == 503;
+          if (!challenged) return native;
         }
       } on MissingPluginException {
         _nativeOk = false; // no native side (e.g. tests) — use fallback forever
