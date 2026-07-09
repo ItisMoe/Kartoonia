@@ -8,14 +8,24 @@ import 'wcoflix_quality.dart';
 /// wcoflix_resolver.dart) and the resulting player HTML yields either a getvid
 /// `$.getJSON` link (enc/hd/fhd tokens) or a plain HLS `<source>`.
 
-/// The player iframe `src` on an episode page: `<iframe id="xxx-js-N" src=...>`
-/// (cizgi-js-0 / anime-js-0 / anime-js-1). Null when no player frame exists.
+/// The player iframe `src` on an episode page. Two generations of markup:
+///  - legacy: `<iframe id="xxx-js-N" src=...>` (cizgi-js-0 / anime-js-0);
+///  - 2026-07: the id no longer follows `*-js-N` (e.g.
+///    `frameNewcizgifilmuploads0`), so fall back to ANY iframe whose src is the
+///    wco embed player (`.../inc/embed/...`). The src match is what actually
+///    identifies the player — other iframes on the page (login checker, ads)
+///    never point there. Null when no player frame exists.
 final _reJsIframe = RegExp(
   r'<iframe\s*(?:rel="nofollow")?\s*id="[a-zA-Z]+-js-[0-9]+"\s*src="([^"]+)"',
   dotAll: true,
 );
+final _reEmbedSrcIframe = RegExp(
+  r'<iframe[^>]*\ssrc="([^"]*/inc/embed/[^"]+)"',
+  dotAll: true,
+);
 String? pickEmbedIframe(String episodeHtml) =>
-    _reJsIframe.firstMatch(episodeHtml)?.group(1);
+    _reJsIframe.firstMatch(episodeHtml)?.group(1) ??
+    _reEmbedSrcIframe.firstMatch(episodeHtml)?.group(1);
 
 /// From the `video-js-old.php` player HTML, the absolute getvidlink JSON URL to
 /// call (with the `X-Requested-With` header). Handles both the current

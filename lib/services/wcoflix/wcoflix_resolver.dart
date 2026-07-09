@@ -190,10 +190,17 @@ Future<List<WcoStream>> _fromPlayer(
     final data = jsonDecode(jsonText) as Map<String, dynamic>;
     final urls = parseGetvidJson(data);
     final mediaHeaders = kWcoflixMediaHeaders;
-    final streams = [
-      for (final e in urls.entries)
-        WcoStream(e.key, e.value, 'mp4', mediaHeaders),
-    ];
+    // getvid redirect step (site behavior as of 2026-07): the token URL
+    // `server/getvid?evid=<tok>` no longer streams directly — it 404s. The
+    // player fetches `server/getvid?evid=<tok>&json`, which returns the REAL
+    // edge URL (e.g. https://e04.wcostream.com/getvid?evid=…) as a JSON
+    // string, and plays THAT. Resolve each quality the same way; fall back to
+    // the raw URL for any embed that doesn't serve the &json endpoint.
+    final streams = <WcoStream>[];
+    for (final e in urls.entries) {
+      final resolved = await _resolveGetvidRedirect(io, e.value, headers);
+      streams.add(WcoStream(e.key, resolved ?? e.value, 'mp4', mediaHeaders));
+    }
     if (streams.isEmpty) {
       throw const WcoflixResolveException('getvidlink returned no tokens');
     }
@@ -212,4 +219,29 @@ Future<List<WcoStream>> _fromPlayer(
   }
 
   throw const WcoflixResolveException('no getvid or HLS source in player page');
+}
+
+/// Resolve `server/getvid?evid=<tok>` to its real edge URL via the `&json`
+/// redirect step the player's own JS performs (`fetchJsonData`): GET the URL
+/// with `&json` appended, which returns the final URL as a JSON string. Returns
+/// null on any failure so the caller can fall back to the raw URL (older embeds
+/// that stream directly and have no &json endpoint).
+Future<String?> _resolveGetvidRedirect(
+    WcoHttp io, String getvidUrl, Map<String, String> headers) async {
+  try {
+    final sep = getvidUrl.contains('?') ? '&' : '?';
+    final body = await io.get('$getvidUrl${sep}json', headers: {
+      ...headers,
+      'Accept': '*/*',
+      'X-Requested-With': 'XMLHttpRequest',
+    });
+    if (body.isEmpty) return null;
+    final decoded = jsonDecode(body);
+    // The endpoint returns a bare JSON string (the URL). Anything else (an
+    // object, an empty string) means this embed doesn't use the redirect.
+    if (decoded is String && decoded.startsWith('http')) return decoded;
+    return null;
+  } catch (_) {
+    return null;
+  }
 }

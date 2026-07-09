@@ -50,12 +50,18 @@ const _adWall =
     '<body><div id="announcement"><a>Get PREMIUM Now!</a></div></body></html>';
 
 void main() {
-  test('full getvid flow: handshake -> 720p-first mp4 streams', () async {
+  test('full getvid flow: handshake -> &json redirect -> 720p-first mp4',
+      () async {
     final io = _FakeHttp({
       'black-torch': _episode,
       'video-js.php': _player,
       'getvidlink.php': _getvidJson,
       'advertisement.js': '',
+      // 2026-07 getvid redirect step: `getvid?evid=TOKEN&json` answers with
+      // the real edge URL as a JSON string (escaped slashes, like the site).
+      'evid=E576&json': r'"https:\/\/e04.wcostream.com\/getvid?evid=E576REAL"',
+      'evid=H720&json': r'"https:\/\/e04.wcostream.com\/getvid?evid=H720REAL"',
+      'evid=F1080&json': r'"https:\/\/e04.wcostream.com\/getvid?evid=F1080REAL"',
     });
     final streams = await resolveWcoflix(
       'https://www.wcoflix.tv/black-torch-episode-1-english-dubbed',
@@ -73,8 +79,26 @@ void main() {
     expect(streams.first.type, 'mp4');
     expect(streams.map((s) => s.quality).toSet(),
         {WcoQuality.p576, WcoQuality.p720, WcoQuality.p1080});
-    expect(streams.first.url, 'https://neptun.wcostream.com/getvid?evid=H720');
+    // Streams carry the REDIRECTED edge URL, not the raw getvid link (which
+    // now 404s when fetched directly).
+    expect(streams.first.url, 'https://e04.wcostream.com/getvid?evid=H720REAL');
     expect(streams.first.headers['Referer'], 'https://embed.wcostream.com/');
+  });
+
+  test('legacy embeds without the &json endpoint fall back to raw getvid URLs',
+      () async {
+    final io = _FakeHttp({
+      'black-torch': _episode,
+      'video-js.php': _player,
+      'getvidlink.php': _getvidJson,
+      'advertisement.js': '',
+      // No &json routes: the fake returns '' for them (endpoint missing).
+    });
+    final streams = await resolveWcoflix(
+      'https://www.wcoflix.tv/black-torch-episode-1-english-dubbed',
+      http: io,
+    );
+    expect(streams.first.url, 'https://neptun.wcostream.com/getvid?evid=H720');
   });
 
   test('retries the anti-adblock wall until the real player loads', () async {

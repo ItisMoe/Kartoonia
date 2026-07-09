@@ -71,6 +71,13 @@
         <meta-data
             android:name="flutterEmbedding"
             android:value="2" />
+        <!-- Render with Skia instead of Impeller: the cheap TV boxes this app
+             targets ship old Mali GPUs whose Vulkan/GLES3 drivers run Impeller
+             poorly (jank, artifacts); Skia is the battle-tested path there.
+             Remove this line to A/B back to Impeller. -->
+        <meta-data
+            android:name="io.flutter.embedding.android.EnableImpeller"
+            android:value="false" />
     </application>
     <queries>
         <intent>

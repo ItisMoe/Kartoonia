@@ -13,6 +13,24 @@ void main() {
     expect(pickEmbedIframe(html), 'https://embed.wcostream.com/inc/embed/index.php?x=1');
   });
 
+  test('pickEmbedIframe finds the 2026 frameNew* embed (no -js-N id)', () {
+    // Real shape from wcostream.tv (2026-07): id no longer matches *-js-N,
+    // extra attributes, and h=/t= token params on the src.
+    const html = '<iframe id="frameNewcizgifilmuploads0" '
+        'src="https://embed.wcostream.com/inc/embed/index.php?file=Anime%20English%20Dubbed%2FClevatess%2FS02E01.flv&fullhd=1&pid=1021499&h=f16d&t=1783585612&embed=neptun" '
+        'width="530" height="440" frameborder="0" allowfullscreen rel="nofollow" '
+        'data-type="wco-embed"></iframe>';
+    expect(
+        pickEmbedIframe(html),
+        'https://embed.wcostream.com/inc/embed/index.php?file=Anime%20English%20Dubbed%2FClevatess%2FS02E01.flv&fullhd=1&pid=1021499&h=f16d&t=1783585612&embed=neptun');
+  });
+
+  test('pickEmbedIframe ignores non-player iframes (login checker)', () {
+    const html =
+        '<iframe src="https://user.wcostream.tv/check-login" style="display: none;" id="login-checker"></iframe>';
+    expect(pickEmbedIframe(html), isNull);
+  });
+
   test('getvidLinkUrl handles the getRedirectedUrl(videoUrl) shape', () {
     const html = 'blah getRedirectedUrl(videoUrl) ... '
         r'$.getJSON("/inc/embed/getvidlink.php?v=neptun/x.mp4&embed=neptun&fullhd=1", function(){})';

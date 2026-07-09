@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import '../models/content_item.dart';
+import '../services/device_perf.dart';
 import '../theme/theme.dart';
 import '../theme/layout.dart';
 import '../utils/genre_translations.dart';
@@ -70,7 +71,13 @@ class _HeroCarouselState extends State<HeroCarousel> {
   void _start() {
     _timer?.cancel();
     if (!widget.autoplay || widget.items.length <= 1) return;
-    _timer = Timer.periodic(const Duration(milliseconds: 6500), (_) {
+    // Low-spec boxes rotate half as often: every rotation composites two
+    // full-screen backdrops through the cross-fade, the biggest remaining
+    // periodic GPU cost on a weak Mali.
+    final period = DevicePerf.lowSpec
+        ? const Duration(milliseconds: 12000)
+        : const Duration(milliseconds: 6500);
+    _timer = Timer.periodic(period, (_) {
       if (_focusInside) return;
       if (mounted) _setIndex((_index + 1) % widget.items.length);
     });
@@ -124,7 +131,9 @@ class _HeroCarouselState extends State<HeroCarousel> {
           Positioned.fill(
             child: ClipRect(
               child: AnimatedSwitcher(
-                duration: const Duration(milliseconds: 800),
+                // Shorter fade on low-spec boxes: the fade is the window where
+                // BOTH full-screen backdrops are alive and composited.
+                duration: Duration(milliseconds: DevicePerf.lowSpec ? 300 : 800),
                 child: Transform.scale(
                   key: ValueKey(s.id),
                   scale: 1.06,

@@ -1,5 +1,6 @@
 import 'package:media_kit/media_kit.dart';
 import 'package:media_kit_video/media_kit_video.dart';
+import 'device_perf.dart';
 
 /// The app's ONE and ONLY video player.
 ///
@@ -52,7 +53,12 @@ class PlayerService {
     // a native property nudge that must not block player creation.
     final platform = p.platform;
     if (platform is NativePlayer) {
-      platform.setProperty('hls-bitrate', 'max');
+      // Low-spec boxes (weak decoder / Wi-Fi) default to a mid HLS variant
+      // (~720p-class, 4 Mbps) instead of the master playlist's top entry —
+      // forcing max there stuttered mid-episode. The in-player resolution
+      // picker still lets the user select any variant manually.
+      platform.setProperty(
+          'hls-bitrate', DevicePerf.lowSpec ? '4000000' : 'max');
       // Prefer the Arabic audio rendition on multi-language streams (some
       // Stardima HLS masters carry several). Restores what the Python
       // prototype did with VLC's --audio-language; ExoPlayer couldn't, libmpv

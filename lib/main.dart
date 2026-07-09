@@ -6,6 +6,7 @@ import 'package:media_kit/media_kit.dart';
 import 'app.dart';
 import 'services/catalog_service.dart';
 import 'services/catalog_updater.dart';
+import 'services/device_perf.dart';
 import 'services/storage_service.dart';
 import 'state/app_state.dart';
 
@@ -23,6 +24,7 @@ Future<void> main() async {
   // killer, both of which read as "the whole app is laggy". Such boxes get a
   // smaller cache (an occasional re-decode beats memory pressure).
   final lowRam = await _isLowRamDevice();
+  DevicePerf.lowSpec = lowRam;
   PaintingBinding.instance.imageCache
     ..maximumSizeBytes = (lowRam ? 96 : 192) << 20
     ..maximumSize = lowRam ? 800 : 1500;
