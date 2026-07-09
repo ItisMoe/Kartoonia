@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../state/app_state.dart';
 import '../../theme/theme.dart';
+import '../../widgets/update_gate.dart';
 import 'phone_browse_screen.dart';
 import 'phone_home_screen.dart';
 import 'phone_mylist_screen.dart';
@@ -17,6 +18,9 @@ class PhoneRoot extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    // Phone shell is on screen — the launch update prompt may now safely show.
+    WidgetsBinding.instance
+        .addPostFrameCallback((_) => UpdateGate.markHomeShellUp());
     final t = ref.watch(stringsProvider);
     final index = ref.watch(phoneTabProvider);
 

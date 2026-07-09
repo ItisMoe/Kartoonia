@@ -34,7 +34,7 @@ final wcoflixCatalogProvider = Provider<WcoflixCatalog>((ref) => WcoflixCatalog(
 /// Build cards, attaching bundled TMDB art (poster/backdrop/popularity) when the
 /// title was matched. [cat.ensureArt] must have completed first.
 List<ContentItem> _cards(WcoflixCatalog cat, List<WcoLink> links) =>
-    [for (final l in links) wcoflixShowStub(l, tmdb: cat.artFor(l.url))];
+    [for (final l in links) wcoflixCardStub(l, tmdb: cat.artFor(l.url))];
 
 /// Snapshot-first: return the bundled snapshot immediately so a row never shows
 /// empty, and kick off a background live fetch that refreshes this provider

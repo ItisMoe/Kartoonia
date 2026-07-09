@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
@@ -23,6 +24,17 @@ class UpdateGate extends ConsumerStatefulWidget {
   final Widget child;
   const UpdateGate({super.key, required this.child});
 
+  /// Completed by the home shell's first frame (TV HomeScreen / PhoneRoot).
+  /// The automatic prompt waits for this: showing the dialog any earlier races
+  /// the splash's pushReplacement, which replaces the TOPMOST route — i.e. a
+  /// dialog shown over the splash gets dismissed the moment the app loads.
+  static final Completer<void> _homeShellUp = Completer<void>();
+
+  /// Signal that the home shell is on screen (idempotent).
+  static void markHomeShellUp() {
+    if (!_homeShellUp.isCompleted) _homeShellUp.complete();
+  }
+
   @override
   ConsumerState<UpdateGate> createState() => _UpdateGateState();
 }
@@ -37,20 +49,35 @@ class _UpdateGateState extends ConsumerState<UpdateGate> {
     if (_checked) return;
     _checked = true;
     WidgetsBinding.instance.addPostFrameCallback((_) async {
-      // Let the splash route to the home shell first so the dialog lands on it.
-      await Future.delayed(const Duration(seconds: 3));
-      if (mounted) await _maybePrompt();
+      // Wait until the home shell has actually replaced the splash, then let
+      // its fade-in settle, so the dialog lands on a route that stays.
+      await UpdateGate._homeShellUp.future;
+      await Future.delayed(const Duration(milliseconds: 600));
+      if (mounted) await UpdateFlow.checkAndPrompt(ref);
     });
   }
 
-  Future<void> _maybePrompt() async {
+  @override
+  Widget build(BuildContext context) => widget.child;
+}
+
+/// The update check + prompt + in-app install flow, shared by the automatic
+/// launch check ([UpdateGate]) and the manual "Check for updates" in Settings.
+class UpdateFlow {
+  UpdateFlow._();
+
+  /// Check GitHub for a newer release and prompt if one exists. Returns true
+  /// when an update was found (dialog shown), false when already up to date or
+  /// the check failed. [manual] ignores the user's "skip this version" marker —
+  /// an explicit check should always surface what's available.
+  static Future<bool> checkAndPrompt(WidgetRef ref, {bool manual = false}) async {
     final release = await ref.read(updateServiceProvider).checkForUpdate();
-    if (release == null || !mounted) return;
+    if (release == null) return false;
     final storage = ref.read(storageProvider);
-    if (storage.getSkippedUpdate() == release.version) return;
+    if (!manual && storage.getSkippedUpdate() == release.version) return true;
 
     final ctx = appNavigatorKey.currentContext;
-    if (ctx == null || !ctx.mounted) return;
+    if (ctx == null || !ctx.mounted) return true;
     final t = ref.read(stringsProvider);
 
     await showDialog<void>(
@@ -61,7 +88,7 @@ class _UpdateGateState extends ConsumerState<UpdateGate> {
         t: t,
         onUpdate: () {
           Navigator.of(dctx).pop();
-          _downloadAndInstall(release);
+          _downloadAndInstall(ref, release);
         },
         onLater: () => Navigator.of(dctx).pop(),
         onSkip: () {
@@ -70,6 +97,7 @@ class _UpdateGateState extends ConsumerState<UpdateGate> {
         },
       ),
     );
+    return true;
   }
 
   static const _installChannel = MethodChannel('kartoonia/reco');
@@ -78,7 +106,8 @@ class _UpdateGateState extends ConsumerState<UpdateGate> {
   /// system package installer. Any failure — no APK asset, network error,
   /// installer refused — falls back to opening the download URL in a browser
   /// (the old behavior, still right on phones).
-  Future<void> _downloadAndInstall(AppRelease release) async {
+  static Future<void> _downloadAndInstall(
+      WidgetRef ref, AppRelease release) async {
     final apkUrl = release.apkUrl;
     final ctx = appNavigatorKey.currentContext;
     if (apkUrl == null || ctx == null || !ctx.mounted) {
@@ -130,9 +159,6 @@ class _UpdateGateState extends ConsumerState<UpdateGate> {
       client.close();
     }
   }
-
-  @override
-  Widget build(BuildContext context) => widget.child;
 }
 
 /// Modal download progress for the in-app update. Indeterminate until the

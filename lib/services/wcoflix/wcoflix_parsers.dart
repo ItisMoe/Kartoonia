@@ -7,11 +7,15 @@ import 'wcoflix_config.dart';
 /// captured HTML fixtures with no network.
 
 /// A catalog anchor: absolute URL + display title (+ optional thumbnail).
+/// [season] is set only for episode anchors on a series page, where the site
+/// exposes the season (via a `data-season="sN-…"` attribute or a "Season N" in
+/// the label); null for plain catalog/browse links.
 class WcoLink {
   final String url;
   final String title;
   final String? thumb;
-  const WcoLink(this.url, this.title, {this.thumb});
+  final int? season;
+  const WcoLink(this.url, this.title, {this.thumb, this.season});
 }
 
 String _abs(String href) {
@@ -107,10 +111,38 @@ class WcoSeries {
   const WcoSeries(this.poster, this.plot, this.episodes);
 }
 
-/// Parse a `/anime/<slug>` series page. Episodes are flat `<a>` anchors whose
-/// path starts with [seriesSlug] and contains `episode` — the current site no
-/// longer wraps them in `sidebar_right3` (that block is now the site-wide
-/// recent-releases sidebar). Dub and sub variants are both returned.
+// The two episode-anchor templates the site serves (either, or a mix, on one
+// page — verified live 2026-07):
+//  A. "dark-episode-item": relative href, a `data-season="sN-…"` attribute and
+//     a `<span>Season N Episode M - …</span>` label.
+//  B. "cat-eps / sonra": an absolute (often wcoflix.tv) href with the episode
+//     name inline or in a `title="Watch …"` attribute; season only in the text.
+final _reDarkEpisode = RegExp(
+  r'<a\s+href="([^"]+)"\s+class="dark-episode-item"([^>]*)>\s*<span>(.*?)</span>',
+  dotAll: true,
+);
+final _reSonraEpisode = RegExp(
+  r'<a\s+href="([^"]+)"[^>]*\bclass="[^"]*\bsonra\b[^"]*"[^>]*>(.*?)</a>',
+  dotAll: true,
+);
+final _reDataSeason = RegExp(r'data-season="s(\d+)');
+final _reSeasonWord = RegExp(r'\bSeason\s+(\d+)', caseSensitive: false);
+
+/// Extract the season number from (in priority) a `data-season` attribute, a
+/// "Season N" in the label, or a `season-N` / `-sN-` slug in the URL; 1 when the
+/// page gives no season at all (a single-season show).
+int _episodeSeason(String attrs, String label, String url) {
+  final ds = _reDataSeason.firstMatch(attrs)?.group(1);
+  if (ds != null) return int.tryParse(ds) ?? 1;
+  final st = _reSeasonWord.firstMatch(label)?.group(1);
+  if (st != null) return int.tryParse(st) ?? 1;
+  final su = RegExp(r'season-(\d+)').firstMatch(url)?.group(1);
+  return su != null ? (int.tryParse(su) ?? 1) : 1;
+}
+
+/// Parse a `/anime/<slug>` series page → poster, plot, and the ordered episode
+/// anchors (each carrying its season). Handles both anchor templates and any
+/// mix of them; dub and sub variants are both returned (deduped downstream).
 WcoSeries parseSeriesPage(String html, String seriesSlug) {
   String? poster;
   final og = RegExp(r'og:image"\s+content="([^"]+)"').firstMatch(html);
@@ -124,18 +156,44 @@ WcoSeries parseSeriesPage(String html, String seriesSlug) {
     if (p != null) plot = _unescape(p.group(1)!.trim());
   }
 
-  final base = '${wcoflixBaseUrls.first}/';
   final seen = <String>{};
   final eps = <WcoLink>[];
-  for (final m in _reAnchor.allMatches(html)) {
+
+  // Template A — the richest: explicit season + a clean label.
+  for (final m in _reDarkEpisode.allMatches(html)) {
     final url = _abs(m.group(1)!);
-    final path = url.startsWith(base) ? url.substring(base.length) : url;
-    if (path.startsWith(seriesSlug) &&
-        path.contains('episode') &&
-        seen.add(url)) {
-      eps.add(WcoLink(url, _unescape(m.group(2)!.trim())));
+    if (!seen.add(url)) continue;
+    final attrs = m.group(2) ?? '';
+    final label = _text(m.group(3)!);
+    eps.add(WcoLink(url, label, season: _episodeSeason(attrs, label, url)));
+  }
+
+  // Template B — inline/`title`-attr episode anchors.
+  for (final m in _reSonraEpisode.allMatches(html)) {
+    final url = _abs(m.group(1)!);
+    if (!url.toLowerCase().contains('episode') &&
+        !m.group(2)!.toLowerCase().contains('episode')) {
+      continue; // a non-episode `.sonra` link (nav/related)
+    }
+    if (!seen.add(url)) continue;
+    final label = _text(m.group(2)!);
+    eps.add(WcoLink(url, label, season: _episodeSeason('', label, url)));
+  }
+
+  // Fallback for older markup: flat anchors whose slug/text names an episode.
+  if (eps.isEmpty) {
+    for (final m in _reAnchor.allMatches(html)) {
+      final url = _abs(m.group(1)!);
+      final label = _text(m.group(2)!);
+      final hay = '${url.toLowerCase()} ${label.toLowerCase()}';
+      if (hay.contains('episode') &&
+          (url.contains(seriesSlug) || label.isNotEmpty) &&
+          seen.add(url)) {
+        eps.add(WcoLink(url, label, season: _episodeSeason('', label, url)));
+      }
     }
   }
+
   return WcoSeries(poster, plot, eps);
 }
 

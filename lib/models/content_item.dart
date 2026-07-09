@@ -140,6 +140,11 @@ class TmdbData {
   /// TMDB numeric id — used to dedupe titles that matched the same TMDB entry.
   final int? tmdbId;
 
+  /// TMDB media kind: 'movie' | 'tv' | '' (unknown). Drives whether a WCOFlix
+  /// title is modeled as a [Movie] (single directly-playable page) or a [Show]
+  /// (season/episode list).
+  final String mediaType;
+
   /// TMDB (English) genres, read from the nested `en`/`ar` block. Used to keep
   /// the famous pool to Animation/Family titles. Distinct from [genres], which
   /// may be a source-specific category (Stardima).
@@ -160,6 +165,7 @@ class TmdbData {
     this.popularity,
     this.tmdbId,
     this.tmdbGenres = const [],
+    this.mediaType = '',
   });
 
   factory TmdbData.fromJson(Map<String, dynamic> j) {
@@ -184,6 +190,7 @@ class TmdbData {
       voteAverage: (j['vote_average'] as num?)?.toDouble(),
       voteCount: (j['vote_count'] as num?)?.toInt(),
       popularity: (j['popularity'] as num?)?.toDouble(),
+      mediaType: (j['type'] as String?) ?? '',
     );
   }
 }

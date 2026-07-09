@@ -142,6 +142,10 @@ const Map<String, Map<String, String>> kStrings = {
     'update_now': 'Update',
     'update_later': 'Later',
     'update_skip': 'Skip this version',
+    'update_section': 'App updates',
+    'update_check': 'Check for updates',
+    'update_checking': 'Checking for updates…',
+    'update_none': 'You have the latest version',
   },
   'ar': {
     'appName': 'كرتونيا',
@@ -283,5 +287,9 @@ const Map<String, Map<String, String>> kStrings = {
     'update_now': 'تحديث',
     'update_later': 'لاحقاً',
     'update_skip': 'تخطّي هذا الإصدار',
+    'update_section': 'تحديثات التطبيق',
+    'update_check': 'التحقق من التحديثات',
+    'update_checking': 'جارٍ التحقق من التحديثات…',
+    'update_none': 'لديك أحدث إصدار',
   },
 };

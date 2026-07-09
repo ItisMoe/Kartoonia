@@ -7,6 +7,7 @@ import '../theme/theme.dart';
 import '../widgets/focusable.dart';
 import '../widgets/screen_shell.dart';
 import '../widgets/selectable_chip.dart';
+import '../widgets/update_check_row.dart';
 
 class SettingsScreen extends ConsumerWidget {
   const SettingsScreen({super.key});
@@ -171,6 +172,9 @@ class SettingsScreen extends ConsumerWidget {
                           color: AppColors.inkMute)),
                 ],
               ),
+              const SizedBox(height: 40),
+              // Manual update check (the launch prompt also runs once per start).
+              const UpdateCheckRow(),
             ],
           ),
         ),

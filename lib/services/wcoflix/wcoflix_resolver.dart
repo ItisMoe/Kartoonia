@@ -31,7 +31,13 @@ class _AdWallException extends WcoflixResolveException {
 }
 
 /// How many times to re-run the ad handshake when the embed serves the wall.
-const int kWcoflixAdGateRetries = 5;
+///
+/// The embed throttles the first several handshakes from a fresh session with
+/// the anti-adblock "Announcement" wall, then clears (verified live 2026-07:
+/// a cold resolve needed 4–6 attempts before the player page came through). The
+/// budget must comfortably exceed that warm-up or EVERY title fails with
+/// "All servers failed" — which is exactly what a too-low cap (was 5) caused.
+const int kWcoflixAdGateRetries = 10;
 
 /// The ad-wall page (`video-js.php` returns this instead of the player). It has
 /// no video source, so distinguish it from a genuinely broken player page.
@@ -110,7 +116,7 @@ Future<List<WcoStream>> resolveWcoflix(
   String pageUrl, {
   WcoHttp? http,
   Duration dwell = const Duration(seconds: 5),
-  Duration retryBackoff = const Duration(seconds: 3),
+  Duration retryBackoff = const Duration(milliseconds: 1200),
 }) async {
   final io = http ?? _RealHttp();
   final headers = {'User-Agent': kWcoflixUserAgent};

@@ -131,22 +131,26 @@ class _DetailScreenState extends ConsumerState<DetailScreen> {
     final storage = ref.read(storageProvider);
 
     // --- Audio language pairing: an Arabic-dubbed side + a WCOFlix "original".
+    // The Arabic↔Original switch is episode-based, so it only applies when the
+    // WCOFlix side is a Show; a WCOFlix Movie is rendered directly (no switch).
     final baseIsWco = base.source == CatalogSource.wcoflix;
+    final baseIsWcoShow = baseIsWco && base is Show;
     ContentItem? arabicSide;
     Show? originalSide;
-    if (baseIsWco) {
-      originalSide = base as Show; // already episode-loaded above
+    if (baseIsWcoShow) {
+      originalSide = base; // already episode-loaded above (narrowed to Show)
       arabicSide = _arabicMatch(base.title, catalog);
-    } else {
+    } else if (!baseIsWco) {
       arabicSide = base;
       final en = base.tmdb?.enTitle ?? base.title;
       originalSide = ref.watch(wcoflixOriginalProvider(en)).asData?.value;
     }
     final hasAudioSwitch = arabicSide != null && originalSide != null;
     _original ??= baseIsWco;
-    final showOriginal = hasAudioSwitch ? _original! : baseIsWco;
+    final showOriginal = hasAudioSwitch ? _original! : baseIsWcoShow;
 
-    // The item for the chosen language (WCOFlix episodes load lazily).
+    // The item for the chosen language (WCOFlix episodes load lazily); a WCOFlix
+    // Movie falls through to itself.
     ContentItem langBase;
     if (showOriginal) {
       var wco = originalSide!;
@@ -154,8 +158,10 @@ class _DetailScreenState extends ConsumerState<DetailScreen> {
         wco = ref.watch(wcoSeriesProvider(wco.pageUrl!)).asData?.value ?? wco;
       }
       langBase = wco;
+    } else if (arabicSide != null) {
+      langBase = arabicSide;
     } else {
-      langBase = arabicSide!;
+      langBase = base; // WCOFlix Movie
     }
 
     // Arabic-side Arabic-Toons↔Stardima twin (never present for WCOFlix).

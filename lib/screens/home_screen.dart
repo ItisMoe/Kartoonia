@@ -19,6 +19,7 @@ import '../widgets/content_row.dart';
 import '../widgets/ensure_visible.dart';
 import '../widgets/hero_carousel.dart';
 import '../widgets/screen_shell.dart';
+import '../widgets/update_gate.dart';
 
 class HomeScreen extends ConsumerStatefulWidget {
   const HomeScreen({super.key});
@@ -51,6 +52,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     super.initState();
     // refresh continue-watching when returning to home
     WidgetsBinding.instance.addPostFrameCallback((_) {
+      // Home is on screen — the launch update prompt may now safely show.
+      UpdateGate.markHomeShellUp();
       ref.read(userProvider.notifier).refresh();
       _setupRecommendations();
       // Warm the famous-pool posters so the rows reveal smoothly as the user
@@ -145,7 +148,11 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       backdrop: _HeroBackdropFill(_heroBackdrop),
       child: CustomScrollView(
         slivers: [
-          SliverToBoxAdapter(child: hero),
+          // Same wrapper as the Arabic home below: when D-pad focus travels back
+          // UP from the rows onto a hero control, scroll the hero into view —
+          // without it focus lands off-screen and the hero is unreachable.
+          SliverToBoxAdapter(
+              child: EnsureVisibleOnFocus(alignment: 0, child: hero)),
           const SliverToBoxAdapter(child: SizedBox(height: 24)),
           SliverList(
             delegate:

@@ -96,21 +96,24 @@ class _PhoneDetailScreenState extends ConsumerState<PhoneDetailScreen> {
 
     final storage = ref.read(storageProvider);
 
-    // Audio language pairing: Arabic-dubbed side + a WCOFlix "original".
+    // Audio language pairing: Arabic-dubbed side + a WCOFlix "original". The
+    // switch is episode-based, so it only applies when the WCOFlix side is a
+    // Show; a WCOFlix Movie is rendered directly (no switch).
     final baseIsWco = base.source == CatalogSource.wcoflix;
+    final baseIsWcoShow = baseIsWco && base is Show;
     ContentItem? arabicSide;
     Show? originalSide;
-    if (baseIsWco) {
-      originalSide = base as Show;
+    if (baseIsWcoShow) {
+      originalSide = base; // narrowed to Show
       arabicSide = _arabicMatch(base.title, catalog);
-    } else {
+    } else if (!baseIsWco) {
       arabicSide = base;
       final en = base.tmdb?.enTitle ?? base.title;
       originalSide = ref.watch(wcoflixOriginalProvider(en)).asData?.value;
     }
     final hasAudioSwitch = arabicSide != null && originalSide != null;
     _original ??= baseIsWco;
-    final showOriginal = hasAudioSwitch ? _original! : baseIsWco;
+    final showOriginal = hasAudioSwitch ? _original! : baseIsWcoShow;
 
     ContentItem langBase;
     if (showOriginal) {
@@ -119,8 +122,10 @@ class _PhoneDetailScreenState extends ConsumerState<PhoneDetailScreen> {
         wco = ref.watch(wcoSeriesProvider(wco.pageUrl!)).asData?.value ?? wco;
       }
       langBase = wco;
+    } else if (arabicSide != null) {
+      langBase = arabicSide;
     } else {
-      langBase = arabicSide!;
+      langBase = base; // WCOFlix Movie
     }
 
     final alt = catalog.alternateFor(langBase);

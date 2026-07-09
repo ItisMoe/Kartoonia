@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../state/app_state.dart';
 import '../../state/wcoflix_providers.dart';
 import '../../theme/theme.dart';
+import '../../widgets/update_check_row.dart';
 
 /// Portrait settings: the same options as the TV settings, laid out as a simple
 /// scrollable touch list.
@@ -81,6 +82,8 @@ class PhoneSettingsScreen extends ConsumerWidget {
             child: _Opt(t['ytkey_edit']!, false,
                 () => _openYtKeyDialog(context, ref)),
           ),
+          // Manual update check (the launch prompt also runs once per start).
+          const UpdateCheckRow(phone: true),
         ],
       ),
     );
