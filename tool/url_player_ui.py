@@ -119,6 +119,14 @@ class PlayerUI:
         if ref:
             media.add_option(f":http-referrer={ref}")
         media.add_option(":network-caching=3000")
+        # Force SOFTWARE decoding. With hardware decoding (D3D11VA) some GPUs
+        # (notably Intel UHD) can't hand the decoder's GPU surfaces to an
+        # embedded child HWND: the log shows `get_buffer() failed` / `no frame`,
+        # and the window shows only shifting solid colors while audio plays fine.
+        # Must be a MEDIA option — the `--avcodec-hw` INSTANCE flag is ignored by
+        # libvlc here (verified: it still logs "Using D3D11VA"). Software decode
+        # renders real frames into the embedded window on every GPU.
+        media.add_option(":avcodec-hw=none")
 
         self.player.set_media(media)
         self._attach_video_surface()
