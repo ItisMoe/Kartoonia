@@ -12,8 +12,14 @@ void main() {
     expect(CatalogSource.fromId('nope'), CatalogSource.arabicToons);
   });
   test('config constants', () {
-    expect(wcoflixBaseUrls.first, 'https://www.wcofun.net');
+    // wcoflix.tv is the canonical mirror (wcofun.net 301-redirects to it); it
+    // must be probed first so series pages arrive with their seasons/episodes.
+    expect(wcoflixBaseUrls.first, 'https://www.wcoflix.tv');
     expect(kWcoflixEmbedHost, 'https://embed.wcostream.com');
     expect(kWcoflixMediaHeaders['Referer'], 'https://embed.wcostream.com/');
+    // The getvid CDN binds tokens to this exact UA; must stay Chrome/149 in both
+    // the resolve and playback paths (they share this one constant).
+    expect(kWcoflixUserAgent, contains('Chrome/149'));
+    expect(kWcoflixMediaHeaders['User-Agent'], contains('Chrome/149'));
   });
 }

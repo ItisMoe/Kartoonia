@@ -289,7 +289,18 @@ class WcoflixCatalog {
   Future<WcoSeries> seriesDetail(String url) async {
     final hit = _seriesCache[url];
     if (hit != null) return hit;
-    final s = parseSeriesPage(await _fetch(url), seriesSlugFromUrl(url));
+    final html = await _fetch(url);
+    // A Cloudflare challenge (or an empty/redirect-stub body) has no episodes.
+    // Do NOT cache it — otherwise a transient block poisons this session and the
+    // show renders as a single episode with no seasons. Throw so the provider
+    // shows a retryable error and the next visit re-fetches.
+    if (html.isEmpty || _blocked(html)) {
+      throw StateError('wcoflix series page blocked or empty: $url');
+    }
+    final s = parseSeriesPage(html, seriesSlugFromUrl(url));
+    // A real page that parsed zero episodes is likewise not worth caching (the
+    // slug may be wrong, or the markup changed) — let a later visit retry.
+    if (s.episodes.isEmpty) return s;
     _seriesCache[url] = s;
     return s;
   }
