@@ -29,6 +29,13 @@ class PlayerArgs {
   final List<Episode>? episodes; // for prev/next (shows)
   final CatalogSource source;
 
+  /// Diagnostic direct-play: when set, the player skips ALL resolution and
+  /// opens this exact URL with [directHeaders]. Used by the Settings "Playback
+  /// diagnostic" to play a stream that was resolved+verified elsewhere (e.g. on
+  /// a PC), isolating the device's decode/render path from token resolution.
+  final String? directUrl;
+  final Map<String, String>? directHeaders;
+
   const PlayerArgs({
     required this.itemId,
     required this.pageUrl,
@@ -37,6 +44,8 @@ class PlayerArgs {
     required this.episodeNumber,
     this.episodes,
     this.source = CatalogSource.arabicToons,
+    this.directUrl,
+    this.directHeaders,
   });
 }
 
@@ -207,6 +216,17 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
   /// Resolve the playable server list for the current page/play url. Stardima
   /// results are cached per url; Arabic Toons always fetches fresh tokens.
   Future<List<PlayableServer>> _resolveServers() async {
+    // Diagnostic direct-play: no network resolution, just this exact URL.
+    if (widget.args.directUrl != null) {
+      return [
+        PlayableServer(
+          number: 1,
+          label: 'Direct',
+          url: widget.args.directUrl!,
+          headers: widget.args.directHeaders ?? const {},
+        ),
+      ];
+    }
     if (widget.args.source == CatalogSource.stardima) {
       if (_resolvedFor == _pageUrl && _resolvedCache != null) {
         return _resolvedCache!;

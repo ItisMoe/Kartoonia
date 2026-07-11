@@ -71,13 +71,19 @@
         <meta-data
             android:name="flutterEmbedding"
             android:value="2" />
-        <!-- Render with Skia instead of Impeller: the cheap TV boxes this app
-             targets ship old Mali GPUs whose Vulkan/GLES3 drivers run Impeller
-             poorly (jank, artifacts); Skia is the battle-tested path there.
-             Remove this line to A/B back to Impeller. -->
+        <!-- Impeller ON (Flutter's Android default). v2.2.1 disabled it (Skia)
+             as a "low-end perf toggle", but on the real TV box that turned out
+             to CORRUPT all video playback: every source (Stardima, Arabic
+             Toons, WCOFlix) rendered as shifting solid colors with audio fine,
+             because Skia's GLES path mangled the media_kit video texture the
+             compositor draws — downstream of decode, so no decoder change
+             helped and the desktop (non-Flutter) player was unaffected.
+             Restoring Impeller (the pre-Everything-mode state, when playback
+             worked) fixes it. Do NOT re-disable without testing video on the
+             actual device. -->
         <meta-data
             android:name="io.flutter.embedding.android.EnableImpeller"
-            android:value="false" />
+            android:value="true" />
     </application>
     <queries>
         <intent>

@@ -1,5 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../models/catalog_source.dart';
+import '../navigation.dart';
+import '../services/wcoflix/wcoflix_config.dart';
 import '../services/youtube_service.dart';
 import '../state/app_state.dart';
 import '../state/wcoflix_providers.dart';
@@ -8,6 +12,32 @@ import '../widgets/focusable.dart';
 import '../widgets/screen_shell.dart';
 import '../widgets/selectable_chip.dart';
 import '../widgets/update_check_row.dart';
+import 'player_screen.dart';
+
+/// A stable, public 1280x720 H.264 (High/yuv420p) sample. Playing this on the
+/// device isolates its decode/render path: if THIS plays clean but Everything
+/// mode garbles, the box handles 720p H.264 fine and the WCO problem is
+/// stream/token-specific; if this garbles too, the device path itself is at
+/// fault. No special headers required.
+const String _kDiagReferenceUrl =
+    'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4';
+
+void _playDirect(BuildContext context, String url, String title, String sub,
+    {Map<String, String>? headers}) {
+  AppNav.player(
+    context,
+    PlayerArgs(
+      itemId: 'diag',
+      pageUrl: url,
+      title: title,
+      episodeLabel: sub,
+      episodeNumber: 0,
+      source: CatalogSource.wcoflix,
+      directUrl: url,
+      directHeaders: headers,
+    ),
+  );
+}
 
 class SettingsScreen extends ConsumerWidget {
   const SettingsScreen({super.key});
@@ -175,6 +205,38 @@ class SettingsScreen extends ConsumerWidget {
               const SizedBox(height: 40),
               // Manual update check (the launch prompt also runs once per start).
               const UpdateCheckRow(),
+              const SizedBox(height: 40),
+              // Playback diagnostics — isolate the Everything-mode garbled-video
+              // bug: a known-good 720p H.264 reference vs a URL verified clean
+              // elsewhere. Both show the live decode-info line in the player.
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(t['diag_section'] ?? 'Playback diagnostic',
+                      style: const TextStyle(
+                          fontSize: 26,
+                          fontWeight: FontWeight.w800,
+                          color: AppColors.inkSoft)),
+                  const SizedBox(height: 16),
+                  Row(children: [
+                    opt(t['diag_reference'] ?? 'Play reference 720p', false,
+                        () => _playDirect(context, _kDiagReferenceUrl,
+                            'Diagnostic — reference 720p', 'H.264 sample')),
+                    opt(t['diag_paste'] ?? 'Play pasted URL', false,
+                        () => _openDiagUrlDialog(context, ref)),
+                  ]),
+                  const SizedBox(height: 12),
+                  Text(
+                      t['diag_hint'] ??
+                          'If the reference plays clean but Everything mode does not, '
+                              'the device decodes 720p H.264 fine — paste a URL verified '
+                              'clean elsewhere to test the exact stream.',
+                      style: const TextStyle(
+                          fontSize: 20,
+                          fontWeight: FontWeight.w700,
+                          color: AppColors.inkMute)),
+                ],
+              ),
             ],
           ),
         ),
@@ -187,6 +249,21 @@ class SettingsScreen extends ConsumerWidget {
     final s = k.trim();
     if (s.length <= 8) return '••••';
     return '${s.substring(0, 4)}••••${s.substring(s.length - 4)}';
+  }
+
+  void _openDiagUrlDialog(BuildContext context, WidgetRef ref) {
+    final t = ref.read(stringsProvider);
+    showDialog<void>(
+      context: context,
+      builder: (_) => _DiagUrlDialog(
+        t: t,
+        onPlay: (url) {
+          Navigator.of(context).pop();
+          _playDirect(context, url, 'Diagnostic — pasted URL', 'verified stream',
+              headers: kWcoflixMediaHeaders);
+        },
+      ),
+    );
   }
 
   void _openYtKeyDialog(BuildContext context, WidgetRef ref) {
@@ -205,6 +282,91 @@ class SettingsScreen extends ConsumerWidget {
           ref.read(ytKeyProvider.notifier).state = '';
         },
       ),
+    );
+  }
+}
+
+/// TV-friendly dialog to paste a direct stream URL for the playback diagnostic.
+/// Also accepts the URL via the clipboard (Paste button) since typing a long
+/// getvid URL on a remote is painful.
+class _DiagUrlDialog extends StatefulWidget {
+  final Map<String, String> t;
+  final void Function(String url) onPlay;
+  const _DiagUrlDialog({required this.t, required this.onPlay});
+  @override
+  State<_DiagUrlDialog> createState() => _DiagUrlDialogState();
+}
+
+class _DiagUrlDialogState extends State<_DiagUrlDialog> {
+  final TextEditingController _ctrl = TextEditingController();
+
+  @override
+  void dispose() {
+    _ctrl.dispose();
+    super.dispose();
+  }
+
+  Future<void> _paste() async {
+    final data = await Clipboard.getData(Clipboard.kTextPlain);
+    if (data?.text != null) setState(() => _ctrl.text = data!.text!.trim());
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final t = widget.t;
+    return AlertDialog(
+      backgroundColor: AppColors.bg2,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+      title: Text(t['diag_paste'] ?? 'Play pasted URL',
+          style: const TextStyle(
+              fontWeight: FontWeight.w900, color: AppColors.ink)),
+      content: SizedBox(
+        width: 720,
+        child: Column(mainAxisSize: MainAxisSize.min, children: [
+          TextField(
+            controller: _ctrl,
+            autofocus: true,
+            maxLines: 3,
+            style: const TextStyle(color: AppColors.ink, fontSize: 20),
+            decoration: InputDecoration(
+              hintText: 'https://…/getvid?evid=…',
+              hintStyle: const TextStyle(color: AppColors.inkMute),
+              enabledBorder: const OutlineInputBorder(
+                  borderSide: BorderSide(color: AppColors.inkMute)),
+              focusedBorder: const OutlineInputBorder(
+                  borderSide: BorderSide(color: AppColors.primary)),
+            ),
+          ),
+          const SizedBox(height: 16),
+          Row(children: [
+            SelectableChip(
+              label: t['diag_paste_btn'] ?? 'Paste',
+              selected: false,
+              onPressed: _paste,
+              padding:
+                  const EdgeInsets.symmetric(horizontal: 30, vertical: 14),
+              radius: 14,
+              fontSize: 22,
+            ),
+          ]),
+        ]),
+      ),
+      actions: [
+        TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: Text(t['cancel'] ?? 'Cancel',
+                style: const TextStyle(color: AppColors.inkMute))),
+        FilledButton(
+          onPressed: () {
+            final u = _ctrl.text.trim();
+            if (u.startsWith('http')) widget.onPlay(u);
+          },
+          style: FilledButton.styleFrom(backgroundColor: AppColors.primary),
+          child: Text(t['diag_play'] ?? 'Play',
+              style: const TextStyle(
+                  color: Colors.white, fontWeight: FontWeight.w800)),
+        ),
+      ],
     );
   }
 }
