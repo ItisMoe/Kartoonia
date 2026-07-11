@@ -282,9 +282,16 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
     });
     eSub = p.stream.error.listen((e) => finish(e));
     // Open after the listeners are attached, routing an open() failure through
-    // the same completion path.
+    // the same completion path. Everything-mode (WCOFlix) media is opened with
+    // software decoding: some TV boxes' hardware H.264 decoders garble these
+    // 720p/1080p mp4s into shifting solid colors (audio fine) — see
+    // PlayerService._applyHwdec. Other catalogs keep hardware decode.
     PlayerService.instance
-        .open(url, headers: headers)
+        .open(
+          url,
+          headers: headers,
+          forceSoftwareDecoding: widget.args.source == CatalogSource.wcoflix,
+        )
         .catchError((Object e) => finish(e));
     return c.future.timeout(budget, onTimeout: () {
       finish();
