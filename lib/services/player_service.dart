@@ -1,3 +1,5 @@
+import 'dart:io' show Platform;
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:media_kit/media_kit.dart';
 import 'package:media_kit_video/media_kit_video.dart';
 import 'device_perf.dart';
@@ -45,7 +47,7 @@ class PlayerService {
     if (_player != null) return;
     final p = Player();
     _player = p;
-    _controller = VideoController(p);
+    _controller = VideoController(p, configuration: _androidVideoConfig());
     // libmpv otherwise opens whatever variant the HLS demuxer defaults to, which
     // is frequently the LOWEST entry in a master playlist. Force the highest so
     // "Auto" lands on the best quality with no manual track switch. Set once on
@@ -65,6 +67,27 @@ class PlayerService {
       // can. Streams without an Arabic track just play their default.
       platform.setProperty('alang', 'ara,ar');
     }
+  }
+
+  /// Render config for the shared [VideoController].
+  ///
+  /// On Android we render with `vo=mediacodec_embed` + `hwdec=mediacodec`: the
+  /// hardware decoder writes decoded frames STRAIGHT to the output surface, so
+  /// there is no per-frame libmpv GL render pass and no decode→system-RAM copy
+  /// (what `auto-safe`/`mediacodec-copy` does). On weak TV boxes those two costs
+  /// were what dropped playback to ~5-10 fps once Impeller (the correct, but on
+  /// this GPU expensive, texture compositor) was restored — the box's video
+  /// hardware does the heavy lifting instead of the GPU/CPU, and Flutter only
+  /// composites one hardware surface. The default (gpu/auto-safe) is kept on
+  /// desktop/other platforms, which don't have mediacodec.
+  VideoControllerConfiguration _androidVideoConfig() {
+    if (!kIsWeb && Platform.isAndroid) {
+      return const VideoControllerConfiguration(
+        vo: 'mediacodec_embed',
+        hwdec: 'mediacodec',
+      );
+    }
+    return const VideoControllerConfiguration();
   }
 
   /// Point the shared player at [url] and start playback. Reuses the existing

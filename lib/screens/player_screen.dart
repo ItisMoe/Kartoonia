@@ -1,4 +1,6 @@
 import 'dart:async';
+import 'dart:io' show Platform;
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -740,11 +742,15 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
                   controls: NoVideoControls,
                   fit: BoxFit.contain,
                   fill: Colors.black,
-                  // The catalogs top out at 480p-1080p while TVs are 1080p-4K,
-                  // so the texture is almost always upscaled. Default is
-                  // FilterQuality.low (bilinear) — cubic keeps edges noticeably
-                  // crisper on a big screen for one full-screen quad.
-                  filterQuality: FilterQuality.high,
+                  // Bilinear (low) on Android, cubic (high) on desktop. Cubic
+                  // upscaling of a full-screen video quad EVERY frame is heavy
+                  // on the weak Mali GPUs in cheap TV boxes — a real cost in the
+                  // ~5-10 fps playback the user hit — while the crispness gain is
+                  // imperceptible on a TV at viewing distance. Desktop GPUs
+                  // render cubic for free, so keep the sharper look there.
+                  filterQuality: (!kIsWeb && Platform.isAndroid)
+                      ? FilterQuality.low
+                      : FilterQuality.high,
                 ),
               ),
               // Phone touch layer: sits ABOVE the video but BELOW the controls
