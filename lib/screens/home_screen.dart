@@ -89,16 +89,19 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     final movies = ref.watch(wcoFamousMoviesProvider);
     final heroItems = ref.watch(wcoHeroProvider).valueOrNull ?? const [];
 
-    // A row drawn from an async fame pool: `skip`/`take` slice it so one pool
-    // can feed several distinct rows without repeating a title.
+    // A row drawn from an async fame pool. `skip` positions a 3×`take` window
+    // into the pool and [salt] rotates a daily selection out of it (same
+    // dailyShuffled the Arabic Home uses) — so every row shows fresh titles
+    // each day instead of a frozen fame slice.
     Widget slice(AsyncValue<List<ContentItem>> pool, String title, int skip,
         int take,
-        {bool showLoader = false}) {
+        {required String salt, bool showLoader = false}) {
       return pool.when(
         loading: () => showLoader ? _wcoLoadingRow(title) : const SizedBox.shrink(),
         error: (_, _) => const SizedBox.shrink(),
         data: (items) {
-          final part = items.skip(skip).take(take).toList();
+          final window = items.skip(skip).take(take * 3).toList();
+          final part = dailyShuffled(window, salt: salt).take(take).toList();
           return part.isEmpty
               ? const SizedBox.shrink()
               : ContentRow(
@@ -114,25 +117,47 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       );
     }
 
-    // A full page of popular content, all from the bundled (instant) catalog:
-    // a mixed "Most Popular" lead, dedicated Series/Movies rows, then deeper
-    // slices of the fame pool so the page keeps scrolling with familiar titles.
+    // "Top 10 Today": the site's OWN current Popular & Ongoing list (live,
+    // periodically re-fetched) — genuinely today's top titles, not a slice of
+    // the static bundled fame pool.
+    final top10Items = ref.watch(wcoTop10Provider).valueOrNull ?? const [];
+    final top10Row = top10Items.isEmpty
+        ? const SizedBox.shrink()
+        : ContentRow(
+            title: t['topten']!,
+            count: top10Items.length,
+            top10Badge: true,
+            cards: [
+              for (int i = 0; i < top10Items.length; i++)
+                Top10Card(
+                    item: top10Items[i],
+                    rank: i + 1,
+                    onPressed: () => open(top10Items[i])),
+            ],
+          );
+
+    // A full page of popular content: a fame-ranked "Most Popular" lead, the
+    // live Top-10, dedicated Series/Movies rows, then deeper daily-rotated
+    // windows of the fame pools so the page keeps scrolling with fresh titles.
     final rows = <Widget>[
-      slice(famous, t['most_popular']!, 0, 24, showLoader: true),
-      slice(series, t['filter_tv']!, 0, 24),
-      slice(movies, t['filter_movies']!, 0, 24),
-      slice(famous, t['row_popular']!, 24, 24),
-      slice(series, '${t['filter_tv']!} · ${t['row_new']!}', 24, 24),
-      slice(movies, '${t['filter_movies']!} · ${t['spotlight']!}', 24, 24),
-      slice(famous, t['topten']!, 48, 24),
-      slice(series, '${t['filter_tv']!} · ${t['row_popular']!}', 48, 24),
-      slice(movies, '${t['filter_movies']!} · ${t['row_popular']!}', 48, 24),
+      slice(famous, t['most_popular']!, 0, 24, salt: 'wco_most', showLoader: true),
+      top10Row,
+      slice(series, t['filter_tv']!, 0, 24, salt: 'wco_tv1'),
+      slice(movies, t['filter_movies']!, 0, 24, salt: 'wco_mv1'),
+      slice(famous, t['row_popular']!, 72, 24, salt: 'wco_pop'),
+      slice(series, '${t['filter_tv']!} · ${t['row_new']!}', 72, 24, salt: 'wco_tv2'),
+      slice(movies, '${t['filter_movies']!} · ${t['spotlight']!}', 72, 24, salt: 'wco_mv2'),
+      slice(famous, t['spotlight']!, 144, 24, salt: 'wco_deep'),
     ];
 
-    final hero = heroItems.isEmpty
+    // Hero: a daily-rotated dozen out of the top backdrop-bearing titles, the
+    // same rotation the Arabic hero gets.
+    final heroDaily =
+        dailyShuffled(heroItems, salt: 'wco_hero').take(12).toList();
+    final hero = heroDaily.isEmpty
         ? const SizedBox(height: 130)
         : HeroCarousel(
-            items: heroItems,
+            items: heroDaily,
             t: t,
             isRtl: settings.isRtl,
             autoplay: settings.prefs['autoplay'] != 'off',

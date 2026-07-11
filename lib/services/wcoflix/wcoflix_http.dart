@@ -25,6 +25,19 @@ class WcoResponse {
 /// client whenever the native result is empty or a Cloudflare challenge page.
 /// Non-Android (tests, desktop tooling) uses the plain client directly. This
 /// makes playback robust to Cloudflare flipping its rules again.
+///
+/// EXCEPTION — the playback embed hosts (`embed.wcostream.com` and the
+/// `*.wcostream.com` getvid edges) are NOT Cloudflare-challenged, but they DO
+/// run the site's anti-bot/anti-adblock scoring, and a flagged ad-verify
+/// handshake is punished with getvid tokens that stream a DECOY video: real
+/// audio under deliberately scrambled video (shifting solid colors). That
+/// matched the Everything-mode symptom on a real TV box exactly — the picture
+/// stayed scrambled under software, hardware AND copy-back decoding, which
+/// exonerates the decoder and means the received bitstream itself was garbage.
+/// The same resolve flow through the PLAIN Dart client (the desktop probe)
+/// produced tokens that played clean, so wcostream.com requests go through the
+/// plain client FIRST (the fingerprint verified to pass), with the native
+/// channel kept only as a fallback if that transport ever starts failing.
 class WcoflixHttp {
   WcoflixHttp._();
   static final WcoflixHttp instance = WcoflixHttp._();
@@ -50,8 +63,22 @@ class WcoflixHttp {
           {Map<String, String>? headers, String? body}) =>
       _send('post', url, headers: headers, body: body);
 
+  /// Whether [url] targets the playback embed/CDN host family, where the
+  /// anti-bot scoring (not Cloudflare) picks the transport order — see the
+  /// class doc's decoy-stream note.
+  static bool _isEmbedHost(String url) {
+    final host = Uri.tryParse(url)?.host ?? '';
+    return host == 'wcostream.com' || host.endsWith('.wcostream.com');
+  }
+
   Future<WcoResponse> _send(String method, String url,
       {Map<String, String>? headers, String? body}) async {
+    if (_isEmbedHost(url)) {
+      final plain = await _fallbackSend(method, url, headers: headers, body: body);
+      // 404 is a REAL answer here (e.g. probing a dead getvid variant) — only
+      // a transport-level failure or a challenge page warrants the native retry.
+      if (plain.status != 0 && !_isChallenge(plain.body)) return plain;
+    }
     if (_nativeOk) {
       try {
         final res = await _channel.invokeMapMethod<String, dynamic>(method, {

@@ -53,7 +53,6 @@ class StorageService {
   static const _kCatalogSource = 'kt/catalogSource'; // arabicToons | stardima
   static const _kEverythingMode = 'kt/everythingMode'; // WCOFlix "Everything"
   static const _kWcoflixQuality = 'kt/wcoflixQuality'; // 576p|720p|1080p
-  static const _kWcoDecodeMode = 'kt/wcoDecodeMode'; // no|auto-safe|mediacodec-copy
   static const _kShaaratBoosts = 'kt/shaaratBoosts';
   static const _kShaaratVideoIds = 'kt/shaaratVideoIds';
   static const _kSkippedUpdate = 'kt/skippedUpdate'; // release the user dismissed
@@ -216,15 +215,6 @@ class StorageService {
   String getWcoflixQuality() => _prefs.getString(_kWcoflixQuality) ?? '720p';
   Future<void> setWcoflixQuality(String tag) =>
       _prefs.setString(_kWcoflixQuality, tag);
-
-  // mpv hwdec mode for Everything-mode (WCOFlix) playback. Some boxes garble
-  // these streams under one decoder but not another, and which one works is
-  // device-specific — so it's a persisted, user-cyclable choice (the Decode
-  // button in the player). 'no' = software (the v2.2.6 default), 'auto-safe' =
-  // Android hardware default, 'mediacodec-copy' = hardware with copy-back.
-  String getWcoDecodeMode() => _prefs.getString(_kWcoDecodeMode) ?? 'no';
-  Future<void> setWcoDecodeMode(String mode) =>
-      _prefs.setString(_kWcoDecodeMode, mode);
 
   // YouTube Data API key override. Empty => use the bundled default key.
   String getYoutubeKey() => _prefs.getString(_kYtKey) ?? '';

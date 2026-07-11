@@ -69,7 +69,11 @@ class _PhoneHomeScreenState extends ConsumerState<PhoneHomeScreen> {
               : const SizedBox.shrink(),
           error: (_, _) => const SizedBox.shrink(),
           data: (items) {
-            final part = items.skip(skip).take(take).toList();
+            // A 3× window into the fame pool, rotated daily (same dailyShuffled
+            // as the Arabic Home) so the rows show fresh titles each day.
+            final window = items.skip(skip).take(take * 3).toList();
+            final part =
+                dailyShuffled(window, salt: 'wcop_$skip').take(take).toList();
             return part.isEmpty
                 ? const SizedBox.shrink()
                 : PhoneRow(
@@ -77,13 +81,18 @@ class _PhoneHomeScreenState extends ConsumerState<PhoneHomeScreen> {
           },
         );
 
+    // "Top 10 Today": the site's live Popular & Ongoing list, not a fame slice.
+    final top10 = ref.watch(wcoTop10Provider).valueOrNull ?? const <ContentItem>[];
+
     return Stack(children: [
       ListView(
         padding: const EdgeInsets.only(top: 70, bottom: 24),
         children: [
           slice(t['most_popular']!, 0, 24),
-          slice(t['row_popular']!, 24, 24),
-          slice(t['topten']!, 48, 24),
+          if (top10.isNotEmpty)
+            PhoneRow(title: t['topten']!, cards: [for (final i in top10) card(i)]),
+          slice(t['row_popular']!, 72, 24),
+          slice(t['spotlight']!, 144, 24),
         ],
       ),
       Positioned(top: 0, left: 0, right: 0, child: _HomeTopBar(t: t)),

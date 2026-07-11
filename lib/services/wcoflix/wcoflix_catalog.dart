@@ -240,6 +240,11 @@ class WcoflixCatalog {
   /// The fresh live result for [key], or null until a live fetch has succeeded.
   List<WcoLink>? live(String key) => _live[key];
 
+  /// Drop the cached live result for [key] so the next [fetchLive] re-fetches.
+  /// Used by the periodic Home refresh — [_live] is otherwise session-lived,
+  /// which left "Popular/Latest" frozen on TVs that stay on for days.
+  void clearLive(String key) => _live.remove(key);
+
   /// A Cloudflare/interstitial CHALLENGE page instead of the real catalog HTML.
   /// (Note: the `/cdn-cgi/challenge-platform` script tag is present on every
   /// Cloudflare-fronted page even when serving real content, so it is NOT a

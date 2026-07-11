@@ -107,18 +107,6 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
   Timer? _errorConfirmTimer;
   bool _serverPanelOpen = false;
 
-  // Everything-mode decode mode ('no'|'auto-safe'|'mediacodec-copy'), cycled by
-  // the Decode button. Which mode renders correctly is DEVICE-specific: some
-  // boxes garble these streams under mediacodec, at least one garbles them
-  // under software decode too — so the user picks on their own hardware.
-  late String _decodeMode;
-  static const _decodeModes = ['no', 'auto-safe', 'mediacodec-copy'];
-  static const _decodeModeLabels = {
-    'no': 'SW',
-    'auto-safe': 'HW',
-    'mediacodec-copy': 'HW+copy',
-  };
-
   // Live "what is actually decoding right now" line shown with the controls
   // (app version · codec WxH pixfmt · hwdec) — remote-debug evidence for the
   // Everything-mode garbled-picture reports, refreshed while controls are up.
@@ -167,7 +155,6 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
     _server = widget.args.source == CatalogSource.stardima
         ? 1
         : ref.read(storageProvider).getPreferredServer();
-    _decodeMode = ref.read(storageProvider).getWcoDecodeMode();
     if (_appVersion.isEmpty) {
       PackageInfo.fromPlatform()
           .then((i) => _appVersion = i.version, onError: (_) {});
@@ -309,19 +296,9 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
     });
     eSub = p.stream.error.listen((e) => finish(e));
     // Open after the listeners are attached, routing an open() failure through
-    // the same completion path. Everything-mode (WCOFlix) media opens with the
-    // user's persisted decode mode: some TV boxes garble these 720p/1080p mp4s
-    // into shifting solid colors under one decoder but not another, and which
-    // decoder works varies by box — see PlayerService._applyHwdec and the
-    // Decode button. Other catalogs keep the hardware default.
+    // the same completion path.
     PlayerService.instance
-        .open(
-          url,
-          headers: headers,
-          hwdec: widget.args.source == CatalogSource.wcoflix
-              ? _decodeMode
-              : null,
-        )
+        .open(url, headers: headers)
         .catchError((Object e) => finish(e));
     return c.future.timeout(budget, onTimeout: () {
       finish();
@@ -542,19 +519,6 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
           'hwdec:${hw.isEmpty ? '?' : hw}';
       if (mounted && info != _decodeInfo) setState(() => _decodeInfo = info);
     } catch (_) {} // player idle / property not available yet
-  }
-
-  /// Cycle the Everything-mode decode mode (software → hardware → hardware with
-  /// copy-back), persist it, and reload the current server so the new decoder
-  /// takes effect immediately — an on-device A/B switch for boxes that garble
-  /// these streams under some decoders.
-  void _cycleDecodeMode() {
-    final next = _decodeModes[
-        (_decodeModes.indexOf(_decodeMode) + 1) % _decodeModes.length];
-    setState(() => _decodeMode = next);
-    ref.read(storageProvider).setWcoDecodeMode(next);
-    _flashControls();
-    _load(_server);
   }
 
   // ---- touch surface (phones) ----
@@ -990,14 +954,6 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
                     phone: _phone,
                     onPressed: _hasNext ? _next : null),
               SizedBox(width: _phone ? 34 : 26),
-              if (widget.args.source == CatalogSource.wcoflix)
-                _CtrlButton(
-                  icon: Icons.memory,
-                  label: '${t['decode'] ?? 'Decode'}: '
-                      '${_decodeModeLabels[_decodeMode]}',
-                  phone: _phone,
-                  onPressed: _cycleDecodeMode,
-                ),
               _CtrlButton(
                 icon: Icons.dns_outlined,
                 label: t['server'],

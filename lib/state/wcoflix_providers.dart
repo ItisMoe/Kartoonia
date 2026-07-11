@@ -50,10 +50,40 @@ Future<List<WcoLink>> _liveOrSnapshot(Ref ref, String key) async {
   return cat.snapshot(key);
 }
 
-final wcoPopularProvider = FutureProvider<List<ContentItem>>((ref) async =>
-    _cards(ref.read(wcoflixCatalogProvider), await _liveOrSnapshot(ref, 'popular')));
-final wcoLatestProvider = FutureProvider<List<ContentItem>>((ref) async =>
-    _cards(ref.read(wcoflixCatalogProvider), await _liveOrSnapshot(ref, 'latest')));
+/// Periodic refresh tick for the LIVE home lists (popular/latest). The live
+/// cache is otherwise session-lived, so a TV box that stays on for days would
+/// keep showing the same "popular" titles; each tick clears the cache and the
+/// watching providers re-fetch the site's CURRENT lists.
+final wcoLiveRefreshProvider = StreamProvider<int>(
+    (ref) => Stream<int>.periodic(const Duration(hours: 6), (i) => i + 1));
+
+/// Live-list provider with periodic refresh: snapshot-first on cold start,
+/// then the live list, re-fetched on every [wcoLiveRefreshProvider] tick.
+FutureProvider<List<ContentItem>> _liveListProvider(String key) =>
+    FutureProvider<List<ContentItem>>((ref) async {
+      final cat = ref.read(wcoflixCatalogProvider);
+      if ((ref.watch(wcoLiveRefreshProvider).valueOrNull ?? 0) > 0) {
+        cat.clearLive(key);
+      }
+      return _cards(cat, await _liveOrSnapshot(ref, key));
+    });
+
+final wcoPopularProvider = _liveListProvider('popular');
+final wcoLatestProvider = _liveListProvider('latest');
+
+/// "Top 10 Today" for Everything mode: the site's OWN current Popular & Ongoing
+/// list (live, periodically refreshed — genuinely today's), deduped by title.
+final wcoTop10Provider = FutureProvider<List<ContentItem>>((ref) async {
+  final all = await ref.watch(wcoPopularProvider.future);
+  final seen = <String>{};
+  final out = <ContentItem>[];
+  for (final i in all) {
+    if (i.title.isEmpty || !seen.add(i.title.toLowerCase())) continue;
+    out.add(i);
+    if (out.length >= 10) break;
+  }
+  return out;
+});
 final wcoCartoonsProvider = FutureProvider<List<ContentItem>>((ref) async =>
     _cards(ref.read(wcoflixCatalogProvider), await _liveOrSnapshot(ref, 'cartoons')));
 final wcoDubbedProvider = FutureProvider<List<ContentItem>>((ref) async =>
@@ -70,22 +100,24 @@ final wcoFamousProvider = FutureProvider<List<ContentItem>>((ref) async {
   return _cards(cat, await cat.famousPool(limit: 400));
 });
 
-/// Fame-ranked SERIES pool (a dedicated Home row).
+/// Fame-ranked SERIES pool (dedicated Home rows; sized for the daily-rotation
+/// windows the Home slices from it).
 final wcoFamousSeriesProvider = FutureProvider<List<ContentItem>>((ref) async {
   final cat = ref.read(wcoflixCatalogProvider);
-  return _cards(cat, await cat.famousPool(limit: 120, type: 'tv'));
+  return _cards(cat, await cat.famousPool(limit: 240, type: 'tv'));
 });
 
-/// Fame-ranked MOVIES pool (a dedicated Home row).
+/// Fame-ranked MOVIES pool (dedicated Home rows; sized like the series pool).
 final wcoFamousMoviesProvider = FutureProvider<List<ContentItem>>((ref) async {
   final cat = ref.read(wcoflixCatalogProvider);
-  return _cards(cat, await cat.famousPool(limit: 120, type: 'movie'));
+  return _cards(cat, await cat.famousPool(limit: 240, type: 'movie'));
 });
 
-/// Fame-ranked pool restricted to titles that have a backdrop — the Home hero.
+/// Fame-ranked pool restricted to titles that have a backdrop — the Home hero
+/// pool. The screen rotates a daily dozen out of this (like the Arabic hero).
 final wcoHeroProvider = FutureProvider<List<ContentItem>>((ref) async {
   final cat = ref.read(wcoflixCatalogProvider);
-  return _cards(cat, await cat.famousPool(limit: 12, withBackdrop: true));
+  return _cards(cat, await cat.famousPool(limit: 40, withBackdrop: true));
 });
 
 /// Combined "TV Shows" browse pool for Everything mode: cartoons + dubbed anime,
