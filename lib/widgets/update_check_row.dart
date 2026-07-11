@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 
 import '../state/app_state.dart';
 import '../theme/theme.dart';
@@ -22,6 +23,18 @@ class UpdateCheckRow extends ConsumerStatefulWidget {
 class _UpdateCheckRowState extends ConsumerState<UpdateCheckRow> {
   bool _checking = false;
   bool _upToDate = false;
+  // Installed build, shown next to the check button so users can read off
+  // which version their device is ACTUALLY running (in-app updates can look
+  // successful without installing anything).
+  String _version = '';
+
+  @override
+  void initState() {
+    super.initState();
+    PackageInfo.fromPlatform().then((i) {
+      if (mounted) setState(() => _version = i.version);
+    }, onError: (_) {});
+  }
 
   Future<void> _check() async {
     if (_checking) return;
@@ -67,6 +80,15 @@ class _UpdateCheckRowState extends ConsumerState<UpdateCheckRow> {
             fontSize: phone ? 15 : 25,
             minWidth: phone ? null : 150,
           ),
+          if (_version.isNotEmpty) ...[
+            SizedBox(width: phone ? 14 : 20),
+            Text('${t['version'] ?? 'Version'} $_version',
+                textDirection: TextDirection.ltr,
+                style: TextStyle(
+                    fontSize: phone ? 14 : 22,
+                    fontWeight: FontWeight.w700,
+                    color: AppColors.inkMute)),
+          ],
         ]),
         if (status != null) ...[
           SizedBox(height: phone ? 10 : 12),

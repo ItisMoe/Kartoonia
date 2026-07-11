@@ -72,36 +72,40 @@ class PlayerService {
   /// doesn't force software decoding.
   static const _defaultHwdec = 'auto-safe';
 
-  /// Select hardware vs software decoding for the NEXT open. libmpv picks the
-  /// decoder when the file loads, so this must run before [Player.open].
+  /// Select the decoder for the NEXT open. libmpv picks the decoder when the
+  /// file loads, so this must run before [Player.open].
   ///
-  /// Why software decoding exists at all: on some TV boxes the hardware H.264
+  /// Why non-default modes exist at all: on some TV boxes the hardware H.264
   /// decoder hands mpv's GPU path garbage frames for the WCOFlix (Everything
   /// mode) 720p/1080p mp4s — the screen shows only shifting solid colors while
   /// audio plays fine. The streams themselves are plain H.264 yuv420p (probed),
   /// and the exact same content garbled the same way in the desktop VLC tool
-  /// until hardware decode was disabled there too (commit 15c25fb). Software
-  /// decode always renders real frames; these streams are low-bitrate
-  /// (~0.5-2 Mbps), so the CPU cost is small even on weak boxes.
-  Future<void> _applyHwdec(bool forceSoftware) async {
+  /// until hardware decode was disabled there too (commit 15c25fb). v2.2.6
+  /// forced software decode (`no`) for wcoflix opens, but at least one box
+  /// still garbles even then, so the mode is now user-selectable per device:
+  /// `no` (software), `auto-safe` (the Android default: direct mediacodec),
+  /// or `mediacodec-copy` (hardware decode, frames copied back to system
+  /// memory — a different render upload path than direct mediacodec).
+  Future<void> _applyHwdec(String mode) async {
     final platform = _player!.platform;
     if (platform is NativePlayer) {
-      await platform.setProperty('hwdec', forceSoftware ? 'no' : _defaultHwdec);
+      await platform.setProperty('hwdec', mode);
     }
   }
 
   /// Point the shared player at [url] and start playback. Reuses the existing
   /// decoder — does NOT create a new player. [headers] are forwarded to libmpv
   /// for the manifest and every segment (Referer/UA/Origin for the CDN).
-  /// [forceSoftwareDecoding] disables hardware decode for THIS media only (see
-  /// [_applyHwdec]); the next plain open restores the hardware default.
+  /// [hwdec] selects the decode mode for THIS media only (see [_applyHwdec]);
+  /// null keeps media_kit's Android hardware default, and the next plain open
+  /// restores it.
   Future<void> open(
     String url, {
     Map<String, String> headers = const {},
-    bool forceSoftwareDecoding = false,
+    String? hwdec,
   }) async {
     ensureCreated();
-    await _applyHwdec(forceSoftwareDecoding);
+    await _applyHwdec(hwdec ?? _defaultHwdec);
     await _player!.open(Media(url, httpHeaders: headers));
   }
 
@@ -114,7 +118,7 @@ class PlayerService {
     Map<String, String> headers = const {},
   }) async {
     ensureCreated();
-    await _applyHwdec(false);
+    await _applyHwdec(_defaultHwdec);
     // Open WITHOUT auto-playing, attach the external audio, THEN play — so the
     // full graph exists before playback starts. Opening with play:true lets the
     // video run for ~1-2s and then attaching the audio track forces libmpv to

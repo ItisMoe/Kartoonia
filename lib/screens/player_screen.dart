@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:media_kit/media_kit.dart';
 import 'package:media_kit_video/media_kit_video.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 import '../models/catalog_source.dart';
 import '../models/content_item.dart';
 import '../services/playback_error_policy.dart';
@@ -106,6 +107,25 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
   Timer? _errorConfirmTimer;
   bool _serverPanelOpen = false;
 
+  // Everything-mode decode mode ('no'|'auto-safe'|'mediacodec-copy'), cycled by
+  // the Decode button. Which mode renders correctly is DEVICE-specific: some
+  // boxes garble these streams under mediacodec, at least one garbles them
+  // under software decode too — so the user picks on their own hardware.
+  late String _decodeMode;
+  static const _decodeModes = ['no', 'auto-safe', 'mediacodec-copy'];
+  static const _decodeModeLabels = {
+    'no': 'SW',
+    'auto-safe': 'HW',
+    'mediacodec-copy': 'HW+copy',
+  };
+
+  // Live "what is actually decoding right now" line shown with the controls
+  // (app version · codec WxH pixfmt · hwdec) — remote-debug evidence for the
+  // Everything-mode garbled-picture reports, refreshed while controls are up.
+  String _decodeInfo = '';
+  Timer? _decodeInfoTimer;
+  static String _appVersion = '';
+
   // Focus: a scope for the whole player + a node for the play/pause button so
   // the D-pad always lands on a usable control when the controls appear.
   final FocusScopeNode _playerScope = FocusScopeNode(debugLabel: 'player');
@@ -147,6 +167,13 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
     _server = widget.args.source == CatalogSource.stardima
         ? 1
         : ref.read(storageProvider).getPreferredServer();
+    _decodeMode = ref.read(storageProvider).getWcoDecodeMode();
+    if (_appVersion.isEmpty) {
+      PackageInfo.fromPlatform()
+          .then((i) => _appVersion = i.version, onError: (_) {});
+    }
+    _decodeInfoTimer =
+        Timer.periodic(const Duration(seconds: 2), (_) => _refreshDecodeInfo());
 
     _subscribe();
     _load(_server);
@@ -282,15 +309,18 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
     });
     eSub = p.stream.error.listen((e) => finish(e));
     // Open after the listeners are attached, routing an open() failure through
-    // the same completion path. Everything-mode (WCOFlix) media is opened with
-    // software decoding: some TV boxes' hardware H.264 decoders garble these
-    // 720p/1080p mp4s into shifting solid colors (audio fine) — see
-    // PlayerService._applyHwdec. Other catalogs keep hardware decode.
+    // the same completion path. Everything-mode (WCOFlix) media opens with the
+    // user's persisted decode mode: some TV boxes garble these 720p/1080p mp4s
+    // into shifting solid colors under one decoder but not another, and which
+    // decoder works varies by box — see PlayerService._applyHwdec and the
+    // Decode button. Other catalogs keep the hardware default.
     PlayerService.instance
         .open(
           url,
           headers: headers,
-          forceSoftwareDecoding: widget.args.source == CatalogSource.wcoflix,
+          hwdec: widget.args.source == CatalogSource.wcoflix
+              ? _decodeMode
+              : null,
         )
         .catchError((Object e) => finish(e));
     return c.future.timeout(budget, onTimeout: () {
@@ -489,6 +519,42 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
         setState(() => _controlsShown = false);
       }
     });
+    _refreshDecodeInfo();
+  }
+
+  /// Read what libmpv is ACTUALLY decoding with right now and surface it in the
+  /// controls overlay. This is the remote-debugging channel for the Everything
+  /// mode garbled-picture reports: the user reads the line off the TV, which
+  /// tells us the running app version, the selected decoder (hwdec), and the
+  /// frame format — without adb access to the box.
+  Future<void> _refreshDecodeInfo() async {
+    if (!mounted || !_controlsShown) return;
+    final platform = _player.platform;
+    if (platform is! NativePlayer) return;
+    try {
+      final fmt = await platform.getProperty('video-format');
+      if (fmt.isEmpty) return;
+      final hw = await platform.getProperty('hwdec-current');
+      final w = await platform.getProperty('video-params/w');
+      final h = await platform.getProperty('video-params/h');
+      final pix = await platform.getProperty('video-params/pixelformat');
+      final info = 'v$_appVersion · $fmt ${w}x$h $pix · '
+          'hwdec:${hw.isEmpty ? '?' : hw}';
+      if (mounted && info != _decodeInfo) setState(() => _decodeInfo = info);
+    } catch (_) {} // player idle / property not available yet
+  }
+
+  /// Cycle the Everything-mode decode mode (software → hardware → hardware with
+  /// copy-back), persist it, and reload the current server so the new decoder
+  /// takes effect immediately — an on-device A/B switch for boxes that garble
+  /// these streams under some decoders.
+  void _cycleDecodeMode() {
+    final next = _decodeModes[
+        (_decodeModes.indexOf(_decodeMode) + 1) % _decodeModes.length];
+    setState(() => _decodeMode = next);
+    ref.read(storageProvider).setWcoDecodeMode(next);
+    _flashControls();
+    _load(_server);
   }
 
   // ---- touch surface (phones) ----
@@ -607,6 +673,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
     _syncWatchNext();
     _hideTimer?.cancel();
     _saveTimer?.cancel();
+    _decodeInfoTimer?.cancel();
     _errorConfirmTimer?.cancel();
     _nextTimer?.cancel();
     for (final s in _subs) {
@@ -845,6 +912,13 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
                           fontSize: _phone ? 26 : 22,
                           fontWeight: FontWeight.w800,
                           color: AppColors.inkSoft)),
+                  if (_decodeInfo.isNotEmpty)
+                    Text(_decodeInfo,
+                        textDirection: TextDirection.ltr,
+                        style: TextStyle(
+                            fontSize: _phone ? 20 : 15,
+                            fontWeight: FontWeight.w700,
+                            color: AppColors.inkMute)),
                 ],
               ),
             ),
@@ -916,6 +990,14 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
                     phone: _phone,
                     onPressed: _hasNext ? _next : null),
               SizedBox(width: _phone ? 34 : 26),
+              if (widget.args.source == CatalogSource.wcoflix)
+                _CtrlButton(
+                  icon: Icons.memory,
+                  label: '${t['decode'] ?? 'Decode'}: '
+                      '${_decodeModeLabels[_decodeMode]}',
+                  phone: _phone,
+                  onPressed: _cycleDecodeMode,
+                ),
               _CtrlButton(
                 icon: Icons.dns_outlined,
                 label: t['server'],
