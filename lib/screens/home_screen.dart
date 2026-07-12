@@ -3,6 +3,7 @@ import 'package:flutter/foundation.dart' show ValueListenable;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../models/content_item.dart';
+import '../models/library_mode.dart';
 import '../navigation.dart';
 import '../playback.dart';
 import '../services/recommendations.dart';
@@ -76,18 +77,13 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   String _genreLine(ContentItem s) =>
       s.genres.take(2).map(translateGenre).join(' · ');
 
-  /// Everything mode: leads with the most TMDB-famous titles (with posters +
-  /// backdrops), the same way the Arabic Home ranks by popularity — a backdrop
-  /// hero + a few fame-ranked rows. Deliberately NOT the raw A–Z lists or a
-  /// "new episodes of any show" feed; the full catalog is in Browse + Search.
-  Widget _everythingHome(BuildContext context, Map<String, String> t) {
+  /// The WCOFlix content rows (no hero). Shared by the WCOFlix-only home and,
+  /// as an appended section, by Everything mode.
+  List<Widget> _wcoflixRows(BuildContext context, Map<String, String> t) {
     void open(ContentItem i) => AppNav.detail(context, i);
-    final settings = ref.watch(settingsProvider);
-    final user = ref.watch(userProvider);
     final famous = ref.watch(wcoFamousProvider);
     final series = ref.watch(wcoFamousSeriesProvider);
     final movies = ref.watch(wcoFamousMoviesProvider);
-    final heroItems = ref.watch(wcoHeroProvider).valueOrNull ?? const [];
 
     // A row drawn from an async fame pool. `skip` positions a 3×`take` window
     // into the pool and [salt] rotates a daily selection out of it (same
@@ -139,7 +135,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     // A full page of popular content: a fame-ranked "Most Popular" lead, the
     // live Top-10, dedicated Series/Movies rows, then deeper daily-rotated
     // windows of the fame pools so the page keeps scrolling with fresh titles.
-    final rows = <Widget>[
+    return <Widget>[
       slice(famous, t['most_popular']!, 0, 24, salt: 'wco_most', showLoader: true),
       top10Row,
       slice(series, t['filter_tv']!, 0, 24, salt: 'wco_tv1'),
@@ -149,6 +145,18 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       slice(movies, '${t['filter_movies']!} · ${t['spotlight']!}', 72, 24, salt: 'wco_mv2'),
       slice(famous, t['spotlight']!, 144, 24, salt: 'wco_deep'),
     ];
+  }
+
+  /// Everything mode: leads with the most TMDB-famous titles (with posters +
+  /// backdrops), the same way the Arabic Home ranks by popularity — a backdrop
+  /// hero + a few fame-ranked rows. Deliberately NOT the raw A–Z lists or a
+  /// "new episodes of any show" feed; the full catalog is in Browse + Search.
+  Widget _everythingHome(BuildContext context, Map<String, String> t) {
+    void open(ContentItem i) => AppNav.detail(context, i);
+    final settings = ref.watch(settingsProvider);
+    final user = ref.watch(userProvider);
+    final heroItems = ref.watch(wcoHeroProvider).valueOrNull ?? const [];
+    final rows = _wcoflixRows(context, t);
 
     // Hero: a daily-rotated dozen out of the top backdrop-bearing titles, the
     // same rotation the Arabic hero gets.
@@ -261,7 +269,11 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   Widget build(BuildContext context) {
     ref.watch(catalogRevProvider); // rebuild after imports
     final t = ref.watch(stringsProvider);
-    if (ref.watch(everythingModeProvider)) return _everythingHome(context, t);
+    final mode = ref.watch(libraryModeProvider);
+    // WCOFlix-only mode → the WCOFlix home. Arabic modes → the Arabic home below
+    // (pools are mode-scoped in CatalogService). Everything → Arabic home with a
+    // WCOFlix section appended (see the end of this method).
+    if (mode.isWcoflixOnly) return _everythingHome(context, t);
     final catalog = ref.watch(catalogProvider);
     final settings = ref.watch(settingsProvider);
     final user = ref.watch(userProvider);
@@ -415,6 +427,22 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
               onPressed: () => open(i)),
         ],
       ));
+    }
+
+    // Everything mode: append the WCOFlix universe as its own section below the
+    // Arabic rows (un-merged — no cross-source collapsing between universes).
+    if (mode == LibraryMode.everything) {
+      rows.add(Padding(
+        padding: const EdgeInsets.fromLTRB(Spacing.pad, 28, Spacing.pad, 4),
+        child: Text(t['mode_wcoflix']!,
+            style: const TextStyle(
+                fontFamily: Fonts.display,
+                fontFamilyFallback: Fonts.fallback,
+                fontWeight: FontWeight.w600,
+                fontSize: 34,
+                color: AppColors.ink)),
+      ));
+      rows.addAll(_wcoflixRows(context, t));
     }
 
     // Hero pool: most-popular titles with a backdrop, rotated daily.

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../models/content_item.dart';
+import '../../models/library_mode.dart';
 import '../../playback.dart';
 import '../../services/storage_service.dart';
 import '../../state/app_state.dart';
@@ -34,7 +35,9 @@ class _PhoneHomeScreenState extends ConsumerState<PhoneHomeScreen> {
   String _genreLine(ContentItem s) =>
       s.genres.take(2).map(translateGenre).join(' · ');
 
-  Widget _everythingHome(BuildContext context, Map<String, String> t) {
+  /// The WCOFlix content rows (no hero). Shared by the WCOFlix-only home and,
+  /// as an appended section, by Everything mode.
+  List<Widget> _wcoflixRows(BuildContext context, Map<String, String> t) {
     void open(ContentItem i) => openPhoneDetail(context, i);
     final movieLabel = t['movie']!;
     PhonePosterCard card(ContentItem i) =>
@@ -84,15 +87,21 @@ class _PhoneHomeScreenState extends ConsumerState<PhoneHomeScreen> {
     // "Top 10 Today": the site's live Popular & Ongoing list, not a fame slice.
     final top10 = ref.watch(wcoTop10Provider).valueOrNull ?? const <ContentItem>[];
 
+    return <Widget>[
+      slice(t['most_popular']!, 0, 24),
+      if (top10.isNotEmpty)
+        PhoneRow(title: t['topten']!, cards: [for (final i in top10) card(i)]),
+      slice(t['row_popular']!, 72, 24),
+      slice(t['spotlight']!, 144, 24),
+    ];
+  }
+
+  Widget _everythingHome(BuildContext context, Map<String, String> t) {
     return Stack(children: [
       ListView(
         padding: const EdgeInsets.only(top: 70, bottom: 24),
         children: [
-          slice(t['most_popular']!, 0, 24),
-          if (top10.isNotEmpty)
-            PhoneRow(title: t['topten']!, cards: [for (final i in top10) card(i)]),
-          slice(t['row_popular']!, 72, 24),
-          slice(t['spotlight']!, 144, 24),
+          ..._wcoflixRows(context, t),
         ],
       ),
       Positioned(top: 0, left: 0, right: 0, child: _HomeTopBar(t: t)),
@@ -103,7 +112,8 @@ class _PhoneHomeScreenState extends ConsumerState<PhoneHomeScreen> {
   Widget build(BuildContext context) {
     ref.watch(catalogRevProvider);
     final t = ref.watch(stringsProvider);
-    if (ref.watch(everythingModeProvider)) return _everythingHome(context, t);
+    final mode = ref.watch(libraryModeProvider);
+    if (mode.isWcoflixOnly) return _everythingHome(context, t);
     final catalog = ref.watch(catalogProvider);
     final user = ref.watch(userProvider);
 
@@ -198,6 +208,22 @@ class _PhoneHomeScreenState extends ConsumerState<PhoneHomeScreen> {
             card(i),
         ],
       ));
+    }
+
+    // Everything mode: append the WCOFlix universe as its own section below the
+    // Arabic rows (un-merged).
+    if (mode == LibraryMode.everything) {
+      rows.add(Padding(
+        padding: const EdgeInsets.fromLTRB(16, 20, 16, 4),
+        child: Text(t['mode_wcoflix']!,
+            style: const TextStyle(
+                fontFamily: Fonts.display,
+                fontFamilyFallback: Fonts.fallback,
+                fontWeight: FontWeight.w600,
+                fontSize: 22,
+                color: AppColors.ink)),
+      ));
+      rows.addAll(_wcoflixRows(context, t));
     }
 
     final featured =
