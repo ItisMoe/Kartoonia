@@ -70,6 +70,77 @@ Object? decryptCarateen(Object? body) {
   return jsonDecode(plain);
 }
 
+/// One variant row of an HLS master playlist (`#EXT-X-STREAM-INF`).
+class HlsVariant {
+  final String name; // '720p'
+  final int height;
+  final int bandwidth;
+  final String url; // absolute
+  const HlsVariant({
+    required this.name,
+    required this.height,
+    required this.bandwidth,
+    required this.url,
+  });
+}
+
+final RegExp _reStreamInf = RegExp(r'^#EXT-X-STREAM-INF:(.*)$');
+final RegExp _reBandwidth = RegExp(r'BANDWIDTH=(\d+)');
+final RegExp _reResolution = RegExp(r'RESOLUTION=\d+x(\d+)');
+final RegExp _reName = RegExp(r'NAME="([^"]+)"');
+
+/// Extract the variant entries of an HLS *master* playlist, resolving each
+/// variant URI against [base]. Returns an empty list for media playlists
+/// (no `#EXT-X-STREAM-INF` lines), which callers treat as "not a master".
+List<HlsVariant> parseHlsMasterVariants(String playlist, Uri base) {
+  final out = <HlsVariant>[];
+  String? pendingAttrs;
+  for (final raw in playlist.split('\n')) {
+    final line = raw.trim();
+    if (line.isEmpty) continue;
+    final m = _reStreamInf.firstMatch(line);
+    if (m != null) {
+      pendingAttrs = m.group(1);
+      continue;
+    }
+    if (line.startsWith('#') || pendingAttrs == null) continue;
+    final attrs = pendingAttrs;
+    pendingAttrs = null;
+    final bandwidth =
+        int.tryParse(_reBandwidth.firstMatch(attrs)?.group(1) ?? '') ?? 0;
+    final height =
+        int.tryParse(_reResolution.firstMatch(attrs)?.group(1) ?? '') ?? 0;
+    final name = _reName.firstMatch(attrs)?.group(1) ??
+        (height > 0 ? '${height}p' : '${bandwidth ~/ 1000}k');
+    out.add(HlsVariant(
+      name: name,
+      height: height,
+      bandwidth: bandwidth,
+      url: base.resolve(line).toString(),
+    ));
+  }
+  return out;
+}
+
+/// Order variants 720p-first, then the rest highest-first — the same rule the
+/// WCOFlix resolver uses, so the player's server picker doubles as a
+/// resolution picker and the DEFAULT pick is the bandwidth-safe 720p (the
+/// carateen CDN can't reliably sustain its 5 Mbps 1080p variant).
+List<HlsVariant> orderCarateenVariants(List<HlsVariant> variants) {
+  if (variants.isEmpty) return variants;
+  final atOrBelow = variants.where((v) => v.height <= 720).toList();
+  final preferred = (atOrBelow.isEmpty ? variants.toList() : atOrBelow)
+    ..sort((a, b) => b.height.compareTo(a.height));
+  final want = preferred.first;
+  final sorted = variants.toList()
+    ..sort((a, b) {
+      if (identical(a, want) && !identical(b, want)) return -1;
+      if (identical(b, want) && !identical(a, want)) return 1;
+      return b.height.compareTo(a.height);
+    });
+  return sorted;
+}
+
 /// Parse `showId`/`episodeId` out of a `.../watch/<show>/<episode>` play_url.
 /// Returns null when the URL isn't a carateen watch link.
 ({String showId, String episodeId})? parseCarateenPlayUrl(String playUrl) {
@@ -111,6 +182,32 @@ Future<List<CarateenStream>> resolveCarateen(String playUrl,
     final streamUrl = data['streamUrl'];
     if (streamUrl is! String || streamUrl.isEmpty) {
       throw const CarateenResolveException('no streamUrl in /api/episode');
+    }
+    // Expand the master playlist into one stream per resolution variant.
+    // libmpv can't switch HLS variants mid-play (and `hls-bitrate=max` pins
+    // the 5 Mbps 1080p one, which the CDN delivers slower than realtime), so
+    // each variant becomes its own picker entry, bandwidth-safe 720p first.
+    // Any failure here (host down, playlist shape change, already a media
+    // playlist) falls back to the old single master-URL behavior.
+    try {
+      final master =
+          await c.get(Uri.parse(streamUrl), headers: kCarateenMediaHeaders);
+      if (master.statusCode == 200) {
+        final variants = orderCarateenVariants(parseHlsMasterVariants(
+            utf8.decode(master.bodyBytes), Uri.parse(streamUrl)));
+        if (variants.length > 1) {
+          return [
+            for (final v in variants)
+              CarateenStream(
+                server: v.name,
+                streamUrl: v.url,
+                headers: kCarateenMediaHeaders,
+              ),
+          ];
+        }
+      }
+    } catch (_) {
+      // fall through to the master URL
     }
     return [
       CarateenStream(

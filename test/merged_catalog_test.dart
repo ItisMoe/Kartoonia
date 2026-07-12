@@ -65,6 +65,32 @@ void main() {
     }
   });
 
+  test('availableOn matches own source and any twin source', () async {
+    final svc = await CatalogService.loadMerged();
+    // Every collapsed item matches its own source.
+    for (final i in svc.all.take(50)) {
+      expect(svc.availableOn(i, i.source), isTrue);
+    }
+    // A collapsed title with a twin matches the twin's source too — this is
+    // what lets the "Stardima only" browse filter surface an Arabic Toons
+    // primary whose Stardima copy was collapsed away.
+    final dup = svc.all.firstWhere((i) => svc.alternatesFor(i).isNotEmpty);
+    for (final a in svc.alternatesFor(dup)) {
+      expect(svc.availableOn(dup, a.source), isTrue);
+    }
+    // And per-source filtering over the whole library yields non-empty,
+    // strictly-smaller subsets for each of the three sources.
+    for (final src in [
+      CatalogSource.arabicToons,
+      CatalogSource.stardima,
+      CatalogSource.carateen,
+    ]) {
+      final subset = svc.all.where((i) => svc.availableOn(i, src)).toList();
+      expect(subset, isNotEmpty, reason: '$src filter yields items');
+      expect(subset.length, lessThan(svc.all.length));
+    }
+  });
+
   test('famous pools are memoized (same instance on repeat calls)', () async {
     final svc = await CatalogService.loadMerged();
     // Identity, not just equality: a second call must reuse the cached list

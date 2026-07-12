@@ -212,6 +212,12 @@ class CatalogService {
   List<ContentItem> alternatesFor(ContentItem item) =>
       _altsById[item.id] ?? const [];
 
+  /// True when [item] is playable via [src] — either it IS a [src] item or one
+  /// of its cross-source twins is. Drives the browse source filter ("Stardima
+  /// only", etc.), so collapsed titles still match through their alternates.
+  bool availableOn(ContentItem item, CatalogSource src) =>
+      item.source == src || alternatesFor(item).any((a) => a.source == src);
+
   /// The first cross-source twin of [item], or null. Kept for callers that only
   /// need "is there another source" (e.g. the phone detail screen).
   ContentItem? alternateFor(ContentItem item) {

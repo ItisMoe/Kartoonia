@@ -2,6 +2,8 @@ import 'dart:convert';
 import 'dart:typed_data';
 import 'package:encrypt/encrypt.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:http/http.dart' as http;
+import 'package:http/testing.dart';
 import 'package:kartoonia/models/carateen_adapter.dart';
 import 'package:kartoonia/models/carateen_music.dart';
 import 'package:kartoonia/models/catalog_source.dart';
@@ -43,6 +45,116 @@ void main() {
     test('passes through an already-plain body', () {
       final plain = {'streamUrl': 'x'};
       expect(decryptCarateen(plain), same(plain));
+    });
+  });
+
+  group('parseHlsMasterVariants', () {
+    // Verbatim shape of pegasus.5387692.xyz masters (variants NOT in
+    // resolution order, blank lines between entries).
+    const master = '''
+#EXTM3U
+#EXT-X-VERSION:4
+
+#EXT-X-STREAM-INF:BANDWIDTH=5000000,RESOLUTION=1920x1080,NAME="1080p"
+1080p/playlist.m3u8
+
+#EXT-X-STREAM-INF:BANDWIDTH=800000,RESOLUTION=640x360,NAME="360p"
+360p/playlist.m3u8
+
+#EXT-X-STREAM-INF:BANDWIDTH=1400000,RESOLUTION=854x480,NAME="480p"
+480p/playlist.m3u8
+
+#EXT-X-STREAM-INF:BANDWIDTH=2800000,RESOLUTION=1280x720,NAME="720p"
+720p/playlist.m3u8
+''';
+    final base =
+        Uri.parse('https://pegasus.5387692.xyz/api/hls/2583/playlist.m3u8');
+
+    test('extracts every variant with absolute URLs and heights', () {
+      final v = parseHlsMasterVariants(master, base);
+      expect(v, hasLength(4));
+      final p1080 = v.firstWhere((e) => e.name == '1080p');
+      expect(p1080.height, 1080);
+      expect(p1080.bandwidth, 5000000);
+      expect(p1080.url,
+          'https://pegasus.5387692.xyz/api/hls/2583/1080p/playlist.m3u8');
+    });
+
+    test('orders 720p first, then the rest highest-first (WCOFlix rule)', () {
+      final v = orderCarateenVariants(parseHlsMasterVariants(master, base));
+      expect(v.map((e) => e.name).toList(), ['720p', '1080p', '480p', '360p']);
+    });
+
+    test('falls back to the resolution height when NAME is missing', () {
+      const noName = '#EXTM3U\n'
+          '#EXT-X-STREAM-INF:BANDWIDTH=2800000,RESOLUTION=1280x720\n'
+          'v0/playlist.m3u8\n';
+      final v = parseHlsMasterVariants(noName, base);
+      expect(v.single.name, '720p');
+    });
+
+    test('returns empty for a media (non-master) playlist', () {
+      const media = '#EXTM3U\n#EXT-X-TARGETDURATION:11\n'
+          '#EXTINF:9.6,\nsegment_000.jpg\n';
+      expect(parseHlsMasterVariants(media, base), isEmpty);
+    });
+  });
+
+  group('resolveCarateen variants', () {
+    // Encrypt an /api/episode envelope exactly like the site does.
+    Map<String, String> envelope(String plainJson) {
+      final key = Key.fromUtf8('7annaba3l_loves_crypto_safe_key!');
+      final iv = IV(Uint8List.fromList(
+          List<int>.generate(16, (i) => (i * 11 + 5) & 0xff)));
+      final enc = Encrypter(AES(key, mode: AESMode.cbc, padding: 'PKCS7'));
+      return {
+        'iv': iv.base16,
+        'encryptedData': enc.encrypt(plainJson, iv: iv).base16,
+      };
+    }
+
+    test('expands the master playlist into per-resolution servers, 720p first',
+        () async {
+      const masterUrl = 'https://cdn.example/api/hls/9/playlist.m3u8';
+      final client = MockClient((req) async {
+        if (req.url.path == '/api/episode') {
+          return http.Response(
+              jsonEncode(envelope('{"streamUrl":"$masterUrl"}')), 200);
+        }
+        expect(req.url.toString(), masterUrl);
+        // Media headers must reach the CDN request too.
+        expect(req.headers['Referer'], 'https://carateen.tv/');
+        return http.Response(
+            '#EXTM3U\n'
+            '#EXT-X-STREAM-INF:BANDWIDTH=5000000,RESOLUTION=1920x1080,NAME="1080p"\n'
+            '1080p/playlist.m3u8\n'
+            '#EXT-X-STREAM-INF:BANDWIDTH=2800000,RESOLUTION=1280x720,NAME="720p"\n'
+            '720p/playlist.m3u8\n',
+            200);
+      });
+      final streams = await resolveCarateen('https://carateen.tv/watch/91/740',
+          client: client);
+      expect(streams.map((s) => s.server).toList(), ['720p', '1080p']);
+      expect(streams.first.streamUrl,
+          'https://cdn.example/api/hls/9/720p/playlist.m3u8');
+      expect(streams.first.headers['Referer'], 'https://carateen.tv/');
+    });
+
+    test('falls back to the single master URL when the master fetch fails',
+        () async {
+      const masterUrl = 'https://cdn.example/api/hls/9/playlist.m3u8';
+      final client = MockClient((req) async {
+        if (req.url.path == '/api/episode') {
+          return http.Response(
+              jsonEncode(envelope('{"streamUrl":"$masterUrl"}')), 200);
+        }
+        return http.Response('nope', 403);
+      });
+      final streams = await resolveCarateen('https://carateen.tv/watch/91/740',
+          client: client);
+      expect(streams, hasLength(1));
+      expect(streams.single.streamUrl, masterUrl);
+      expect(streams.single.server, 'Carateen');
     });
   });
 

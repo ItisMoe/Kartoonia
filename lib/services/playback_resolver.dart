@@ -56,8 +56,9 @@ Future<List<PlayableServer>> resolvePlayback(
           ),
       ];
     case CatalogSource.carateen:
-      // Fetch `/api/episode`, AES-decrypt, and hand the master `.m3u8` to the
-      // player. libmpv adapts across the in-stream 360/480/720/1080p variants.
+      // Fetch `/api/episode`, AES-decrypt, then expand the master `.m3u8` into
+      // one server per resolution variant (720p-first — the CDN can't sustain
+      // 1080p), so the server picker doubles as a resolution picker.
       final streams = await resolveCarateen(pageOrPlayUrl);
       return [
         for (var i = 0; i < streams.length; i++)

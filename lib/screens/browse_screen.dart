@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../models/catalog_source.dart';
 import '../models/content_item.dart';
 import '../navigation.dart';
 import '../services/catalog_service.dart';
@@ -36,8 +37,12 @@ class BrowseScreen extends ConsumerWidget {
 
     final isMyList = kind == 'mylist';
     final everything = ref.watch(everythingModeProvider);
+    final srcFilter = browse.sourceFilter;
     // My List always uses the local library; TV/Movies follow the active mode.
-    final wco = everything && !isMyList;
+    // A source filter (Arabic Toons / Stardima / Carateen only) always browses
+    // the LOCAL merged library — even in Everything mode, where the WCOFlix
+    // grid has no per-source identity to filter on.
+    final wco = everything && !isMyList && srcFilter == null;
     final title = kind == 'movies'
         ? t['browse_movies']!
         : isMyList
@@ -61,6 +66,10 @@ class BrowseScreen extends ConsumerWidget {
     } else {
       typeItems = catalog.shows;
     }
+    if (!isMyList && srcFilter != null) {
+      typeItems =
+          typeItems.where((i) => catalog.availableOn(i, srcFilter)).toList();
+    }
 
     final script = browse.alphaScript;
     final letter = browse.letter;
@@ -68,7 +77,11 @@ class BrowseScreen extends ConsumerWidget {
 
     // Sectioned (Mode A) only for the default, unfiltered Movies/TV view.
     // WCOFlix has no fame pool, so it always uses the flat A–Z grid.
-    final sectioned = !isMyList && !wco && letter == null && category == null;
+    final sectioned = !isMyList &&
+        !wco &&
+        letter == null &&
+        category == null &&
+        srcFilter == null;
 
     // Genre-filtered base — feeds both the grid and the alpha bar present-set.
     final base = (category == null)
@@ -223,6 +236,12 @@ class BrowseScreen extends ConsumerWidget {
     final headerCount =
         (isMyList || sectioned) ? typeItems.length : shown.length;
 
+    // Chip label for the filter button: the active genre and/or source.
+    final activeFilterLabel = [
+      if (category != null) translateGenre(category),
+      if (srcFilter != null) _sourceLabel(srcFilter, t),
+    ].join(' · ');
+
     return ScreenShell(
       current: _navKey(),
       background: AppColors.bg1,
@@ -264,20 +283,19 @@ class BrowseScreen extends ConsumerWidget {
                   padding:
                       const EdgeInsets.symmetric(horizontal: Spacing.pad),
                   children: [
-                    // Filter button — shows the active genre when one is set.
-                    // WCOFlix items carry no genres, so the filter is hidden.
-                    if (!wco) ...[
-                      _railChip(SelectableChip(
-                        label: category == null
-                            ? t['browse_filter']!
-                            : translateGenre(category),
-                        selected: category != null,
-                        radius: 13,
-                        onPressed: () =>
-                            _openFilter(context, ref, typeItems, category, t),
-                      )),
-                      const SizedBox(width: 16),
-                    ],
+                    // Filter button — labels the active genre/source when one
+                    // is set. Available in Everything mode too (source only:
+                    // WCOFlix items carry no genres).
+                    _railChip(SelectableChip(
+                      label: activeFilterLabel.isEmpty
+                          ? t['browse_filter']!
+                          : activeFilterLabel,
+                      selected: category != null || srcFilter != null,
+                      radius: 13,
+                      onPressed: () => _openFilter(
+                          context, ref, typeItems, category, srcFilter, t),
+                    )),
+                    const SizedBox(width: 16),
                     // script toggle
                     _railChip(SelectableChip(
                       label: t['kbLatin']!,
@@ -340,16 +358,37 @@ class BrowseScreen extends ConsumerWidget {
         child: EnsureVisibleOnFocus(child: Center(child: child)),
       );
 
-  /// D-pad genre picker. Selecting a genre sets the category filter (collapsing
-  /// the sectioned view into a fame-sorted grid); "All Genres" clears it.
+  /// Label for a source-filter chip (reuses the detail-screen badge strings).
+  static String _sourceLabel(CatalogSource s, Map<String, String> t) =>
+      switch (s) {
+        CatalogSource.stardima => t['source_badge_st']!,
+        CatalogSource.carateen => t['source_badge_ca']!,
+        _ => t['source_badge_at']!,
+      };
+
+  /// D-pad filter picker: a Source section (Arabic Toons / Stardima / Carateen
+  /// only — shown in BOTH modes) and a genre section (hidden when the current
+  /// items carry no genres, e.g. the WCOFlix grid). Picking either collapses
+  /// the sectioned view into a fame-sorted grid.
   Future<void> _openFilter(
     BuildContext context,
     WidgetRef ref,
     List<ContentItem> items,
     String? current,
+    CatalogSource? currentSource,
     Map<String, String> t,
   ) {
     final genres = genresIn(items);
+    const sources = [
+      CatalogSource.arabicToons,
+      CatalogSource.stardima,
+      CatalogSource.carateen,
+    ];
+    Widget sectionTitle(String s) => Text(s,
+        style: const TextStyle(
+            fontSize: 22,
+            fontWeight: FontWeight.w800,
+            color: AppColors.inkSoft));
     return showDialog<void>(
       context: context,
       builder: (ctx) => Dialog(
@@ -370,28 +409,71 @@ class BrowseScreen extends ConsumerWidget {
               const SizedBox(height: 20),
               Flexible(
                 child: SingleChildScrollView(
-                  child: Wrap(
-                    spacing: 12,
-                    runSpacing: 12,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      SelectableChip(
-                        label: t['filter_all_genres']!,
-                        selected: current == null,
-                        autofocus: true,
-                        onPressed: () {
-                          ref.read(browseProvider.notifier).setCategory(null);
-                          Navigator.of(ctx).pop();
-                        },
+                      sectionTitle(t['filter_source']!),
+                      const SizedBox(height: 12),
+                      Wrap(
+                        spacing: 12,
+                        runSpacing: 12,
+                        children: [
+                          SelectableChip(
+                            label: t['filter_all_sources']!,
+                            selected: currentSource == null,
+                            autofocus: true,
+                            onPressed: () {
+                              ref
+                                  .read(browseProvider.notifier)
+                                  .setSourceFilter(null);
+                              Navigator.of(ctx).pop();
+                            },
+                          ),
+                          for (final s in sources)
+                            SelectableChip(
+                              label: _sourceLabel(s, t),
+                              selected: currentSource == s,
+                              onPressed: () {
+                                ref
+                                    .read(browseProvider.notifier)
+                                    .setSourceFilter(s);
+                                Navigator.of(ctx).pop();
+                              },
+                            ),
+                        ],
                       ),
-                      for (final g in genres)
-                        SelectableChip(
-                          label: translateGenre(g),
-                          selected: current == g,
-                          onPressed: () {
-                            ref.read(browseProvider.notifier).setCategory(g);
-                            Navigator.of(ctx).pop();
-                          },
+                      if (genres.isNotEmpty) ...[
+                        const SizedBox(height: 24),
+                        sectionTitle(t['filter_genre']!),
+                        const SizedBox(height: 12),
+                        Wrap(
+                          spacing: 12,
+                          runSpacing: 12,
+                          children: [
+                            SelectableChip(
+                              label: t['filter_all_genres']!,
+                              selected: current == null,
+                              onPressed: () {
+                                ref
+                                    .read(browseProvider.notifier)
+                                    .setCategory(null);
+                                Navigator.of(ctx).pop();
+                              },
+                            ),
+                            for (final g in genres)
+                              SelectableChip(
+                                label: translateGenre(g),
+                                selected: current == g,
+                                onPressed: () {
+                                  ref
+                                      .read(browseProvider.notifier)
+                                      .setCategory(g);
+                                  Navigator.of(ctx).pop();
+                                },
+                              ),
+                          ],
                         ),
+                      ],
                     ],
                   ),
                 ),
