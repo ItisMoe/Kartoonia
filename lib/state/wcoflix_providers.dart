@@ -144,7 +144,7 @@ final wcoTvBrowseProvider = FutureProvider<List<ContentItem>>((ref) async {
 /// (8k+ titles with TMDB art). Instant, and immune to the Cloudflare wall that
 /// the live POST /search now sits behind. Soft-fails to an empty list.
 final wcoSearchProvider =
-    FutureProvider.family<List<ContentItem>, String>((ref, query) async {
+    FutureProvider.autoDispose.family<List<ContentItem>, String>((ref, query) async {
   final q = query.trim();
   if (q.isEmpty) return const [];
   final cat = ref.read(wcoflixCatalogProvider);
@@ -157,7 +157,7 @@ final wcoSearchProvider =
 /// when there's no confident match. Powers the detail Audio: Arabic↔Original
 /// switch. Fails soft: any error just yields null (no switch shown).
 final wcoflixOriginalProvider =
-    FutureProvider.family<Show?, String>((ref, enTitle) async {
+    FutureProvider.autoDispose.family<Show?, String>((ref, enTitle) async {
   final q = enTitle.trim();
   if (q.length < 2) return null;
   try {
@@ -172,7 +172,7 @@ final wcoflixOriginalProvider =
 
 /// Full show (poster/plot/episodes) for a WCOFlix series page URL.
 final wcoSeriesProvider =
-    FutureProvider.family<Show, String>((ref, pageUrl) async {
+    FutureProvider.autoDispose.family<Show, String>((ref, pageUrl) async {
   final c = ref.read(wcoflixCatalogProvider);
   await c.ensureArt();
   final series = await c.seriesDetail(pageUrl);

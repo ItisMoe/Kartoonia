@@ -42,8 +42,19 @@ class WcoflixCatalog {
   /// Successful, non-empty live results this session, keyed by category.
   final _live = <String, List<WcoLink>>{};
   final _inflight = <String, Future<void>>{};
+  // Session caches, bounded so a long browse/search session can't grow memory
+  // without limit. Dart maps keep insertion order, so evicting `.keys.first`
+  // drops the oldest entry (approximate LRU — good enough for a session cache).
+  static const int _kSessionCacheCap = 80;
   final _seriesCache = <String, WcoSeries>{};
   final _searchCache = <String, List<WcoLink>>{};
+
+  static void _putBounded<K, V>(Map<K, V> cache, K key, V value) {
+    cache[key] = value;
+    while (cache.length > _kSessionCacheCap) {
+      cache.remove(cache.keys.first);
+    }
+  }
   Map<String, List<WcoLink>>? _snap;
 
   /// Bundled TMDB art/popularity, keyed by series slug. Loaded once from
@@ -284,7 +295,7 @@ class WcoflixCatalog {
           post: {'catara': q, 'konuara': type});
       if (_blocked(html)) return const [];
       final list = parseSearchResults(html);
-      _searchCache[key] = list;
+      _putBounded(_searchCache, key, list);
       return list;
     } catch (_) {
       return const [];
@@ -306,7 +317,7 @@ class WcoflixCatalog {
     // A real page that parsed zero episodes is likewise not worth caching (the
     // slug may be wrong, or the markup changed) — let a later visit retry.
     if (s.episodes.isEmpty) return s;
-    _seriesCache[url] = s;
+    _putBounded(_seriesCache, url, s);
     return s;
   }
 }
