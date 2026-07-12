@@ -25,6 +25,63 @@ void main() {
     });
   });
 
+  group('parseCarateenPlayUrl sp form', () {
+    test('flags an sp watch URL and extracts ids', () {
+      final r = parseCarateenPlayUrl('https://carateen.tv/watch/sp/175/12896');
+      expect(r, isNotNull);
+      expect(r!.showId, '175');
+      expect(r.episodeId, '12896');
+      expect(r.isSp, isTrue);
+    });
+    test('non-sp watch URL is not flagged sp', () {
+      final r = parseCarateenPlayUrl('https://carateen.tv/watch/91/740');
+      expect(r!.isSp, isFalse);
+      expect(r.showId, '91');
+      expect(r.episodeId, '740');
+    });
+  });
+
+  group('resolveCarateen sp', () {
+    Map<String, String> envelope(String plainJson) {
+      final key = Key.fromUtf8('7annaba3l_loves_crypto_safe_key!');
+      final iv = IV(Uint8List.fromList(
+          List<int>.generate(16, (i) => (i * 13 + 1) & 0xff)));
+      final enc = Encrypter(AES(key, mode: AESMode.cbc, padding: 'PKCS7'));
+      return {
+        'iv': iv.base16,
+        'encryptedData': enc.encrypt(plainJson, iv: iv).base16
+      };
+    }
+
+    test('POSTs /api/sp/episode/link with episodeId and expands the master',
+        () async {
+      const masterUrl = 'https://pegasus.example/api/sp/hls/abc/playlist.m3u8';
+      final client = MockClient((req) async {
+        if (req.url.path == '/api/sp/episode/link') {
+          expect(req.method, 'POST');
+          expect(jsonDecode(req.body)['episodeId'], '12896');
+          return http.Response(
+              jsonEncode(envelope('{"success":true,"link":"$masterUrl"}')),
+              200);
+        }
+        expect(req.url.toString(), masterUrl);
+        expect(req.headers['Referer'], 'https://carateen.tv/');
+        return http.Response(
+            '#EXTM3U\n'
+            '#EXT-X-STREAM-INF:BANDWIDTH=5000000,RESOLUTION=1920x1080,NAME="1080p"\n'
+            '1080p/playlist.m3u8\n'
+            '#EXT-X-STREAM-INF:BANDWIDTH=2800000,RESOLUTION=1280x720,NAME="720p"\n'
+            '720p/playlist.m3u8\n',
+            200);
+      });
+      final streams = await resolveCarateen(
+          'https://carateen.tv/watch/sp/175/12896',
+          client: client);
+      expect(streams.map((s) => s.server).toList(), ['720p', '1080p']);
+      expect(streams.first.headers['Referer'], 'https://carateen.tv/');
+    });
+  });
+
   group('decryptCarateen', () {
     test('round-trips an AES-256-CBC {iv, encryptedData} envelope', () {
       // Encrypt a payload with the SAME key/mode the site uses, then confirm the

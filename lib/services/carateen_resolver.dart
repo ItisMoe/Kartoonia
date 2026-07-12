@@ -141,15 +141,24 @@ List<HlsVariant> orderCarateenVariants(List<HlsVariant> variants) {
   return sorted;
 }
 
-/// Parse `showId`/`episodeId` out of a `.../watch/<show>/<episode>` play_url.
+/// Parse ids out of a `.../watch/<show>/<episode>` OR
+/// `.../watch/sp/<show>/<episode>` play_url. `isSp` marks the SpaceToon-Go
+/// catalog, which resolves via a different endpoint (POST /api/sp/episode/link).
 /// Returns null when the URL isn't a carateen watch link.
-({String showId, String episodeId})? parseCarateenPlayUrl(String playUrl) {
+({String showId, String episodeId, bool isSp})? parseCarateenPlayUrl(
+    String playUrl) {
   final u = Uri.tryParse(playUrl);
   if (u == null) return null;
   final segs = u.pathSegments.where((s) => s.isNotEmpty).toList();
   final i = segs.indexOf('watch');
-  if (i >= 0 && segs.length >= i + 3) {
-    return (showId: segs[i + 1], episodeId: segs[i + 2]);
+  if (i < 0) return null;
+  // sp form: watch / sp / <show> / <episode>
+  if (segs.length >= i + 4 && segs[i + 1] == 'sp') {
+    return (showId: segs[i + 2], episodeId: segs[i + 3], isSp: true);
+  }
+  // tg form: watch / <show> / <episode>
+  if (segs.length >= i + 3) {
+    return (showId: segs[i + 1], episodeId: segs[i + 2], isSp: false);
   }
   return null;
 }
@@ -164,24 +173,52 @@ Future<List<CarateenStream>> resolveCarateen(String playUrl,
   final own = client == null;
   final c = client ?? http.Client();
   try {
-    final uri = Uri.parse(
-        '$_kBase/api/episode?episodeId=${ids.episodeId}&showId=${ids.showId}');
-    final resp = await c.get(uri, headers: {
-      'User-Agent': _kUserAgent,
-      'X-Cartoony-Client': 'web-frontend-v1',
-      'Accept': 'application/json',
-      'Referer': '$_kBase/',
-    });
-    if (resp.statusCode != 200) {
-      throw CarateenResolveException('HTTP ${resp.statusCode} for /api/episode');
-    }
-    final data = decryptCarateen(jsonDecode(utf8.decode(resp.bodyBytes)));
-    if (data is! Map) {
-      throw const CarateenResolveException('unexpected /api/episode payload');
-    }
-    final streamUrl = data['streamUrl'];
-    if (streamUrl is! String || streamUrl.isEmpty) {
-      throw const CarateenResolveException('no streamUrl in /api/episode');
+    final String streamUrl;
+    if (ids.isSp) {
+      // SpaceToon-Go: POST the episodeId, decrypt, read `link` (a master .m3u8).
+      final resp = await c.post(
+        Uri.parse('$_kBase/api/sp/episode/link'),
+        headers: const {
+          'User-Agent': _kUserAgent,
+          'X-Cartoony-Client': 'web-frontend-v1',
+          'Accept': 'application/json',
+          'Content-Type': 'application/json',
+          'Referer': '$_kBase/',
+        },
+        body: jsonEncode({'episodeId': ids.episodeId}),
+      );
+      if (resp.statusCode != 200) {
+        throw CarateenResolveException(
+            'HTTP ${resp.statusCode} for /api/sp/episode/link');
+      }
+      final data = decryptCarateen(jsonDecode(utf8.decode(resp.bodyBytes)));
+      final link = data is Map ? data['link'] : null;
+      if (link is! String || link.isEmpty) {
+        throw const CarateenResolveException('no link in /api/sp/episode/link');
+      }
+      streamUrl = link;
+    } else {
+      final uri = Uri.parse(
+          '$_kBase/api/episode?episodeId=${ids.episodeId}&showId=${ids.showId}');
+      final resp = await c.get(uri, headers: const {
+        'User-Agent': _kUserAgent,
+        'X-Cartoony-Client': 'web-frontend-v1',
+        'Accept': 'application/json',
+        'Referer': '$_kBase/',
+      });
+      if (resp.statusCode != 200) {
+        throw CarateenResolveException(
+            'HTTP ${resp.statusCode} for /api/episode');
+      }
+      final data = decryptCarateen(jsonDecode(utf8.decode(resp.bodyBytes)));
+      if (data is! Map) {
+        throw const CarateenResolveException('unexpected /api/episode payload');
+      }
+      final s = data['streamUrl'];
+      if (s is! String || s.isEmpty) {
+        throw const CarateenResolveException('no streamUrl in /api/episode');
+      }
+      streamUrl = s;
     }
     // Expand the master playlist into one stream per resolution variant.
     // libmpv can't switch HLS variants mid-play (and `hls-bitrate=max` pins
