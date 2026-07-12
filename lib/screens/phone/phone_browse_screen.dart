@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import '../../models/catalog_source.dart';
+import '../../models/library_mode.dart';
 import '../../models/content_item.dart';
 import '../../services/fame_ranking.dart';
 import '../../state/app_state.dart';
@@ -22,16 +22,18 @@ class PhoneBrowseScreen extends ConsumerStatefulWidget {
 class _PhoneBrowseScreenState extends ConsumerState<PhoneBrowseScreen> {
   String _kind = 'tv'; // 'tv' | 'movies'
   String? _genre;
-  CatalogSource? _source; // null = all sources
+  bool _wcoUniverse = false; // Everything mode: false = Arabic, true = WCOFlix
 
   @override
   Widget build(BuildContext context) {
     ref.watch(catalogRevProvider);
     final catalog = ref.watch(catalogProvider);
     final t = ref.watch(stringsProvider);
-    // A source filter always browses the LOCAL merged library — even in
-    // Everything mode, whose WCOFlix grid has no per-source identity.
-    final wco = ref.watch(everythingModeProvider) && _source == null;
+    final mode = ref.watch(libraryModeProvider);
+    // WCOFlix-only mode → the WCOFlix grid; Everything → the universe toggle;
+    // every Arabic mode → the mode-scoped local grid (catalog.browse).
+    final wco =
+        mode.isWcoflixOnly || (mode == LibraryMode.everything && _wcoUniverse);
 
     AsyncValue<List<ContentItem>>? wcoAsync;
     List<ContentItem> typeItems;
@@ -41,12 +43,7 @@ class _PhoneBrowseScreenState extends ConsumerState<PhoneBrowseScreen> {
       wcoAsync = a;
       typeItems = a.asData?.value ?? const [];
     } else {
-      typeItems = _kind == 'movies' ? catalog.movies : catalog.shows;
-      final src = _source;
-      if (src != null) {
-        typeItems =
-            typeItems.where((i) => catalog.availableOn(i, src)).toList();
-      }
+      typeItems = catalog.browse(_kind);
     }
     // WCOFlix items carry no genres, so the genre rail is hidden in that mode.
     final genres = wco ? const <String>[] : genresIn(typeItems);
@@ -104,36 +101,35 @@ class _PhoneBrowseScreenState extends ConsumerState<PhoneBrowseScreen> {
               ]),
             ),
           ),
-          // Source filter rail — available in BOTH modes (in Everything mode a
-          // pick swaps the grid to the local library for that source).
-          SliverToBoxAdapter(
-            child: SizedBox(
-              height: 48,
-              child: ListView(
-                scrollDirection: Axis.horizontal,
-                padding: const EdgeInsets.symmetric(horizontal: 16),
-                children: [
-                  for (final (label, src) in [
-                    (t['filter_all_sources']!, null),
-                    (t['source_badge_at']!, CatalogSource.arabicToons),
-                    (t['source_badge_st']!, CatalogSource.stardima),
-                    (t['source_badge_ca']!, CatalogSource.carateen),
-                  ])
-                    Padding(
-                      padding: const EdgeInsets.only(left: 8),
-                      child: SelectableChip(
-                        label: label,
-                        selected: _source == src,
-                        fontSize: 14,
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 16, vertical: 8),
-                        onPressed: () => setState(() => _source = src),
+          // Everything mode: a universe toggle [Arabic | WCOFlix].
+          if (mode == LibraryMode.everything)
+            SliverToBoxAdapter(
+              child: SizedBox(
+                height: 48,
+                child: ListView(
+                  scrollDirection: Axis.horizontal,
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  children: [
+                    for (final (label, isWco) in [
+                      (t['universe_arabic']!, false),
+                      (t['mode_wcoflix']!, true),
+                    ])
+                      Padding(
+                        padding: const EdgeInsets.only(left: 8),
+                        child: SelectableChip(
+                          label: label,
+                          selected: _wcoUniverse == isWco,
+                          fontSize: 14,
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 16, vertical: 8),
+                          onPressed: () =>
+                              setState(() => _wcoUniverse = isWco),
+                        ),
                       ),
-                    ),
-                ],
+                  ],
+                ),
               ),
             ),
-          ),
           // Genre filter rail
           if (genres.isNotEmpty)
             SliverToBoxAdapter(
