@@ -72,14 +72,13 @@ class _DetailScreenState extends ConsumerState<DetailScreen> {
     return _simCache!;
   }
 
-  /// Default to whichever twin has stored progress (so Resume works), else the
-  /// Arabic Toons source.
+  /// Default to whichever twin has stored progress (so Resume works), preferring
+  /// the base source when it (also) has progress.
   CatalogSource _defaultSource(
-      StorageService storage, ContentItem base, ContentItem? alt) {
-    if (alt != null &&
-        storage.progressForItem(alt.id) > 0 &&
-        storage.progressForItem(base.id) <= 0) {
-      return alt.source;
+      StorageService storage, ContentItem base, List<ContentItem> alts) {
+    if (storage.progressForItem(base.id) > 0) return base.source;
+    for (final a in alts) {
+      if (storage.progressForItem(a.id) > 0) return a.source;
     }
     return base.source;
   }
@@ -164,15 +163,19 @@ class _DetailScreenState extends ConsumerState<DetailScreen> {
       langBase = base; // WCOFlix Movie
     }
 
-    // Arabic-side Arabic-Toons↔Stardima twin (never present for WCOFlix).
-    final alt = catalog.alternateFor(langBase);
+    // Arabic-side cross-source twins — Arabic Toons / Stardima / Carateen (never
+    // present for WCOFlix).
+    final alts = catalog.alternatesFor(langBase);
     // Resume-aware default source (computed once per mount).
-    _selectedSource ??= _defaultSource(storage, langBase, alt);
-    final item = (alt != null && _selectedSource == alt.source) ? alt : langBase;
+    _selectedSource ??= _defaultSource(storage, langBase, alts);
+    // The item for the currently-selected source.
+    final sourceItems = [langBase, ...alts];
+    final item = sourceItems.firstWhere((s) => s.source == _selectedSource,
+        orElse: () => langBase);
     final primary = catalog.primaryFor(langBase);
 
-    final inList = user.watchlistIds.contains(primary.id) ||
-        (alt != null && user.watchlistIds.contains(alt.id));
+    final inList = [primary, ...sourceItems]
+        .any((i) => user.watchlistIds.contains(i.id));
     final hasProgress = storage.progressForItem(item.id) > 0;
 
     // Smart resume: the episode the Play/Resume button jumps to (the in-progress
@@ -311,8 +314,11 @@ class _DetailScreenState extends ConsumerState<DetailScreen> {
                   _audioToggle(showOriginal, t),
                   const SizedBox(height: 28),
                 ],
-                if (alt != null) ...[
-                  _sourceToggle(item.source, langBase.source, alt.source, t),
+                if (alts.isNotEmpty) ...[
+                  _sourceToggle(
+                      item.source,
+                      [langBase.source, ...alts.map((a) => a.source)],
+                      t),
                   const SizedBox(height: 28),
                 ],
                 if (item is Show) _episodes(item, t),
@@ -482,16 +488,20 @@ class _DetailScreenState extends ConsumerState<DetailScreen> {
     ]);
   }
 
-  /// Arabic Toons / Stardima picker, shown only for titles that exist in both
-  /// sources. Switching swaps the seasons/episodes and Play target.
-  Widget _sourceToggle(CatalogSource selected, CatalogSource atSource,
-      CatalogSource stSource, Map<String, String> t) {
+  /// Arabic Toons / Stardima / Carateen picker, shown only for titles that exist
+  /// in more than one source. Switching swaps the seasons/episodes and Play
+  /// target to the chosen source.
+  Widget _sourceToggle(CatalogSource selected, List<CatalogSource> sources,
+      Map<String, String> t) {
+    String badge(CatalogSource src) => switch (src) {
+          CatalogSource.stardima => t['source_badge_st']!,
+          CatalogSource.carateen => t['source_badge_ca']!,
+          _ => t['source_badge_at']!,
+        };
     Widget chip(CatalogSource src) => Padding(
           padding: const EdgeInsets.only(right: 10),
           child: SelectableChip(
-            label: src == CatalogSource.stardima
-                ? t['source_badge_st']!
-                : t['source_badge_at']!,
+            label: badge(src),
             selected: src == selected,
             radius: 13,
             onPressed: () => setState(() {
@@ -500,6 +510,12 @@ class _DetailScreenState extends ConsumerState<DetailScreen> {
             }),
           ),
         );
+    // De-dupe while preserving order (a title can't have two of the same source).
+    final seen = <CatalogSource>{};
+    final ordered = [
+      for (final s in sources)
+        if (seen.add(s)) s
+    ];
     return Row(mainAxisSize: MainAxisSize.min, children: [
       Text(t['source_label']!,
           style: const TextStyle(
@@ -507,8 +523,7 @@ class _DetailScreenState extends ConsumerState<DetailScreen> {
               fontWeight: FontWeight.w800,
               color: AppColors.inkMute)),
       const SizedBox(width: 16),
-      chip(atSource),
-      chip(stSource),
+      for (final s in ordered) chip(s),
     ]);
   }
 

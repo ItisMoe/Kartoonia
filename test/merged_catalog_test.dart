@@ -13,32 +13,36 @@ void main() {
     expect(st, isNotEmpty);
   });
 
-  test('duplicated titles collapse to the Arabic Toons primary', () async {
+  test('duplicated titles collapse to the group primary', () async {
     final svc = await CatalogService.loadMerged();
-    // Any item in `all` that has a twin must be the Arabic Toons primary.
+    // With three normal-mode sources (Arabic Toons / Stardima / Carateen) the
+    // collapsed list exposes each group's highest-priority member. Every item in
+    // `all` that has a twin must therefore BE that primary, and every twin must
+    // resolve back to it and come from a different source.
     for (final i in svc.all) {
-      final alt = svc.alternateFor(i);
-      if (alt != null) {
-        expect(i.source, CatalogSource.arabicToons,
-            reason: 'collapsed list should expose the Arabic Toons primary');
-        expect(alt.source, CatalogSource.stardima);
-        expect(svc.primaryFor(alt).id, i.id,
-            reason: 'primaryFor(stardima twin) resolves to the AT primary');
+      final alts = svc.alternatesFor(i);
+      if (alts.isNotEmpty) {
+        expect(svc.primaryFor(i).id, i.id,
+            reason: 'collapsed list should expose the group primary');
+        for (final a in alts) {
+          expect(a.source, isNot(i.source));
+          expect(svc.primaryFor(a).id, i.id,
+              reason: 'primaryFor(twin) resolves to the primary');
+        }
       }
     }
   });
 
-  test('alternateFor is symmetric and null for single-source titles', () async {
+  test('alternates are symmetric', () async {
     final svc = await CatalogService.loadMerged();
     var pairs = 0;
     for (final i in svc.all) {
-      final alt = svc.alternateFor(i);
-      if (alt != null) {
-        pairs++;
-        // Round-trip: the alternate's alternate is the original.
-        expect(svc.alternateFor(alt)?.id, i.id);
+      final alts = svc.alternatesFor(i);
+      if (alts.isNotEmpty) pairs++;
+      for (final a in alts) {
+        // Round-trip: each twin lists the original among ITS twins.
+        expect(svc.alternatesFor(a).map((x) => x.id), contains(i.id));
       }
-      if (i.tmdbId == null) expect(alt, isNull);
     }
     expect(pairs, greaterThan(0), reason: 'fixtures contain shared titles');
   });
@@ -51,10 +55,13 @@ void main() {
     expect(svc.getById(alt.id), isNotNull);
   });
 
-  test('isDuplicated is false for items without a tmdbId', () async {
+  test('isDuplicated matches the presence of alternates', () async {
     final svc = await CatalogService.loadMerged();
+    // Duplication is now cross-source (AT/ST by tmdbId, Carateen by title), so
+    // it is defined purely by whether the item has any alternates — a tmdb-less
+    // carateen twin counts.
     for (final i in svc.all) {
-      if (i.tmdbId == null) expect(svc.isDuplicated(i), isFalse);
+      expect(svc.isDuplicated(i), svc.alternatesFor(i).isNotEmpty);
     }
   });
 

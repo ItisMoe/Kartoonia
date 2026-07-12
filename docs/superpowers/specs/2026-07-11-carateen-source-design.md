@@ -1,6 +1,11 @@
 # Carateen source — design & feasibility findings (2026-07-11)
 
-Status: **feasibility proven, one hard blocker remaining (AES key).** Not yet implemented.
+Status: **IMPLEMENTED (2026-07-12, v3.1.0).** The AES key was recovered — it's
+CryptoJS **AES-256-CBC / Pkcs7**, key = the literal UTF-8 string
+`7annaba3l_loves_crypto_safe_key!`, IV = hex of the `iv` field. Pure-HTTP
+resolve verified end-to-end (no browser). The whole feature below is built,
+unit-tested, and the resolver is live-verified; the one thing left is on-device
+playback verification. See the `carateen-source` memory for the as-built notes.
 
 ## Goal (from user)
 Add `carateen.tv` as a **normal-mode** playable source (parallel to Stardima), with:

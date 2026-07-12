@@ -7,7 +7,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:media_kit/media_kit.dart';
 import 'package:media_kit_video/media_kit_video.dart';
 
-import '../models/content_item.dart';
 import '../navigation.dart';
 import '../screens/phone/phone_nav.dart';
 import '../services/player_service.dart';
@@ -65,7 +64,7 @@ class _ShaaratFeedViewState extends ConsumerState<ShaaratFeedView>
     with WidgetsBindingObserver, RouteAware {
   final PageController _pc = PageController();
   late ShaaratResolver _resolver;
-  List<Show> _queue = const [];
+  List<ShaaratItem> _queue = const [];
 
   /// Warmed stream-URL resolutions, keyed by YouTube videoId. Filled by
   /// [_prefetch] for the next reels (and by [_activate] for the current one) so a
@@ -116,9 +115,14 @@ class _ShaaratFeedViewState extends ConsumerState<ShaaratFeedView>
   }
 
   void _buildQueue() {
-    final shows = ref.read(catalogProvider).shows;
+    final catalog = ref.read(catalogProvider);
     final boosts = ref.read(shaaratBoostsProvider);
-    _queue = shaaratQueue(shows, boosts);
+    _queue = shaaratItemQueue(
+      catalog.shows,
+      boosts,
+      catalog.music,
+      (t) => catalog.showForThemeTitle(t.title),
+    );
   }
 
   @override
@@ -216,10 +220,12 @@ class _ShaaratFeedViewState extends ConsumerState<ShaaratFeedView>
     next < _queue.length ? _goTo(next) : _restart();
   }
 
-  /// Award [points] to the active show, but only once per signal per reel-view.
+  /// Award [points] to the active reel's show, once per signal per reel-view.
+  /// Music entries with no linked show don't accrue boosts (nothing to rank).
   void _award(double points) {
     if (_queue.isEmpty) return;
-    final show = _queue[_active];
+    final show = _queue[_active].show;
+    if (show == null) return;
     final key = '${show.id}:$points';
     if (!_awarded.add(key)) return;
     ref.read(storageProvider).addShaaratBoost(show.id, points);
@@ -262,8 +268,28 @@ class _ShaaratFeedViewState extends ConsumerState<ShaaratFeedView>
     if (mounted) setState(() => _loading = true);
     PlayerService.instance.ensureCreated();
     await PlayerService.instance.stop();
-    final show = _queue[index];
+    final entry = _queue[index];
 
+    // Carateen music: play the mp3 directly (no YouTube resolve). The CRT shows
+    // the track cover (audio-only framing) regardless of the video/audio pref.
+    if (entry.isMusic) {
+      try {
+        await PlayerService.instance
+            .open(entry.audioUrl!, headers: entry.audioHeaders ?? const {});
+      } catch (_) {
+        if (token == _loadToken && mounted) _skip(index);
+        return;
+      }
+      if (token != _loadToken || !mounted) return;
+      _player.setPlaylistMode(PlaylistMode.none);
+      _skips = 0;
+      setState(() => _loading = false);
+      _armDwell();
+      _prefetch(index);
+      return;
+    }
+
+    final show = entry.show!;
     final id = await _resolver.videoIdFor(show);
     if (token != _loadToken || !mounted) return;
     if (id == null) return _skip(index);
@@ -351,7 +377,9 @@ class _ShaaratFeedViewState extends ConsumerState<ShaaratFeedView>
   /// the resolved URLs expire. Fire-and-forget; results are cached.
   void _prefetch(int index) {
     for (var i = index + 1; i <= index + 2 && i < _queue.length; i++) {
-      _resolver.videoIdFor(_queue[i]).then((id) {
+      final show = _queue[i].show;
+      if (show == null || _queue[i].isMusic) continue; // mp3 needs no prefetch
+      _resolver.videoIdFor(show).then((id) {
         if (id != null && mounted) _playbackFor(id);
       });
     }
@@ -392,7 +420,9 @@ class _ShaaratFeedViewState extends ConsumerState<ShaaratFeedView>
     await PlayerService.instance.stop();
   }
 
-  void _enterShow(Show show) {
+  void _enterShow(ShaaratItem entry) {
+    final show = entry.show;
+    if (show == null) return; // unlinked music track — nothing to open
     _award(_kEnterBoost); // strongest intent signal
     widget.isTv
         ? AppNav.detail(context, show)
@@ -440,13 +470,17 @@ class _ShaaratFeedViewState extends ConsumerState<ShaaratFeedView>
       );
     }
 
-    final audioMode = ref.watch(settingsProvider).prefs['shaarat'] == 'audio';
+    final active = _queue[_active];
+    // Music tracks are audio-only by nature (mp3 → show the cover on the CRT);
+    // show themes honour the video/audio pref.
+    final audioMode =
+        active.isMusic || ref.watch(settingsProvider).prefs['shaarat'] == 'audio';
 
     // What plays inside the CRT: the ONE shared video surface (mounted once and
     // reused across pages — re-creating a `Video` per page detaches the shared
-    // decoder's texture), or the active show's poster in audio mode.
+    // decoder's texture), or the active entry's poster/cover in audio mode.
     final Widget crtChild = audioMode
-        ? Image.network(_queue[_active].posterUrl,
+        ? Image.network(active.posterUrl,
             fit: BoxFit.cover,
             errorBuilder: (_, _, _) => const ColoredBox(color: AppColors.bg2))
         : Video(
@@ -484,11 +518,11 @@ class _ShaaratFeedViewState extends ConsumerState<ShaaratFeedView>
           ),
         ),
         _Footer(
-          show: _queue[_active],
+          item: active,
           t: t,
           statusLabel: _loading ? t['shaarat_loading']! : t['shaarat_playing']!,
           enterFocus: _enterFocus,
-          onEnter: () => _enterShow(_queue[_active]),
+          onEnter: () => _enterShow(active),
         ),
         if (widget.isTv)
           Positioned(
@@ -544,7 +578,7 @@ class _ShaaratFeedViewState extends ConsumerState<ShaaratFeedView>
 /// title, and a small "Enter show" button. No like control — engagement is
 /// implicit (see the boost signals on [_ShaaratFeedViewState]).
 class _Footer extends StatelessWidget {
-  final Show show;
+  final ShaaratItem item;
   final Map<String, String> t;
 
   /// "Loading…" / "Playing" — small text so the user can tell, especially in
@@ -553,7 +587,7 @@ class _Footer extends StatelessWidget {
   final FocusNode enterFocus;
   final VoidCallback onEnter;
   const _Footer({
-    required this.show,
+    required this.item,
     required this.t,
     required this.statusLabel,
     required this.enterFocus,
@@ -598,7 +632,7 @@ class _Footer extends StatelessWidget {
                           size: 13, color: AppColors.primary2),
                       const SizedBox(width: 5),
                       Flexible(
-                        child: Text('${show.title} — ${t['shaarat_now']}',
+                        child: Text('${item.title} — ${t['shaarat_now']}',
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
                             style: const TextStyle(
@@ -617,25 +651,40 @@ class _Footer extends StatelessWidget {
                         color: Colors.white.withValues(alpha: 0.6))),
               ]),
               const SizedBox(height: 10),
-              Text(show.title,
+              Text(item.title,
                   maxLines: 2,
                   overflow: TextOverflow.ellipsis,
                   style: const TextStyle(
                       fontSize: 22,
                       fontWeight: FontWeight.w900,
                       color: Colors.white)),
+              if (item.subtitle.isNotEmpty) ...[
+                const SizedBox(height: 4),
+                Text(item.subtitle,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                        fontSize: 15,
+                        fontWeight: FontWeight.w700,
+                        color: Colors.white.withValues(alpha: 0.72))),
+              ],
               const SizedBox(height: 10),
               // Compact "Enter show" chip that belongs to the room: frosted dark
               // glass with a warm amber edge whose soft bloom reads like the
               // CRT's light spilling into the scene. Focus (TV) blooms it
               // brighter and flips it to a clear white target.
+              // "Enter show" — greyed & inert for a music track with no linked
+              // catalog show (still focusable so D-pad nav isn't trapped).
               Align(
                 alignment: AlignmentDirectional.centerStart,
                 child: Focusable(
                   focusNode: enterFocus,
-                  onPressed: onEnter,
-                  builder: (context, focused) =>
-                      _EnterChip(focused: focused, label: t['shaarat_enter']!),
+                  onPressed: item.canEnter ? onEnter : () {},
+                  builder: (context, focused) => _EnterChip(
+                    focused: focused && item.canEnter,
+                    enabled: item.canEnter,
+                    label: t['shaarat_enter']!,
+                  ),
                 ),
               ),
             ],
@@ -651,11 +700,45 @@ class _Footer extends StatelessWidget {
 /// room rather than a flat button on top. [focused] (TV) brightens it.
 class _EnterChip extends StatelessWidget {
   final bool focused;
+  final bool enabled;
   final String label;
-  const _EnterChip({required this.focused, required this.label});
+  const _EnterChip(
+      {required this.focused, required this.label, this.enabled = true});
 
   @override
   Widget build(BuildContext context) {
+    if (!enabled) {
+      // Inert, dimmed variant for an unlinked music track: no amber glow, muted
+      // text — reads as "no show to enter" without removing the row.
+      return Opacity(
+        opacity: 0.4,
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(15),
+          child: Container(
+            height: 30,
+            padding: const EdgeInsets.symmetric(horizontal: 14),
+            alignment: Alignment.center,
+            decoration: BoxDecoration(
+              color: Colors.black.withValues(alpha: 0.32),
+              borderRadius: BorderRadius.circular(15),
+              border: Border.all(color: Colors.white24, width: 1.2),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Icon(Icons.play_arrow, size: 15, color: Colors.white54),
+                const SizedBox(width: 5),
+                Text(label,
+                    style: const TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w800,
+                        color: Colors.white54)),
+              ],
+            ),
+          ),
+        ),
+      );
+    }
     return ClipRRect(
       borderRadius: BorderRadius.circular(15),
       child: BackdropFilter(

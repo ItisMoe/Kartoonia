@@ -1,3 +1,4 @@
+import '../models/carateen_music.dart';
 import '../models/catalog_source.dart';
 import '../models/content_item.dart';
 import 'catalog_loader.dart';
@@ -19,9 +20,24 @@ class CatalogService {
   List<ContentItem> all = const [];
   Map<String, ContentItem> _byId = const {};
 
-  /// tmdbId -> {source: item} for ids present (exactly once) in BOTH sources.
-  /// Drives the detail-screen source toggle and the collapsed library.
-  Map<int, Map<CatalogSource, ContentItem>> _groups = const {};
+  /// carateen.tv `/music` theme songs (the nostalgia album). Surfaced in the
+  /// شارات (theme-songs) feed alongside the per-show YouTube themes.
+  List<CarateenTrack> music = const [];
+
+  /// item.id -> its cross-source twins (all OTHER sources). The single source of
+  /// truth for the detail-screen source picker. Built from the Arabic-Toons↔
+  /// Stardima tmdb pairs PLUS carateen title-matches, so a title can now have up
+  /// to three playable sources.
+  Map<String, List<ContentItem>> _altsById = const {};
+
+  /// Source preference when collapsing a group to one "primary" card: Arabic
+  /// Toons first (richest metadata), then Stardima, then carateen.
+  static const List<CatalogSource> _sourcePriority = [
+    CatalogSource.arabicToons,
+    CatalogSource.stardima,
+    CatalogSource.carateen,
+    CatalogSource.wcoflix,
+  ];
 
   // Memoized famous pools + genre rows. Each [famousPool]/[genreRowsFor] pass
   // filters and sorts the WHOLE catalog (~3k items); Home alone asks for these
@@ -42,6 +58,7 @@ class CatalogService {
     _featuredPool = null;
     _genreRows = null;
     _searchIndex = null;
+    _showByTitleKey = null;
   }
 
   CatalogService._(this.source);
@@ -112,7 +129,6 @@ class CatalogService {
         };
       }
     }
-    svc._groups = groups;
 
     // Collapsed library: keep every Arabic Toons item; drop the Stardima twin
     // of each clean pair (it stays reachable via alternateFor/_byId).
@@ -131,32 +147,89 @@ class CatalogService {
     for (final i in [...atShows, ...atMovies, ...stShows, ...stMovies]) {
       svc._byId.putIfAbsent(i.id, () => i);
     }
+
+    // Seed cross-source twins from the Arabic-Toons↔Stardima pairs.
+    final alts = <String, List<ContentItem>>{};
+    void link(Iterable<ContentItem> members) {
+      final m = members.toList();
+      for (final x in m) {
+        (alts[x.id] ??= <ContentItem>[])
+            .addAll(m.where((o) => o.id != x.id && !alts[x.id]!.contains(o)));
+      }
+    }
+
+    for (final g in groups.values) {
+      link(g.values);
+    }
+
+    // Carateen: a third normal-mode source. Title-match each carateen item into
+    // the merged Arabic library — a match becomes a "watch via Carateen"
+    // alternate on that title; an un-matched carateen title ENRICHES the library
+    // as a new card. (Carateen has no TMDB ids, so we match on normalized title.)
+    final car = await loadCatalogModels(CatalogSource.carateen);
+    final byTitle = <String, ContentItem>{};
+    for (final i in svc.all) {
+      final k = _titleKey(i.title);
+      if (k.isNotEmpty) byTitle.putIfAbsent(k, () => i);
+    }
+    final carEnrich = <ContentItem>[];
+    for (final ci in [...car.shows, ...car.movies]) {
+      svc._byId.putIfAbsent(ci.id, () => ci);
+      final k = _titleKey(ci.title);
+      final match = k.isEmpty ? null : byTitle[k];
+      if (match != null && match.source != CatalogSource.carateen) {
+        link({match, ...?alts[match.id], ci});
+      } else {
+        carEnrich.add(ci);
+      }
+    }
+    svc.shows = [...svc.shows, ...carEnrich.whereType<Show>()];
+    svc.movies = [...svc.movies, ...carEnrich.whereType<Movie>()];
+    svc.all = [...svc.shows, ...svc.movies];
+    svc._altsById = alts;
+    svc.music = await loadCarateenMusic();
+
     svc._invalidateDerived();
   }
 
-  /// True when this title exists in BOTH sources (so the detail screen offers a
-  /// source toggle).
-  bool isDuplicated(ContentItem item) => alternateFor(item) != null;
-
-  /// The other-source twin of [item] (Arabic Toons <-> Stardima), or null when
-  /// the title exists in only one source.
-  ContentItem? alternateFor(ContentItem item) {
-    final id = item.tmdbId;
-    if (id == null) return null;
-    final g = _groups[id];
-    if (g == null) return null;
-    final other = item.source == CatalogSource.arabicToons
-        ? CatalogSource.stardima
-        : CatalogSource.arabicToons;
-    return g[other];
+  /// Normalized title used to link carateen titles to their Arabic-Toons/
+  /// Stardima twins. Folds Arabic letter variants + strips diacritics/spacing so
+  /// e.g. "المحقق كونان" matches regardless of source formatting. Empty (skip)
+  /// for very short titles to avoid accidental collisions.
+  static String _titleKey(String title) {
+    final k = normalizeArSearch(title.toLowerCase().trim())
+        .replaceAll(RegExp(r'\s+'), ' ')
+        .trim();
+    return k.length >= 3 ? k : '';
   }
 
-  /// The Arabic Toons primary of [item]'s group, or [item] when it is not part
-  /// of a cross-source group.
+  /// True when this title exists in more than one source (so the detail screen
+  /// offers a source picker).
+  bool isDuplicated(ContentItem item) => alternatesFor(item).isNotEmpty;
+
+  /// All cross-source twins of [item] (any of Arabic Toons / Stardima /
+  /// Carateen), or an empty list when the title exists in only one source.
+  List<ContentItem> alternatesFor(ContentItem item) =>
+      _altsById[item.id] ?? const [];
+
+  /// The first cross-source twin of [item], or null. Kept for callers that only
+  /// need "is there another source" (e.g. the phone detail screen).
+  ContentItem? alternateFor(ContentItem item) {
+    final a = alternatesFor(item);
+    return a.isEmpty ? null : a.first;
+  }
+
+  /// The highest-priority member of [item]'s cross-source group (Arabic Toons →
+  /// Stardima → Carateen), or [item] when it is not part of a group. Used for
+  /// the single watchlist/progress identity of a collapsed title.
   ContentItem primaryFor(ContentItem item) {
-    final id = item.tmdbId;
-    if (id == null) return item;
-    return _groups[id]?[CatalogSource.arabicToons] ?? item;
+    final alts = _altsById[item.id];
+    if (alts == null || alts.isEmpty) return item;
+    final group = [item, ...alts];
+    group.sort((a, b) => _sourcePriority
+        .indexOf(a.source)
+        .compareTo(_sourcePriority.indexOf(b.source)));
+    return group.first;
   }
 
   /// Swap the active catalog in place (re-fetch asset, re-parse, re-index) so
@@ -191,6 +264,34 @@ class CatalogService {
   }
 
   ContentItem? getById(String id) => _byId[id];
+
+  // Lazy normalized-title -> Show index for linking theme songs to a show.
+  Map<String, Show>? _showByTitleKey;
+
+  /// Best-effort match of a theme-song [trackTitle] to a catalog [Show]. Theme
+  /// titles are often `"<show name> - <lyric>"`, so after an exact normalized
+  /// match we fall back to the longest show title that is contained in the track
+  /// title. Returns null when nothing plausible matches (the شارات "Enter show"
+  /// action is then greyed out).
+  Show? showForThemeTitle(String trackTitle) {
+    final index = _showByTitleKey ??= {
+      for (final s in shows)
+        if (_titleKey(s.title).isNotEmpty) _titleKey(s.title): s
+    };
+    final key = _titleKey(trackTitle);
+    if (key.isEmpty) return null;
+    final exact = index[key];
+    if (exact != null) return exact;
+    Show? best;
+    var bestLen = 3;
+    index.forEach((k, s) {
+      if (k.length > bestLen && key.contains(k)) {
+        best = s;
+        bestLen = k.length;
+      }
+    });
+    return best;
+  }
 
   // ---- Fame ranking (internal ordering only; vote_average is never shown) ----
   // All memoized (see [_invalidateDerived]) — these sort the whole catalog.

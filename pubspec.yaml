@@ -2,7 +2,7 @@ name: kartoonia
 description: "Kartoonia - Arabic cartoons for Android TV"
 publish_to: 'none'
 
-version: 3.0.2+27
+version: 3.1.0+28
 
 environment:
   sdk: ^3.12.1
@@ -30,6 +30,10 @@ dependencies:
   # Networking + images
   http: ^1.2.2
   cached_network_image: ^3.4.1
+
+  # AES-256-CBC decrypt of carateen.tv's encrypted API responses (the per-play
+  # /api/episode source is returned as {iv, encryptedData}).
+  encrypt: ^5.0.3
 
   # Remote-catalog cache location (app support dir)
   path_provider: ^2.1.5
@@ -65,6 +69,8 @@ flutter:
   assets:
     - assets/arabictoons_catalog.json
     - assets/stardima_catalog.json
+    - assets/carateen_catalog.json
+    - assets/carateen_music.json
     - assets/wcoflix_snapshot.json
     - assets/wcoflix_catalog.json
     # Room art with the CRT screen punched out (transparent hole): the theme

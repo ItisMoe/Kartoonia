@@ -1,4 +1,5 @@
 import '../models/catalog_source.dart';
+import 'carateen_resolver.dart';
 import 'stardima_resolver.dart';
 import 'token_service.dart';
 import 'wcoflix/wcoflix_resolver.dart';
@@ -45,6 +46,19 @@ Future<List<PlayableServer>> resolvePlayback(
       ];
     case CatalogSource.stardima:
       final streams = await resolveStardima(pageOrPlayUrl);
+      return [
+        for (var i = 0; i < streams.length; i++)
+          PlayableServer(
+            number: i + 1,
+            label: streams[i].server,
+            url: streams[i].streamUrl,
+            headers: streams[i].headers,
+          ),
+      ];
+    case CatalogSource.carateen:
+      // Fetch `/api/episode`, AES-decrypt, and hand the master `.m3u8` to the
+      // player. libmpv adapts across the in-stream 360/480/720/1080p variants.
+      final streams = await resolveCarateen(pageOrPlayUrl);
       return [
         for (var i = 0; i < streams.length; i++)
           PlayableServer(

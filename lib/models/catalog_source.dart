@@ -16,6 +16,14 @@ enum CatalogSource {
     assetPath: 'assets/stardima_catalog.json',
   ),
 
+  /// carateen.tv — Arabic cartoons + Spacetoon Go. Like Stardima, items carry a
+  /// play_url (`.../watch/<show>/<episode>`) that the carateen resolver turns
+  /// into an HLS `.m3u8` right before playback (fetch `/api/episode`, AES-decrypt).
+  carateen(
+    id: 'carateen',
+    assetPath: 'assets/carateen_catalog.json',
+  ),
+
   /// WCOFlix (wcoflix.tv) — the "Everything" universe. Live-scraped, so there is
   /// no bundled asset; items only carry a page URL that the wcoflix resolver
   /// turns into a stream right before playback.

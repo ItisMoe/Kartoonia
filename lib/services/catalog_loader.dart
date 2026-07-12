@@ -6,6 +6,8 @@ import 'dart:typed_data';
 import 'package:flutter/services.dart' show rootBundle;
 import 'package:path_provider/path_provider.dart';
 
+import '../models/carateen_adapter.dart';
+import '../models/carateen_music.dart';
 import '../models/catalog_source.dart';
 import '../models/content_item.dart';
 import '../models/stardima_adapter.dart';
@@ -50,6 +52,18 @@ Future<ParsedCatalog> loadCatalogModels(CatalogSource src) async {
   return Isolate.run(() => _parseCatalog(src, cachePath, assetBytes));
 }
 
+/// Load the bundled carateen theme-song album (`carateen_music.json`). Tiny
+/// (~30 KB), so it decodes inline — no isolate needed. Returns an empty list if
+/// the asset is missing (older builds) so callers can no-op gracefully.
+Future<List<CarateenTrack>> loadCarateenMusic() async {
+  try {
+    final raw = await rootBundle.loadString('assets/carateen_music.json');
+    return parseCarateenMusic(json.decode(raw) as Map<String, dynamic>);
+  } catch (_) {
+    return const [];
+  }
+}
+
 ParsedCatalog _parseCatalog(
     CatalogSource src, String? cachePath, Uint8List assetBytes) {
   final json = _decodeCacheOrAsset(cachePath, assetBytes);
@@ -64,6 +78,9 @@ ParsedCatalog _parseCatalog(
       return ParsedCatalog(shows, movies);
     case CatalogSource.stardima:
       final (shows, movies) = StardimaAdapter.parse(json);
+      return ParsedCatalog(shows, movies);
+    case CatalogSource.carateen:
+      final (shows, movies) = CarateenAdapter.parse(json);
       return ParsedCatalog(shows, movies);
     case CatalogSource.wcoflix:
       return const ParsedCatalog([], []); // live-scraped, no bundled asset
