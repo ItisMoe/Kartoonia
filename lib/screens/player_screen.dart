@@ -109,10 +109,13 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
   bool _controlsShown = true;
   Timer? _hideTimer;
   Timer? _saveTimer;
-  // End-of-episode "next up" card + its autoplay countdown.
+  // "Up next" card + its autoplay countdown. The countdown starts a few seconds
+  // BEFORE the episode ends (so it auto-advances right as playback finishes).
+  static const int _autoNextLeadSeconds = 5;
   bool _showNextCard = false;
-  int _nextCountdown = 8;
+  int _nextCountdown = _autoNextLeadSeconds;
   Timer? _nextTimer;
+  bool _advancing = false; // guards against a double episode-advance
   // Pending confirmation that a mid-playback error is a real stall (see
   // [_onPlaybackError]); null/inactive when no error is being confirmed.
   Timer? _errorConfirmTimer;
@@ -193,7 +196,9 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
     final p = _player;
     _subs.addAll([
       p.stream.position.listen((pos) {
-        if (mounted) setState(() => _position = pos);
+        if (!mounted) return;
+        setState(() => _position = pos);
+        _maybeStartAutoNext();
       }),
       p.stream.duration.listen((d) {
         if (!mounted) return;
@@ -250,6 +255,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
       _error = false;
       _restored = false;
       _ended = false;
+      _advancing = false;
       _server = server;
     });
 
@@ -461,6 +467,34 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
     if (_hasNext) _goEpisode(widget.args.episodes![_epIndex + 1]);
   }
 
+  /// While playing, pop the "Up next" card + start its countdown a few seconds
+  /// BEFORE the episode ends, so autoplay advances right as playback finishes.
+  void _maybeStartAutoNext() {
+    if (_showNextCard || _ended || _advancing || !_hasNext) return;
+    if (_duration <= Duration.zero || _position <= Duration.zero) return;
+    if (ref.read(settingsProvider).prefs['autoplay'] == 'off') return;
+    if (_duration - _position >
+        const Duration(seconds: _autoNextLeadSeconds)) {
+      return;
+    }
+    _startNextCard(countdown: true);
+  }
+
+  void _startNextCard({required bool countdown}) {
+    _nextTimer?.cancel();
+    setState(() {
+      _showNextCard = true;
+      _nextCountdown = _autoNextLeadSeconds;
+      _controlsShown = true;
+    });
+    if (!countdown) return;
+    _nextTimer = Timer.periodic(const Duration(seconds: 1), (_) {
+      if (!mounted) return;
+      setState(() => _nextCountdown--);
+      if (_nextCountdown <= 0) _playNextFromCard();
+    });
+  }
+
   void _onEnd() {
     _saveProgressComplete();
     _syncWatchNext(completed: true);
@@ -468,25 +502,20 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
       Navigator.maybePop(context);
       return;
     }
-    // Show a "next up" card. With autoplay on it counts down and advances; with
-    // autoplay off it waits for the user to pick Play next or Cancel.
     final autoplay = ref.read(settingsProvider).prefs['autoplay'] != 'off';
-    setState(() {
-      _showNextCard = true;
-      _nextCountdown = 8;
-      _controlsShown = true;
-    });
     if (autoplay) {
-      _nextTimer?.cancel();
-      _nextTimer = Timer.periodic(const Duration(seconds: 1), (_) {
-        if (!mounted) return;
-        setState(() => _nextCountdown--);
-        if (_nextCountdown <= 0) _playNextFromCard();
-      });
+      // The pre-end countdown normally advances us; if it never showed (very
+      // short episode / seek to the end), advance now.
+      _playNextFromCard();
+    } else {
+      // Manual: show the card and wait for the user to pick Play next / Cancel.
+      _startNextCard(countdown: false);
     }
   }
 
   void _playNextFromCard() {
+    if (_advancing) return; // countdown-hit and episode-end can race
+    _advancing = true;
     _nextTimer?.cancel();
     setState(() => _showNextCard = false);
     _next();
