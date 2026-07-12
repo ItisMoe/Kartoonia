@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../state/app_state.dart';
+import '../../models/library_mode.dart';
 import '../../state/wcoflix_providers.dart';
 import '../../theme/theme.dart';
 import '../../widgets/update_check_row.dart';
@@ -42,13 +43,25 @@ class PhoneSettingsScreen extends ConsumerWidget {
             ]),
           ),
           _Group(
-            label: t['everything_mode']!,
-            hint: t['everything_desc']!,
-            child: _OnOff(
-                on: ref.watch(everythingModeProvider),
-                t: t,
-                onChanged: (v) =>
-                    ref.read(everythingModeProvider.notifier).set(v)),
+            label: t['mode_title']!,
+            hint: t['mode_desc']!,
+            child: Wrap(
+              spacing: 12,
+              runSpacing: 12,
+              children: [
+                for (final m in LibraryMode.values)
+                  _Opt(
+                      {
+                        LibraryMode.dubbed: t['mode_dubbed']!,
+                        LibraryMode.carateen: t['mode_carateen']!,
+                        LibraryMode.arabic: t['mode_arabic']!,
+                        LibraryMode.wcoflix: t['mode_wcoflix']!,
+                        LibraryMode.everything: t['mode_everything']!,
+                      }[m]!,
+                      ref.watch(libraryModeProvider) == m,
+                      () => ref.read(libraryModeProvider.notifier).set(m)),
+              ],
+            ),
           ),
           _Group(
             label: t['set_autoplay']!,

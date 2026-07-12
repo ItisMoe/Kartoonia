@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../models/catalog_source.dart';
+import '../models/library_mode.dart';
 import '../navigation.dart';
 import '../services/wcoflix/wcoflix_config.dart';
 import '../services/youtube_service.dart';
@@ -127,37 +128,48 @@ class SettingsScreen extends ConsumerWidget {
                     autofocus: true),
                 opt('العربية', settings.lang == 'ar', () => sn.setLang('ar')),
               ]),
-              // Everything mode — reveal the full WCOFlix library.
-              Padding(
-                padding: const EdgeInsets.only(bottom: 40),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(t['everything_mode']!,
-                        style: const TextStyle(
-                            fontSize: 26,
-                            fontWeight: FontWeight.w800,
-                            color: AppColors.inkSoft)),
-                    const SizedBox(height: 6),
-                    Text(t['everything_desc']!,
-                        style: const TextStyle(
-                            fontSize: 20,
-                            fontWeight: FontWeight.w600,
-                            color: AppColors.inkMute)),
-                    const SizedBox(height: 16),
-                    Row(children: [
-                      opt(t['on']!, ref.watch(everythingModeProvider),
-                          () => ref
-                              .read(everythingModeProvider.notifier)
-                              .set(true)),
-                      opt(t['off']!, !ref.watch(everythingModeProvider),
-                          () => ref
-                              .read(everythingModeProvider.notifier)
-                              .set(false)),
-                    ]),
-                  ],
-                ),
-              ),
+              // Library mode — scopes Home + Browse (My List/Search stay global).
+              Builder(builder: (context) {
+                final mode = ref.watch(libraryModeProvider);
+                String label(LibraryMode m) => {
+                      LibraryMode.dubbed: t['mode_dubbed']!,
+                      LibraryMode.carateen: t['mode_carateen']!,
+                      LibraryMode.arabic: t['mode_arabic']!,
+                      LibraryMode.wcoflix: t['mode_wcoflix']!,
+                      LibraryMode.everything: t['mode_everything']!,
+                    }[m]!;
+                return Padding(
+                  padding: const EdgeInsets.only(bottom: 40),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(t['mode_title']!,
+                          style: const TextStyle(
+                              fontSize: 26,
+                              fontWeight: FontWeight.w800,
+                              color: AppColors.inkSoft)),
+                      const SizedBox(height: 6),
+                      Text(t['mode_desc']!,
+                          style: const TextStyle(
+                              fontSize: 20,
+                              fontWeight: FontWeight.w600,
+                              color: AppColors.inkMute)),
+                      const SizedBox(height: 16),
+                      Wrap(
+                        spacing: 0,
+                        runSpacing: 14,
+                        children: [
+                          for (final m in LibraryMode.values)
+                            opt(label(m), mode == m,
+                                () => ref
+                                    .read(libraryModeProvider.notifier)
+                                    .set(m)),
+                        ],
+                      ),
+                    ],
+                  ),
+                );
+              }),
               group(t['set_autoplay']!, [
                 opt(t['on']!, settings.prefs['autoplay'] != 'off',
                     () => sn.setPref('autoplay', 'on')),
