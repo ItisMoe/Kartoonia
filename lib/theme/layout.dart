@@ -24,7 +24,7 @@ class Dims {
   static const double epThumbH = 150;
 
   // hero
-  static const double heroH = 660;
+  static const double heroH = 720;
   static const double rowsTop = 600;
 
   // top bar
