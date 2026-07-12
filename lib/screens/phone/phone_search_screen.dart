@@ -59,7 +59,7 @@ class _PhoneSearchScreenState extends ConsumerState<PhoneSearchScreen> {
     }
 
     final q = s.query.trim();
-    final everything = ref.watch(everythingModeProvider);
+    final everything = ref.watch(libraryModeProvider).showsWcoflix;
     final wcoAsync = everything ? ref.watch(wcoSearchProvider(q)) : null;
     final bool wcoLoading = everything && q.isNotEmpty && wcoAsync!.isLoading;
     final List<ContentItem> results = everything

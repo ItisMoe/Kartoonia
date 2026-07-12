@@ -41,9 +41,9 @@ class SearchScreen extends ConsumerWidget {
     }
 
     final q = s.query.trim();
-    // Everything mode searches the whole live WCOFlix catalog; otherwise the
-    // in-memory Arabic catalog (unchanged).
-    final everything = ref.watch(everythingModeProvider);
+    // When the mode shows WCOFlix, search the whole live WCOFlix catalog;
+    // otherwise the in-memory Arabic catalog (unchanged).
+    final everything = ref.watch(libraryModeProvider).showsWcoflix;
     final wcoAsync = everything ? ref.watch(wcoSearchProvider(q)) : null;
     final bool wcoLoading = everything && q.isNotEmpty && wcoAsync!.isLoading;
     final List<ContentItem> results = everything

@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../models/content_item.dart';
+import '../models/library_mode.dart';
 import '../services/wcoflix/wcoflix_adapter.dart';
 import '../services/wcoflix/wcoflix_catalog.dart';
 import '../services/wcoflix/wcoflix_match.dart';
@@ -8,25 +9,29 @@ import '../services/wcoflix/wcoflix_parsers.dart';
 import 'app_state.dart';
 
 /// Riverpod wiring for the WCOFlix "Everything" universe. All of this is inert
-/// while [everythingModeProvider] is false (the default) — the Arabic path is
-/// untouched.
+/// unless the active [LibraryMode] includes WCOFlix — the Arabic path is
+/// untouched otherwise.
 
-/// Persisted Everything-mode toggle. Off = the bundled Arabic-dubbed catalog.
-class EverythingModeNotifier extends Notifier<bool> {
+/// Persisted library mode. Drives which sources Home + Browse show. Writing it
+/// also flips the in-memory CatalogService view so Home/Browse rebuild scoped.
+class LibraryModeNotifier extends Notifier<LibraryMode> {
   @override
-  bool build() => ref.read(storageProvider).getEverythingMode();
-
-  Future<void> set(bool on) async {
-    if (on == state) return;
-    await ref.read(storageProvider).setEverythingMode(on);
-    state = on;
+  LibraryMode build() {
+    final m = ref.read(storageProvider).getLibraryMode();
+    ref.read(catalogProvider).setMode(m);
+    return m;
   }
 
-  Future<void> toggle() => set(!state);
+  Future<void> set(LibraryMode m) async {
+    if (m == state) return;
+    ref.read(catalogProvider).setMode(m);
+    state = m;
+    await ref.read(storageProvider).setLibraryMode(m);
+  }
 }
 
-final everythingModeProvider =
-    NotifierProvider<EverythingModeNotifier, bool>(EverythingModeNotifier.new);
+final libraryModeProvider =
+    NotifierProvider<LibraryModeNotifier, LibraryMode>(LibraryModeNotifier.new);
 
 /// Single live WCOFlix catalog client (snapshot fallback + session cache).
 final wcoflixCatalogProvider = Provider<WcoflixCatalog>((ref) => WcoflixCatalog());

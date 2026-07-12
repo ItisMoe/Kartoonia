@@ -1,7 +1,6 @@
 import 'dart:async';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import '../models/catalog_source.dart';
 import '../services/storage_service.dart';
 import '../services/catalog_service.dart';
 import '../services/update_service.dart';
@@ -128,53 +127,37 @@ class BrowseState {
   final String alphaScript; // 'en' | 'ar'
   final String? category; // Stardima category filter (null = all)
 
-  /// Narrow the grid to titles available on ONE catalog source (null = all).
-  /// Applies in Everything mode too (there it swaps the WCOFlix grid for the
-  /// local library filtered to that source).
-  final CatalogSource? sourceFilter;
-
   const BrowseState(
       {this.kind = 'tv',
       this.letter,
       this.alphaScript = 'ar',
-      this.category,
-      this.sourceFilter});
+      this.category});
   BrowseState copy(
           {String? kind,
           String? letter,
           bool clearLetter = false,
           String? alphaScript,
           String? category,
-          bool clearCategory = false,
-          CatalogSource? sourceFilter,
-          bool clearSourceFilter = false}) =>
+          bool clearCategory = false}) =>
       BrowseState(
         kind: kind ?? this.kind,
         letter: clearLetter ? null : (letter ?? this.letter),
         alphaScript: alphaScript ?? this.alphaScript,
         category: clearCategory ? null : (category ?? this.category),
-        sourceFilter:
-            clearSourceFilter ? null : (sourceFilter ?? this.sourceFilter),
       );
 }
 
 class BrowseNotifier extends Notifier<BrowseState> {
   @override
   BrowseState build() => const BrowseState();
-  void setKind(String k) => state = state.copy(
-      kind: k,
-      clearLetter: true,
-      clearCategory: true,
-      clearSourceFilter: true);
+  void setKind(String k) =>
+      state = state.copy(kind: k, clearLetter: true, clearCategory: true);
   void setLetter(String? l) => state =
       l == null ? state.copy(clearLetter: true) : state.copy(letter: l);
   void setScript(String s) =>
       state = state.copy(alphaScript: s, clearLetter: true);
   void setCategory(String? c) => state =
       c == null ? state.copy(clearCategory: true) : state.copy(category: c);
-  void setSourceFilter(CatalogSource? s) => state = s == null
-      ? state.copy(clearSourceFilter: true)
-      : state.copy(sourceFilter: s);
 
   /// Clear all transient filters (used when the catalog source changes).
   void reset() => state = const BrowseState();
