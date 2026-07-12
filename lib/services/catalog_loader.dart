@@ -87,19 +87,45 @@ ParsedCatalog _parseCatalog(
   }
 }
 
-/// Decoded catalog JSON: valid cached download first, bundled asset otherwise.
-/// Any cache problem (missing/corrupt file) silently falls back to the bundle,
-/// matching [CatalogUpdater.loadJson].
+/// The `generated_at` unix timestamp from the head of a catalog, or null when
+/// the schema doesn't carry one (arabicToons/stardima). Scans only the first
+/// bytes — the field sits in the opening object, so we never decode the whole
+/// 30 MB payload just to read it.
+int? generatedAtFromCatalogBytes(Uint8List bytes) {
+  final n = bytes.length < 512 ? bytes.length : 512;
+  // The prefix holds only ASCII keys + digits (Arabic content comes later),
+  // so a latin1 view is safe for the scan.
+  final head = String.fromCharCodes(bytes, 0, n);
+  final m = RegExp(r'"generated_at"\s*:\s*(\d+)').firstMatch(head);
+  return m == null ? null : int.tryParse(m.group(1)!);
+}
+
+/// True when the bundled asset should win over a cached OTA download — i.e. the
+/// asset is STRICTLY newer. This stops a stale OTA cache from shadowing the
+/// fresher catalog an APK upgrade ships. When either side lacks a timestamp we
+/// keep the historical cache-first behavior (returns false).
+bool preferAssetOverCache(int? cacheGen, int? assetGen) =>
+    cacheGen != null && assetGen != null && assetGen > cacheGen;
+
+/// Decoded catalog JSON: the FRESHER of the cached download and the bundled
+/// asset (by `generated_at`), else cache-first. Any cache problem
+/// (missing/corrupt file) silently falls back to the bundle.
 Map<String, dynamic> _decodeCacheOrAsset(
     String? cachePath, Uint8List assetBytes) {
   if (cachePath != null) {
     try {
       final f = File(cachePath);
       if (f.existsSync()) {
-        final decoded = _decodeJsonBytes(f.readAsBytesSync());
-        if (decoded is Map<String, dynamic> &&
-            CatalogUpdater.looksLikeCatalog(decoded)) {
-          return decoded;
+        final cacheBytes = f.readAsBytesSync();
+        // An APK upgrade keeps the app's old OTA cache; when the bundled asset
+        // is newer, use it instead of the stale cache.
+        if (!preferAssetOverCache(generatedAtFromCatalogBytes(cacheBytes),
+            generatedAtFromCatalogBytes(assetBytes))) {
+          final decoded = _decodeJsonBytes(cacheBytes);
+          if (decoded is Map<String, dynamic> &&
+              CatalogUpdater.looksLikeCatalog(decoded)) {
+            return decoded;
+          }
         }
       }
     } catch (_) {}
