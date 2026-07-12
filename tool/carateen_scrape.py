@@ -143,12 +143,29 @@ SP_BASE_WATCH = BASE + "/watch/sp"
 
 
 def _sp_int(v, default=0):
-    """sp episode fields (season/number) arrive as int OR numeric string; coerce
-    so the season grouping/sort never mixes int and str."""
+    """sp episode `number` arrives as int OR numeric string; coerce for sorting."""
     try:
         return int(v)
     except (TypeError, ValueError):
         return default
+
+
+# sp `season` is an Arabic label ("الجزء الأول" …), NOT a number. Rank the common
+# ordinals so seasons order correctly; fall back to first-seen order otherwise.
+_AR_ORD = {
+    "الاول": 1, "الأول": 1, "الثاني": 2, "الثالث": 3, "الرابع": 4, "الخامس": 5,
+    "السادس": 6, "السابع": 7, "الثامن": 8, "التاسع": 9, "العاشر": 10,
+    "الحادي عشر": 11, "الثاني عشر": 12,
+}
+
+
+def _season_rank(label):
+    if not label:
+        return None
+    for k, v in _AR_ORD.items():
+        if k in label:
+            return v
+    return None
 
 
 def _sp_episode(show_id, e):
@@ -162,19 +179,18 @@ def _sp_episode(show_id, e):
         "play_url": f"{SP_BASE_WATCH}/{show_id}/{eid}",
         "video_id": str(e.get("video_id") or ""),
         "thumbnail": e.get("cover_full_path") or "",
-        "season": _sp_int(e.get("season"), 1),
+        # raw season label (Arabic string) or "" — used for grouping below.
+        "season": (e.get("season") or "").strip() if e.get("season") else "",
         "hls": True,
     }
 
 
 def build_sp_item(show, episodes):
     """Normalize an sp show to the SAME schema build_item emits. Groups episodes
-    by their `season` field so multi-season titles (e.g. أبطال الكرة) render
-    their seasons. Returns (kind, dict)."""
+    by their `season` LABEL (an Arabic string like "الجزء الأول") so multi-season
+    titles (e.g. أبطال الكرة → 3 seasons) render each season, and renumbers each
+    season's episodes 1..N for clean display. Returns (kind, dict)."""
     sid = show["id"]
-    eps = sorted(episodes,
-                 key=lambda x: (_sp_int(x.get("season"), 1),
-                                _sp_int(x.get("number"), 0)))
     base = {
         "id": f"sp_{sid}",
         "title": show.get("name") or "",
@@ -187,18 +203,33 @@ def build_sp_item(show, episodes):
         "total_votes": show.get("total_votes"),
         "quality": "",
     }
-    is_movie = bool(show.get("is_movie")) or len(eps) <= 1
-    built = [_sp_episode(sid, e) for e in eps]
+    built = [_sp_episode(sid, e) for e in episodes]
+    is_movie = bool(show.get("is_movie")) or len(built) <= 1
     if is_movie and built:
         base["play_url"] = built[0]["play_url"]
         return "movie", base
-    seasons = {}
+
+    # Group by season label, preserving first-seen order.
+    order, groups = [], {}
     for ep in built:
-        seasons.setdefault(ep["season"], []).append(ep)
-    base["seasons"] = [
-        {"number": n, "title": "", "episodes": seasons[n]}
-        for n in sorted(seasons)
-    ]
+        key = ep["season"]
+        if key not in groups:
+            groups[key] = []
+            order.append(key)
+        groups[key].append(ep)
+
+    # If every label is a known Arabic ordinal, order by it; else keep first-seen.
+    ranks = [_season_rank(k) for k in order]
+    if order and all(r is not None for r in ranks) and len(set(ranks)) == len(ranks):
+        order = [k for _, k in sorted(zip(ranks, order))]
+
+    seasons = []
+    for i, key in enumerate(order, 1):
+        eps = sorted(groups[key], key=lambda e: _sp_int(e.get("number"), 0))
+        for n, ep in enumerate(eps, 1):
+            ep["number"] = n  # renumber 1..N within the season (global → local)
+        seasons.append({"number": i, "title": key, "episodes": eps})
+    base["seasons"] = seasons
     return "show", base
 
 
