@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../models/catalog_source.dart';
+import '../models/library_mode.dart';
 
 /// Persistence for watchlist, watch progress (continue watching) and prefs.
 /// Backed by SharedPreferences. Ported from the RN `storageService.ts`.
@@ -51,7 +52,9 @@ class StorageService {
   static const _kPrefs = 'kt/prefs'; // motion/autoplay
   static const _kYtKey = 'kt/ytKey'; // user-set YouTube Data API key override
   static const _kCatalogSource = 'kt/catalogSource'; // arabicToons | stardima
-  static const _kEverythingMode = 'kt/everythingMode'; // WCOFlix "Everything"
+  static const _kEverythingMode = 'kt/everythingMode'; // legacy; migrated once
+  static const _kLibraryMode =
+      'kt/libraryMode'; // dubbed|carateen|arabic|wcoflix|everything
   static const _kWcoflixQuality = 'kt/wcoflixQuality'; // 576p|720p|1080p
   static const _kShaaratBoosts = 'kt/shaaratBoosts';
   static const _kShaaratVideoIds = 'kt/shaaratVideoIds';
@@ -205,11 +208,17 @@ class StorageService {
   Future<void> setCatalogSource(CatalogSource s) =>
       _prefs.setString(_kCatalogSource, s.id);
 
-  // "Everything" mode — when on, the app browses the live WCOFlix library
-  // instead of the bundled Arabic-dubbed catalog. Defaults OFF (Arabic-first).
-  bool getEverythingMode() => _prefs.getBool(_kEverythingMode) ?? false;
-  Future<void> setEverythingMode(bool on) =>
-      _prefs.setBool(_kEverythingMode, on);
+  // Library mode scopes Home + Browse. Migrates the legacy everythingMode bool:
+  // a one-time read maps true→wcoflix, false→arabic when libraryMode is unset.
+  LibraryMode getLibraryMode() {
+    final id = _prefs.getString(_kLibraryMode);
+    if (id != null) return LibraryMode.fromId(id);
+    final legacy = _prefs.getBool(_kEverythingMode);
+    return legacy == true ? LibraryMode.wcoflix : LibraryMode.arabic;
+  }
+
+  Future<void> setLibraryMode(LibraryMode m) =>
+      _prefs.setString(_kLibraryMode, m.id);
 
   // Preferred WCOFlix resolution tag ('576p'|'720p'|'1080p'); default 720p.
   String getWcoflixQuality() => _prefs.getString(_kWcoflixQuality) ?? '720p';
