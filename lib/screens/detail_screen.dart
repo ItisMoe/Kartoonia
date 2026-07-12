@@ -4,11 +4,11 @@ import '../models/catalog_source.dart';
 import '../models/content_item.dart';
 import '../navigation.dart';
 import '../playback.dart';
-import '../services/catalog_service.dart';
+import '../services/default_source.dart';
 import '../services/fame_ranking.dart';
 import '../services/resume.dart';
-import '../services/wcoflix/wcoflix_match.dart';
 import '../services/storage_service.dart';
+import '../services/wcoflix/wcoflix_match.dart';
 import '../state/app_state.dart';
 import '../state/wcoflix_providers.dart';
 import '../theme/layout.dart';
@@ -46,16 +46,9 @@ class _DetailScreenState extends ConsumerState<DetailScreen> {
   // (WCOFlix) / false = Arabic dub. Reset when the alternate is swapped.
   bool? _original;
 
-  // Memoized Arabic-catalog match for a WCOFlix title (see [_arabicMatch]).
-  String? _arMatchTitle;
-  ContentItem? _arMatchCache;
-  ContentItem? _arabicMatch(String title, CatalogService catalog) {
-    if (_arMatchTitle != title) {
-      _arMatchTitle = title;
-      _arMatchCache = bestArabicMatch(title, catalog.all);
-    }
-    return _arMatchCache;
-  }
+  // Memoized Arabic-catalog match for a WCOFlix title (shows only — see
+  // [ArabicMatchMemo]).
+  final _arMatch = ArabicMatchMemo();
 
   // Cache "More Like This" per item — the O(catalog) scan shouldn't re-run on
   // every setState (season change, list toggle). Keyed by the item id.
@@ -70,17 +63,6 @@ class _DetailScreenState extends ConsumerState<DetailScreen> {
       _simForId = item.id;
     }
     return _simCache!;
-  }
-
-  /// Default to whichever twin has stored progress (so Resume works), preferring
-  /// the base source when it (also) has progress.
-  CatalogSource _defaultSource(
-      StorageService storage, ContentItem base, List<ContentItem> alts) {
-    if (storage.progressForItem(base.id) > 0) return base.source;
-    for (final a in alts) {
-      if (storage.progressForItem(a.id) > 0) return a.source;
-    }
-    return base.source;
   }
 
   /// Play-button label. For a started show it names the resume episode
@@ -135,25 +117,30 @@ class _DetailScreenState extends ConsumerState<DetailScreen> {
     final baseIsWco = base.source == CatalogSource.wcoflix;
     final baseIsWcoShow = baseIsWco && base is Show;
     ContentItem? arabicSide;
-    Show? originalSide;
+    ContentItem? originalSide;
     if (baseIsWcoShow) {
       originalSide = base; // already episode-loaded above (narrowed to Show)
-      arabicSide = _arabicMatch(base.title, catalog);
+      arabicSide = _arMatch.match(base.title, catalog.shows);
     } else if (!baseIsWco) {
       arabicSide = base;
-      final en = base.tmdb?.enTitle ?? base.title;
-      originalSide = ref.watch(wcoflixOriginalProvider(en)).asData?.value;
+      // Match within the SAME media kind — an Arabic movie must pair with a
+      // WCOFlix movie, never the franchise's series (the old title-only match
+      // made every movie's "Original" open a multi-season show).
+      originalSide = ref
+          .watch(wcoflixOriginalProvider(wcoOriginalQueryFor(base)))
+          .asData
+          ?.value;
     }
     final hasAudioSwitch = arabicSide != null && originalSide != null;
     _original ??= baseIsWco;
     final showOriginal = hasAudioSwitch ? _original! : baseIsWcoShow;
 
-    // The item for the chosen language (WCOFlix episodes load lazily); a WCOFlix
-    // Movie falls through to itself.
+    // The item for the chosen language (WCOFlix show episodes load lazily); a
+    // WCOFlix Movie is directly playable as-is.
     ContentItem langBase;
     if (showOriginal) {
-      var wco = originalSide!;
-      if (wco.episodes.isEmpty && (wco.pageUrl ?? '').isNotEmpty) {
+      ContentItem wco = originalSide!;
+      if (wco is Show && wco.episodes.isEmpty && (wco.pageUrl ?? '').isNotEmpty) {
         wco = ref.watch(wcoSeriesProvider(wco.pageUrl!)).asData?.value ?? wco;
       }
       langBase = wco;
@@ -167,7 +154,7 @@ class _DetailScreenState extends ConsumerState<DetailScreen> {
     // present for WCOFlix).
     final alts = catalog.alternatesFor(langBase);
     // Resume-aware default source (computed once per mount).
-    _selectedSource ??= _defaultSource(storage, langBase, alts);
+    _selectedSource ??= defaultSourceFor(storage, langBase, alts);
     // The item for the currently-selected source.
     final sourceItems = [langBase, ...alts];
     final item = sourceItems.firstWhere((s) => s.source == _selectedSource,

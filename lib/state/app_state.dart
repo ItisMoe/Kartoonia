@@ -82,11 +82,6 @@ final stringsProvider = Provider<Map<String, String>>((ref) {
 final ytKeyProvider = StateProvider<String>(
     (ref) => ref.read(storageProvider).getYoutubeKey());
 
-/// Per-show شارات engagement boost scores (order the reel feed). Seeded from
-/// storage; bumped implicitly as you dwell on / finish / enter a show's reel.
-final shaaratBoostsProvider = StateProvider<Map<String, double>>(
-    (ref) => ref.read(storageProvider).getShaaratBoosts());
-
 // ---------------- User library (watchlist + continue watching) ----------------
 class UserState {
   final Set<String> watchlistIds;

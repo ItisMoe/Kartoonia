@@ -56,7 +56,6 @@ class StorageService {
   static const _kLibraryMode =
       'kt/libraryMode'; // dubbed|carateen|arabic|wcoflix|everything
   static const _kWcoflixQuality = 'kt/wcoflixQuality'; // 576p|720p|1080p
-  static const _kShaaratBoosts = 'kt/shaaratBoosts';
   static const _kShaaratVideoIds = 'kt/shaaratVideoIds';
   static const _kSkippedUpdate = 'kt/skippedUpdate'; // release the user dismissed
 
@@ -155,27 +154,6 @@ class StorageService {
   /// Continue Watching row).
   Future<void> removeProgressForItem(String itemId) async {
     await _writeProgress(_readProgress()..removeWhere((_, v) => v.itemId == itemId));
-  }
-
-  // ---- شارات engagement boost (implicit; orders the reel feed) ----
-  // showId -> accumulated boost points. Earned from dwell/completion/entering a
-  // show's reel (graduated), it raises the show's weight in `shaaratQueue`.
-  Map<String, double> getShaaratBoosts() {
-    final raw = _prefs.getString(_kShaaratBoosts);
-    if (raw == null) return {};
-    try {
-      return (jsonDecode(raw) as Map)
-          .map((k, v) => MapEntry('$k', (v as num).toDouble()));
-    } catch (_) {
-      return {};
-    }
-  }
-
-  /// Add [points] to a show's accumulated boost score.
-  Future<void> addShaaratBoost(String showId, double points) async {
-    final m = getShaaratBoosts();
-    m[showId] = (m[showId] ?? 0) + points;
-    await _prefs.setString(_kShaaratBoosts, jsonEncode(m));
   }
 
   // ---- شارات videoId cache ----

@@ -90,6 +90,10 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
   int _retry = 0;
   int _autoRetries = 0; // full-pipeline re-resolves after all servers failed
   int _reqId = 0;
+  // The shared-player ownership generation this screen's current load holds
+  // (returned by PlayerService.stop()). A stale generation means another screen
+  // took the player over, so our open() must not land.
+  int _session = 0;
 
   // Stardima resolution is expensive (multi-request pipeline), so cache the
   // resolved server list per play_url to make server-switching instant. Arabic
@@ -194,21 +198,30 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
   /// [_openAndWait] so a failing host advances to the next server cleanly.
   void _subscribe() {
     final p = _player;
+    final svc = PlayerService.instance;
+    // position/playing/completed come from the service's LIVE views, which drop
+    // events the shared player still emits for the previous media during a
+    // swap (they queued phantom "up next" cards and stray auto-advances).
+    // duration/error stay raw: _openAndWait needs the first duration/error to
+    // detect readiness/failure before the live gate opens.
     _subs.addAll([
-      p.stream.position.listen((pos) {
+      svc.positionLive.listen((pos) {
         if (!mounted) return;
         setState(() => _position = pos);
         _maybeStartAutoNext();
       }),
+      // Restore is NOT triggered from here: during a load this stream can still
+      // carry the PREVIOUS media's duration (the player is shared), and burning
+      // the one-shot _restored flag on that stale event skipped the real
+      // resume seek. _load calls _maybeRestore once playback is actually ready.
       p.stream.duration.listen((d) {
         if (!mounted) return;
         setState(() => _duration = d);
-        if (d > Duration.zero) _maybeRestore();
       }),
-      p.stream.playing.listen((pl) {
+      svc.playingLive.listen((pl) {
         if (mounted) setState(() => _playing = pl);
       }),
-      p.stream.completed.listen((done) {
+      svc.completedLive.listen((done) {
         if (done && mounted && !_ended && !_loading) {
           _ended = true;
           _onEnd();
@@ -258,6 +271,12 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
       _advancing = false;
       _server = server;
     });
+    // Take ownership of the shared player for THIS load: silence whatever the
+    // previous owner (or our own previous episode) left in it, and hold the
+    // generation our open() must present. Anything an older owner still has in
+    // flight is now stale and can no longer hijack playback.
+    _session = await PlayerService.instance.stop();
+    if (id != _reqId || !mounted) return;
 
     try {
       final servers = await _resolveServers();
@@ -281,6 +300,10 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
       if (id != _reqId || !mounted) return;
 
       setState(() => _loading = false);
+      // Playback is live — apply the saved-progress seek now. (The duration
+      // stream listener can't do it: it also sees the previous media's stale
+      // duration while the shared player is being swapped.)
+      _maybeRestore();
       _retry = 0;
       _autoRetries = 0;
       // Re-arm the auto-hide timer now that playback is actually ready. Without
@@ -324,9 +347,10 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
     });
     eSub = p.stream.error.listen((e) => finish(e));
     // Open after the listeners are attached, routing an open() failure through
-    // the same completion path.
+    // the same completion path. The session stamp keeps this open from landing
+    // if another screen has taken the player over meanwhile.
     PlayerService.instance
-        .open(url, headers: headers)
+        .open(url, headers: headers, session: _session)
         .catchError((Object e) => finish(e));
     return c.future.timeout(budget, onTimeout: () {
       finish();
@@ -470,7 +494,10 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
   /// While playing, pop the "Up next" card + start its countdown a few seconds
   /// BEFORE the episode ends, so autoplay advances right as playback finishes.
   void _maybeStartAutoNext() {
-    if (_showNextCard || _ended || _advancing || !_hasNext) return;
+    // During a load the shared player's position/duration may still describe
+    // the PREVIOUS media (near ITS end) — acting on that queued up the next
+    // episode of a show the user had only just opened.
+    if (_loading || _showNextCard || _ended || _advancing || !_hasNext) return;
     if (_duration <= Duration.zero || _position <= Duration.zero) return;
     if (ref.read(settingsProvider).prefs['autoplay'] == 'off') return;
     if (_duration - _position >

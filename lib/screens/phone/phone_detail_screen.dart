@@ -4,9 +4,8 @@ import '../../models/catalog_source.dart';
 import '../../models/content_item.dart';
 import '../../navigation.dart';
 import '../../playback.dart';
-import '../../services/catalog_service.dart';
+import '../../services/default_source.dart';
 import '../../services/fame_ranking.dart';
-import '../../services/storage_service.dart';
 import '../../services/wcoflix/wcoflix_match.dart';
 import '../../state/app_state.dart';
 import '../../state/wcoflix_providers.dart';
@@ -34,15 +33,9 @@ class _PhoneDetailScreenState extends ConsumerState<PhoneDetailScreen> {
   CatalogSource? _selectedSource;
   bool? _original; // audio: true = Original (WCOFlix), false = Arabic dub
 
-  String? _arMatchTitle;
-  ContentItem? _arMatchCache;
-  ContentItem? _arabicMatch(String title, CatalogService catalog) {
-    if (_arMatchTitle != title) {
-      _arMatchTitle = title;
-      _arMatchCache = bestArabicMatch(title, catalog.all);
-    }
-    return _arMatchCache;
-  }
+  // Memoized Arabic-catalog match for a WCOFlix title (shows only — see
+  // [ArabicMatchMemo]).
+  final _arMatch = ArabicMatchMemo();
 
   // Cache "More Like This" per item (see the TV detail screen for why).
   String? _simForId;
@@ -54,18 +47,6 @@ class _PhoneDetailScreenState extends ConsumerState<PhoneDetailScreen> {
       _simForId = item.id;
     }
     return _simCache!;
-  }
-
-  /// Default to whichever twin has stored progress (so Resume works), else the
-  /// Arabic Toons source.
-  CatalogSource _defaultSource(
-      StorageService storage, ContentItem base, ContentItem? alt) {
-    if (alt != null &&
-        storage.progressForItem(alt.id) > 0 &&
-        storage.progressForItem(base.id) <= 0) {
-      return alt.source;
-    }
-    return base.source;
   }
 
   @override
@@ -102,14 +83,18 @@ class _PhoneDetailScreenState extends ConsumerState<PhoneDetailScreen> {
     final baseIsWco = base.source == CatalogSource.wcoflix;
     final baseIsWcoShow = baseIsWco && base is Show;
     ContentItem? arabicSide;
-    Show? originalSide;
+    ContentItem? originalSide;
     if (baseIsWcoShow) {
       originalSide = base; // narrowed to Show
-      arabicSide = _arabicMatch(base.title, catalog);
+      arabicSide = _arMatch.match(base.title, catalog.shows);
     } else if (!baseIsWco) {
       arabicSide = base;
-      final en = base.tmdb?.enTitle ?? base.title;
-      originalSide = ref.watch(wcoflixOriginalProvider(en)).asData?.value;
+      // Same media kind only — an Arabic movie pairs with a WCOFlix movie,
+      // never the franchise's series (see the TV detail screen).
+      originalSide = ref
+          .watch(wcoflixOriginalProvider(wcoOriginalQueryFor(base)))
+          .asData
+          ?.value;
     }
     final hasAudioSwitch = arabicSide != null && originalSide != null;
     _original ??= baseIsWco;
@@ -117,8 +102,8 @@ class _PhoneDetailScreenState extends ConsumerState<PhoneDetailScreen> {
 
     ContentItem langBase;
     if (showOriginal) {
-      var wco = originalSide!;
-      if (wco.episodes.isEmpty && (wco.pageUrl ?? '').isNotEmpty) {
+      ContentItem wco = originalSide!;
+      if (wco is Show && wco.episodes.isEmpty && (wco.pageUrl ?? '').isNotEmpty) {
         wco = ref.watch(wcoSeriesProvider(wco.pageUrl!)).asData?.value ?? wco;
       }
       langBase = wco;
@@ -130,7 +115,8 @@ class _PhoneDetailScreenState extends ConsumerState<PhoneDetailScreen> {
 
     final alt = catalog.alternateFor(langBase);
     // Resume-aware default source (computed once per mount).
-    _selectedSource ??= _defaultSource(storage, langBase, alt);
+    _selectedSource ??=
+        defaultSourceFor(storage, langBase, [if (alt != null) alt]);
     final item = (alt != null && _selectedSource == alt.source) ? alt : langBase;
     final primary = catalog.primaryFor(langBase);
 

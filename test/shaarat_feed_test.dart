@@ -30,55 +30,47 @@ void main() {
       _show('d', tmdbId: 3, votes: 0), // not famous -> dropped
       _show('e', tmdbId: 4),
     ];
-    final q = shaaratQueue(shows, const {}, rng: Random(1));
+    final q = shaaratQueue(shows, rng: Random(1));
     expect(q.map((s) => s.id).toSet(), {'a', 'e'});
   });
 
   test('deterministic for a given rng seed', () {
     final shows = [for (var i = 0; i < 8; i++) _show('s$i', tmdbId: i)];
-    final a = shaaratQueue(shows, const {}, rng: Random(7));
-    final b = shaaratQueue(shows, const {}, rng: Random(7));
+    final a = shaaratQueue(shows, rng: Random(7));
+    final b = shaaratQueue(shows, rng: Random(7));
     expect(a.map((s) => s.id).toList(), b.map((s) => s.id).toList());
   });
 
-  test('boosted shows trend earlier across many runs', () {
-    // Equal votes so the engagement boost is the only signal in play.
-    final shows = [for (var i = 0; i < 20; i++) _show('s$i', tmdbId: i)];
-    var boostedAvg = 0.0, baseAvg = 0.0;
-    const runs = 40;
-    for (var r = 0; r < runs; r++) {
-      final q = shaaratQueue(shows, {'s0': 7.0}, rng: Random(r));
-      boostedAvg += q.indexWhere((s) => s.id == 's0');
-      baseAvg += q.indexWhere((s) => s.id == 's1');
-    }
-    expect(boostedAvg / runs, lessThan(baseAvg / runs));
-  });
-
-  test('a bigger boost trends earlier than a smaller boost', () {
-    final shows = [for (var i = 0; i < 20; i++) _show('s$i', tmdbId: i)];
-    var bigAvg = 0.0, smallAvg = 0.0;
-    const runs = 50;
-    for (var r = 0; r < runs; r++) {
-      final q = shaaratQueue(shows, {'s0': 8.0, 's1': 1.0}, rng: Random(r));
-      bigAvg += q.indexWhere((s) => s.id == 's0');
-      smallAvg += q.indexWhere((s) => s.id == 's1');
-    }
-    expect(bigAvg / runs, lessThan(smallAvg / runs));
-  });
-
-  test('more popular shows trend earlier across many runs', () {
-    // A clearly-famous show vs a barely-famous one (both eligible).
+  test('queue is capped to the most popular slice', () {
+    // More famous shows than the cap: only the top-voted make the pool.
     final shows = [
-      _show('hit', tmdbId: 1, votes: 5000),
-      for (var i = 0; i < 10; i++) _show('low$i', tmdbId: 100 + i, votes: 25),
+      for (var i = 0; i < kShaaratPopularCap + 40; i++)
+        _show('s$i', tmdbId: i, votes: 100 + i),
+    ];
+    final q = shaaratQueue(shows, rng: Random(3));
+    expect(q.length, kShaaratPopularCap);
+    // The 40 lowest-voted (s0..s39) fell outside the popular slice.
+    expect(q.any((s) => s.id == 's0'), isFalse);
+    expect(q.any((s) => s.id == 's39'), isFalse);
+    // The very top show is always in the pool (somewhere — order is random).
+    expect(q.any((s) => s.id == 's${kShaaratPopularCap + 39}'), isTrue);
+  });
+
+  test('order is a plain shuffle — no fame weighting inside the slice', () {
+    // A dominant-fame show must NOT trend to the front: over many rolls its
+    // average position matches a low-fame show's (uniform shuffle).
+    final shows = [
+      _show('hit', tmdbId: 1, votes: 500000),
+      for (var i = 0; i < 9; i++) _show('low$i', tmdbId: 100 + i, votes: 25),
     ];
     var hitAvg = 0.0, lowAvg = 0.0;
-    const runs = 60;
+    const runs = 400;
     for (var r = 0; r < runs; r++) {
-      final q = shaaratQueue(shows, const {}, rng: Random(r));
+      final q = shaaratQueue(shows, rng: Random(r));
       hitAvg += q.indexWhere((s) => s.id == 'hit');
       lowAvg += q.indexWhere((s) => s.id == 'low0');
     }
-    expect(hitAvg / runs, lessThan(lowAvg / runs));
+    // Both average near the middle (4.5 of 0..9); allow generous noise.
+    expect((hitAvg / runs - lowAvg / runs).abs(), lessThan(1.0));
   });
 }

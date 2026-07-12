@@ -88,9 +88,11 @@ class _HeroCarouselState extends State<HeroCarousel> {
     _goTo((_index + delta + n) % n);
   }
 
-  /// D-pad Left/Right on the hero: first try to move focus between the action
-  /// buttons; at the row's edge (nothing focusable further that way) flip to the
-  /// prev/next featured card — so the user never has to hunt for tiny page dots.
+  /// D-pad Left/Right on the hero: first move focus between the hero's OWN
+  /// action buttons; past the row's edge flip to the prev/next featured card.
+  /// The traversal is done by hand over this widget's focusable descendants —
+  /// the earlier FocusScope-wide `focusInDirection` scanned the whole screen,
+  /// so focus escaped to the nav/content rows and the card flip never fired.
   KeyEventResult _onKey(FocusNode node, KeyEvent e) {
     if (e is! KeyDownEvent && e is! KeyRepeatEvent) {
       return KeyEventResult.ignored;
@@ -101,15 +103,46 @@ class _HeroCarouselState extends State<HeroCarousel> {
       return KeyEventResult.ignored;
     }
     final left = k == LogicalKeyboardKey.arrowLeft;
-    final dir = left ? TraversalDirection.left : TraversalDirection.right;
-    // Let the buttons consume the key while there's still a button that way.
-    if (FocusScope.of(context).focusInDirection(dir)) {
-      return KeyEventResult.handled;
+    final current = FocusManager.instance.primaryFocus;
+    if (current != null) {
+      final next = _heroNeighbor(node, current, left: left);
+      if (next != null) {
+        next.requestFocus();
+        return KeyEventResult.handled;
+      }
     }
-    // At the edge → change card. In RTL the "next" title sits to the LEFT.
+    // No hero button further that way → change card. In RTL the "next" title
+    // sits to the LEFT.
     final forward = left == widget.isRtl;
     _step(forward ? 1 : -1);
     return KeyEventResult.handled;
+  }
+
+  /// The nearest focusable INSIDE the hero strictly to the left/right of
+  /// [current] **on the same row**, or null when [current] is already the
+  /// outermost one in that direction. (A hero-local FocusScope +
+  /// focusInDirection would be the framework way to scope this, but a nested
+  /// scope confines VERTICAL traversal too — D-pad down could no longer leave
+  /// the hero for the content rows.)
+  FocusNode? _heroNeighbor(FocusNode hero, FocusNode current,
+      {required bool left}) {
+    final c = current.rect.center;
+    FocusNode? best;
+    var bestDx = double.infinity;
+    for (final n in hero.traversalDescendants) {
+      if (n == current || !n.canRequestFocus) continue;
+      final center = n.rect.center;
+      // Same row only: a horizontal move must never jump diagonally to a
+      // focusable on another (future) row of the hero.
+      if ((center.dy - c.dy).abs() > current.rect.height) continue;
+      final dx = center.dx - c.dx;
+      if (left ? dx >= -0.5 : dx <= 0.5) continue; // not strictly that way
+      if (dx.abs() < bestDx) {
+        bestDx = dx.abs();
+        best = n;
+      }
+    }
+    return best;
   }
 
   void _start() {

@@ -56,23 +56,24 @@ class ShaaratItem {
       );
 }
 
-/// Build the combined شارات queue: the fame-weighted show themes ([shaaratQueue])
-/// interleaved with the carateen `/music` tracks so the songs surface throughout
-/// the feed rather than all at the end. One music entry is inserted every
-/// [musicEvery] show reels; when there are no shows (a carateen-only library)
-/// the feed is just the music. [linkOf] maps a track to its catalog show (may be
-/// null). Re-rolled on every call (fresh order each visit).
+/// Build the combined شارات queue: the shuffled popular show themes
+/// ([shaaratQueue]) interleaved with the carateen `/music` tracks so the songs
+/// surface throughout the feed rather than all at the end. One music entry is
+/// inserted every [musicEvery] show reels (2 → roughly a third of the feed is
+/// carateen music, deliberately favoured); when there are no shows (a
+/// carateen-only library) the feed is just the music. [linkOf] maps a track to
+/// its catalog show (may be null). Re-rolled on every call (fresh order each
+/// visit).
 List<ShaaratItem> shaaratItemQueue(
   List<Show> shows,
-  Map<String, double> boosts,
   List<CarateenTrack> music,
   Show? Function(CarateenTrack) linkOf, {
   Random? rng,
-  int musicEvery = 3,
+  int musicEvery = 2,
 }) {
   final r = rng ?? Random();
   final showItems =
-      shaaratQueue(shows, boosts, rng: rng).map(ShaaratItem.fromShow).toList();
+      shaaratQueue(shows, rng: rng).map(ShaaratItem.fromShow).toList();
   final musicItems = [
     for (final t in music) ShaaratItem.fromTrack(t, linked: linkOf(t))
   ]..shuffle(r);
@@ -108,37 +109,25 @@ List<Show> shaaratPool(List<Show> shows) {
   return out;
 }
 
-/// Weighted-random permutation of the شارات pool, **re-rolled on every call** so
-/// each visit to the reels feed gets a fresh order (never the same first show
-/// twice in a row). Two weights stack:
-///   - popularity: a show's [Show.fameScore] (TMDB vote_count) compressed by
-///     `sqrt` so the most famous cartoons strongly trend to the top while every
-///     show still keeps a real chance of appearing — "stress on popularity"
-///     without degenerating into a fixed sort.
-///   - engagement: a show's accumulated boost score (from [boosts]) applies a
-///     diminishing-returns multiplier `1 + boostK·ln(1+score)`, so shows you
-///     actually watch/finish/open trend earlier without one obsessed-over show
-///     ever crowding out the rest.
-/// Uses the Efraimidis–Spirakis key `-ln(u)/w` (smaller key = earlier), which
-/// yields a correct weighted permutation from independent uniforms. Pass [rng]
-/// to make the roll deterministic in tests.
-List<Show> shaaratQueue(
-  List<Show> shows,
-  Map<String, double> boosts, {
-  Random? rng,
-  double boostK = 0.6,
-}) {
-  final pool = shaaratPool(shows);
-  if (pool.length < 2) return pool;
-  final r = rng ?? Random();
-  final keyed = pool.map((s) {
-    final fame = s.fameScore > 0 ? s.fameScore : 1.0;
-    var w = sqrt(fame); // compress the heavy-tailed vote_count distribution
-    final score = boosts[s.id] ?? 0;
-    if (score > 0) w *= 1 + boostK * log(1 + score);
-    final u = r.nextDouble().clamp(1e-12, 1.0);
-    return (key: -log(u) / w, show: s);
-  }).toList()
-    ..sort((a, b) => a.key.compareTo(b.key));
-  return [for (final e in keyed) e.show];
+/// How many of the most famous shows the شارات feed draws from: the queue is
+/// pure random WITHIN this top slice, so every reel is a well-known title while
+/// the order itself carries no ranking at all.
+const int kShaaratPopularCap = 120;
+
+/// Uniformly-shuffled permutation of the MOST popular animated shows,
+/// **re-rolled on every call** so each visit to the reels feed gets a fresh
+/// order (never the same first show twice in a row). The pool is the
+/// famous/animation pool cut to its [kShaaratPopularCap] highest fame scores;
+/// within that slice the order is a plain uniform shuffle — no fame weighting
+/// and no engagement ("favorite points") ranking, both removed by request:
+/// as random as possible, but always among the popular titles. Pass [rng] to
+/// make the roll deterministic in tests.
+List<Show> shaaratQueue(List<Show> shows, {Random? rng}) {
+  final pool = shaaratPool(shows)
+    ..sort((a, b) => b.fameScore.compareTo(a.fameScore));
+  final top = pool.length > kShaaratPopularCap
+      ? pool.sublist(0, kShaaratPopularCap)
+      : pool;
+  top.shuffle(rng ?? Random());
+  return top;
 }

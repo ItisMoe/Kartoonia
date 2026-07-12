@@ -29,6 +29,14 @@ class _YoutubeScreenState extends ConsumerState<YoutubeScreen>
   Player get _player => PlayerService.instance.player;
   final List<StreamSubscription> _subs = [];
 
+  // Shared-player ownership generation for the CURRENT open sequence, claimed
+  // via PlayerService.stop() right before each open (never captured passively:
+  // a bare read raced pending stops from the screen underneath and left every
+  // open here silently dropped). Re-claiming per sequence also invalidates this
+  // screen's own timed-out opens, so a slow adaptive open can't land over the
+  // muxed fallback that replaced it.
+  int _session = 0;
+
   bool _loading = true;
   bool _failed = false;
   String _failKey = 'yt_none'; // which message to show on the failure screen
@@ -78,17 +86,21 @@ class _YoutubeScreenState extends ConsumerState<YoutubeScreen>
   /// Wire this screen to the shared player's streams; cancelled on dispose.
   void _subscribe() {
     final p = _player;
+    final svc = PlayerService.instance;
+    // position/playing/completed use the service's LIVE views (previous-media
+    // events during a swap are dropped); duration/error stay raw because
+    // _openAndWait needs them before the live gate opens.
     _subs.addAll([
-      p.stream.position.listen((pos) {
+      svc.positionLive.listen((pos) {
         if (mounted) setState(() => _position = pos);
       }),
       p.stream.duration.listen((d) {
         if (mounted) setState(() => _duration = d);
       }),
-      p.stream.playing.listen((pl) {
+      svc.playingLive.listen((pl) {
         if (mounted) setState(() => _playing = pl);
       }),
-      p.stream.completed.listen((done) {
+      svc.completedLive.listen((done) {
         if (done && mounted && !_ended && !_loading) {
           _ended = true;
           Navigator.maybePop(context);
@@ -187,10 +199,14 @@ class _YoutubeScreenState extends ConsumerState<YoutubeScreen>
     final video = _videoForHeight(pb, height);
     if (video != null) {
       try {
+        // Claim the player for this attempt (also invalidates any previous
+        // attempt's open that may still be in flight).
+        _session = await PlayerService.instance.stop();
         await _openAndWait(
           () => PlayerService.instance.openWithAudio(
             video.url,
             audioUrl: video.muxed ? null : pb.audioUrl,
+            session: _session,
           ),
           const Duration(seconds: 30),
         );
@@ -202,8 +218,13 @@ class _YoutubeScreenState extends ConsumerState<YoutubeScreen>
     }
     final muxed = pb.muxedFallbackUrl;
     if (muxed == null) throw Exception('no playable youtube stream');
+    // Fresh claim: a TIMED-OUT adaptive open above is not cancelled, only
+    // abandoned — without the generation bump it could still land later and
+    // replace the working muxed stream with the broken pair.
+    _session = await PlayerService.instance.stop();
     await _openAndWait(
-        () => PlayerService.instance.open(muxed), const Duration(seconds: 30));
+        () => PlayerService.instance.open(muxed, session: _session),
+        const Duration(seconds: 30));
     _adaptiveActive = false;
   }
 
@@ -234,9 +255,12 @@ class _YoutubeScreenState extends ConsumerState<YoutubeScreen>
     final muxed = _playback?.muxedFallbackUrl;
     if (_adaptiveActive && muxed != null) {
       _adaptiveActive = false;
+      // Snapshot the stall position BEFORE the claiming stop() resets it.
       final resume = _player.state.position;
       try {
-        await _openAndWait(() => PlayerService.instance.open(muxed),
+        _session = await PlayerService.instance.stop();
+        await _openAndWait(
+            () => PlayerService.instance.open(muxed, session: _session),
             const Duration(seconds: 30));
         if (!mounted) return;
         if (resume > Duration.zero) await _player.seek(resume);

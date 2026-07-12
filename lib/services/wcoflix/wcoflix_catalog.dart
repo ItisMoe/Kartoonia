@@ -194,13 +194,21 @@ class WcoflixCatalog {
   /// original title). Fame-ordered because [_items] is. Case/space-insensitive
   /// substring match; a multi-word query matches when every word is present.
   /// This replaces the live POST /search, which is Cloudflare-walled.
-  Future<List<WcoLink>> searchLocal(String query, {int limit = 120}) async {
+  ///
+  /// [movie] restricts the media kind: true keeps only TMDB-typed movies;
+  /// false keeps series (unknown-typed items count as series — the site is
+  /// overwhelmingly series and movies are the reliably-typed side). This is
+  /// what stops an Arabic MOVIE from audio-pairing with the franchise's SERIES
+  /// (normTitle drops "movie"/"film", so the titles alone can't tell them apart).
+  Future<List<WcoLink>> searchLocal(String query,
+      {int limit = 120, bool? movie}) async {
     await ensureArt();
     final q = query.toLowerCase().trim();
     if (q.isEmpty) return const [];
     final words = q.split(RegExp(r'\s+'));
     final out = <WcoLink>[];
     for (final it in _items ?? const <_WcoItem>[]) {
+      if (movie != null && (it.type == 'movie') != movie) continue;
       final hay = it.hay; // precomputed at parse time — hot per-keystroke path
       if (words.every(hay.contains)) {
         out.add(WcoLink(it.path, it.title, thumb: it.tmdb.posterUrlW500));

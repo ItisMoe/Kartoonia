@@ -59,6 +59,25 @@ WcoLink? bestWcoflixMatch(String query, List<WcoLink> links,
   return bestScore >= min ? best : null;
 }
 
+/// Memoized [bestArabicMatch] keyed by the last queried title, shared by the
+/// TV and phone detail screens (one instance per State). The O(catalog) scan
+/// runs once per title instead of on every rebuild. Match against the
+/// catalog's SHOWS only — the WCO side of the audio switch is only offered for
+/// series, and matching against Arabic MOVIES paired series with same-named
+/// films.
+class ArabicMatchMemo {
+  String? _title;
+  ContentItem? _match;
+
+  ContentItem? match(String title, List<ContentItem> shows) {
+    if (_title != title) {
+      _title = title;
+      _match = bestArabicMatch(title, shows);
+    }
+    return _match;
+  }
+}
+
 /// The best Arabic catalog item matching a WCOFlix English [title], compared
 /// against each item's English + original TMDB titles, or null below [min].
 ContentItem? bestArabicMatch(String title, List<ContentItem> items,

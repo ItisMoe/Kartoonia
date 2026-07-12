@@ -18,12 +18,10 @@ import '../theme/theme.dart';
 import 'focusable.dart';
 import 'tv_room_stage.dart';
 
-/// Boost points awarded per engagement signal (graduated, stacking). Each is
-/// granted at most once per reel-view; stronger intent earns more.
-const double _kDwellBoost = 1; // stayed on the reel past [_kDwell]
-const double _kCompleteBoost = 2; // theme played all the way to its end
-const double _kEnterBoost = 4; // tapped "Enter show" from the reel
-const Duration _kDwell = Duration(seconds: 8);
+/// Hard cap on how long a single reel may play. Show themes are short, but the
+/// carateen `/music` mp3s can run far longer — past this the feed just moves on
+/// to the next title's music.
+const Duration _kMaxTheme = Duration(minutes: 4);
 
 /// Warm amber accent echoing the CRT's glow, used to tint the "Enter show" pill
 /// so it reads as part of the room scene.
@@ -37,10 +35,9 @@ const Color _kCrtGlow = Color(0xFFFFC46B);
 /// overlays a now-playing pill, a playback-status line, the title and a small
 /// "Enter show" button.
 ///
-/// The theme plays once and the feed auto-advances to the next reel; the end of
-/// the queue re-rolls for an endless feed. Engagement is tracked implicitly:
-/// dwelling on, finishing, or entering a show's reel boosts how often it
-/// resurfaces (see [_kDwellBoost]/[_kCompleteBoost]/[_kEnterBoost]).
+/// The theme plays once (capped at [_kMaxTheme]) and the feed auto-advances to
+/// the next reel; the end of the queue re-rolls for an endless feed. The order
+/// is a pure shuffle of the most popular titles — no engagement ranking.
 ///
 /// Two play modes (Settings `shaarat` pref) only change what's on the CRT:
 /// `video` plays the theme video inside the TV; `audio` shows the show's poster
@@ -83,14 +80,15 @@ class _ShaaratFeedViewState extends ConsumerState<ShaaratFeedView>
   bool _appResumed = true;
   bool _covered = false; // a route is pushed on top of us
 
-  /// Engagement signals already awarded for the CURRENT reel-view, so each
-  /// (dwell/complete/enter) boosts a show at most once per visit to its page.
-  final Set<String> _awarded = {};
-  Timer? _dwellTimer; // fires [_kDwellBoost] after lingering on a reel
-
-  /// Live subscriptions to the shared player (completion → auto-advance; playing
-  /// → status line). Cancelled whenever this view stops driving playback.
+  /// Live subscriptions to the shared player (completion/length-cap →
+  /// auto-advance; playing → status line). Cancelled whenever this view stops
+  /// driving playback.
   final List<StreamSubscription> _subs = [];
+
+  /// One-shot latch for the [_kMaxTheme] length cap: position events keep
+  /// arriving while the next reel is being resolved, so without it a single
+  /// over-long track would advance the feed several pages at once.
+  bool _capFired = false;
 
   final FocusNode _enterFocus = FocusNode(debugLabel: 'shaaratEnter');
 
@@ -116,10 +114,8 @@ class _ShaaratFeedViewState extends ConsumerState<ShaaratFeedView>
 
   void _buildQueue() {
     final catalog = ref.read(catalogProvider);
-    final boosts = ref.read(shaaratBoostsProvider);
     _queue = shaaratItemQueue(
       catalog.shows,
-      boosts,
       catalog.music,
       (t) => catalog.showForThemeTitle(t.title),
     );
@@ -188,19 +184,33 @@ class _ShaaratFeedViewState extends ConsumerState<ShaaratFeedView>
     ref.read(playerActiveProvider.notifier).state = on;
   }
 
-  /// Subscribe to the shared player: completion auto-advances the feed (and
-  /// awards the completion boost); playing-state drives the status line.
+  /// Subscribe to the shared player: completion (or the [_kMaxTheme] length
+  /// cap) auto-advances the feed; playing-state drives the status line.
   void _subscribe() {
     if (_subs.isNotEmpty) return;
-    final p = _player;
+    // The service's LIVE views drop events the shared player still emits for
+    // the previous media while a reel is being swapped in (a stray completed
+    // or a >cap position would advance the feed off a reel that just loaded).
+    final svc = PlayerService.instance;
     _subs.addAll([
-      p.stream.completed.listen((done) {
+      svc.completedLive.listen((done) {
         if (done && _shouldPlay && _started && !_loading) {
-          _award(_kCompleteBoost);
           _advance();
         }
       }),
-      p.stream.playing.listen((pl) {
+      // Length cap: a track that runs past [_kMaxTheme] (long carateen mp3s)
+      // moves the feed along instead of monopolizing it.
+      svc.positionLive.listen((pos) {
+        if (pos >= _kMaxTheme &&
+            !_capFired &&
+            _shouldPlay &&
+            _started &&
+            !_loading) {
+          _capFired = true;
+          _advance();
+        }
+      }),
+      svc.playingLive.listen((pl) {
         if (mounted && _playing != pl) setState(() => _playing = pl);
       }),
     ]);
@@ -220,33 +230,10 @@ class _ShaaratFeedViewState extends ConsumerState<ShaaratFeedView>
     next < _queue.length ? _goTo(next) : _restart();
   }
 
-  /// Award [points] to the active reel's show, once per signal per reel-view.
-  /// Music entries with no linked show don't accrue boosts (nothing to rank).
-  void _award(double points) {
-    if (_queue.isEmpty) return;
-    final show = _queue[_active].show;
-    if (show == null) return;
-    final key = '${show.id}:$points';
-    if (!_awarded.add(key)) return;
-    ref.read(storageProvider).addShaaratBoost(show.id, points);
-    final next = {...ref.read(shaaratBoostsProvider)};
-    next[show.id] = (next[show.id] ?? 0) + points;
-    ref.read(shaaratBoostsProvider.notifier).state = next;
-  }
-
-  /// (Re)start the dwell timer for the active reel; fires the small dwell boost
-  /// if the user lingers past [_kDwell].
-  void _armDwell() {
-    _dwellTimer?.cancel();
-    _dwellTimer = Timer(_kDwell, () {
-      if (_shouldPlay && _started) _award(_kDwellBoost);
-    });
-  }
-
   /// Re-roll the queue and jump back to the top. Called every time the feed
   /// becomes active (a fresh TV push, or re-selecting the phone tab), so each
-  /// visit opens on a new, popularity-weighted random reel instead of replaying
-  /// the show you saw last time.
+  /// visit opens on a fresh random shuffle of the popular titles instead of
+  /// replaying the show you saw last time.
   void _restart() {
     _buildQueue();
     _pbCache.clear(); // drop possibly-expired stream URLs from a prior visit
@@ -263,19 +250,23 @@ class _ShaaratFeedViewState extends ConsumerState<ShaaratFeedView>
   Future<void> _activate(int index) async {
     if (_queue.isEmpty) return;
     final token = ++_loadToken;
-    _awarded.clear(); // a new reel-view: engagement signals start fresh
-    _dwellTimer?.cancel();
+    _capFired = false; // a new reel-view: the length cap re-arms
     if (mounted) setState(() => _loading = true);
     PlayerService.instance.ensureCreated();
-    await PlayerService.instance.stop();
+    // Claim the player for this activation: the returned generation stamps
+    // every open it issues. If the feed is stopped/covered while a resolve is
+    // still in flight (the user pressed "Enter show" mid-load), the late open()
+    // becomes a no-op instead of hijacking whatever screen owns the player by
+    // then.
+    final session = await PlayerService.instance.stop();
     final entry = _queue[index];
 
     // Carateen music: play the mp3 directly (no YouTube resolve). The CRT shows
     // the track cover (audio-only framing) regardless of the video/audio pref.
     if (entry.isMusic) {
       try {
-        await PlayerService.instance
-            .open(entry.audioUrl!, headers: entry.audioHeaders ?? const {});
+        await PlayerService.instance.open(entry.audioUrl!,
+            headers: entry.audioHeaders ?? const {}, session: session);
       } catch (_) {
         if (token == _loadToken && mounted) _skip(index);
         return;
@@ -284,7 +275,6 @@ class _ShaaratFeedViewState extends ConsumerState<ShaaratFeedView>
       _player.setPlaylistMode(PlaylistMode.none);
       _skips = 0;
       setState(() => _loading = false);
-      _armDwell();
       _prefetch(index);
       return;
     }
@@ -311,7 +301,7 @@ class _ShaaratFeedViewState extends ConsumerState<ShaaratFeedView>
 
     final audioOnly = ref.read(settingsProvider).prefs['shaarat'] == 'audio';
     try {
-      await _playActive(pb, audioOnly);
+      await _playActive(pb, audioOnly, session);
     } catch (_) {
       if (token == _loadToken && mounted) _skip(index);
       return;
@@ -321,7 +311,6 @@ class _ShaaratFeedViewState extends ConsumerState<ShaaratFeedView>
     _player.setPlaylistMode(PlaylistMode.none);
     _skips = 0;
     setState(() => _loading = false);
-    _armDwell();
     _prefetch(index);
   }
 
@@ -330,7 +319,7 @@ class _ShaaratFeedViewState extends ConsumerState<ShaaratFeedView>
   /// attach (the play-order reload that made video restart mid-reel can't
   /// happen) and avoids the heavy VP9/AV1 variants that stutter on weak TV
   /// decoders. Adaptive video+audio is only a fallback when no muxed exists.
-  Future<void> _playActive(YoutubePlayback pb, bool audioOnly) async {
+  Future<void> _playActive(YoutubePlayback pb, bool audioOnly, int session) async {
     if (audioOnly) {
       // Prefer the progressive MUXED stream even in audio mode: it's the same
       // stream the (working) video mode plays and reliably carries audio. The
@@ -340,18 +329,18 @@ class _ShaaratFeedViewState extends ConsumerState<ShaaratFeedView>
       // exists. The video track decodes to no surface (poster covers the CRT).
       final url = pb.muxedFallbackUrl ?? pb.audioUrl;
       if (url == null) throw Exception('no audio stream');
-      await PlayerService.instance.open(url);
+      await PlayerService.instance.open(url, session: session);
       return;
     }
     final muxed = pb.muxedFallbackUrl;
     if (muxed != null) {
-      await PlayerService.instance.open(muxed);
+      await PlayerService.instance.open(muxed, session: session);
       return;
     }
     if (pb.videos.isNotEmpty) {
       final v = pb.videos.first;
-      await PlayerService.instance
-          .openWithAudio(v.url, audioUrl: v.muxed ? null : pb.audioUrl);
+      await PlayerService.instance.openWithAudio(v.url,
+          audioUrl: v.muxed ? null : pb.audioUrl, session: session);
       return;
     }
     throw Exception('no playable stream');
@@ -414,7 +403,6 @@ class _ShaaratFeedViewState extends ConsumerState<ShaaratFeedView>
 
   Future<void> _stopPlayer() async {
     _loadToken++; // cancel any in-flight resolve
-    _dwellTimer?.cancel();
     await _unsubscribe();
     _player.setPlaylistMode(PlaylistMode.none);
     await PlayerService.instance.stop();
@@ -423,7 +411,6 @@ class _ShaaratFeedViewState extends ConsumerState<ShaaratFeedView>
   void _enterShow(ShaaratItem entry) {
     final show = entry.show;
     if (show == null) return; // unlinked music track — nothing to open
-    _award(_kEnterBoost); // strongest intent signal
     widget.isTv
         ? AppNav.detail(context, show)
         : openPhoneDetail(context, show);
@@ -445,7 +432,6 @@ class _ShaaratFeedViewState extends ConsumerState<ShaaratFeedView>
     WidgetsBinding.instance.removeObserver(this);
     routeObserver.unsubscribe(this);
     _loadToken++;
-    _dwellTimer?.cancel();
     _unsubscribe();
     if (_started) {
       _player.setPlaylistMode(PlaylistMode.none);
@@ -575,8 +561,7 @@ class _ShaaratFeedViewState extends ConsumerState<ShaaratFeedView>
 }
 
 /// Bottom-anchored overlay: now-playing pill, a tiny playback-status line, the
-/// title, and a small "Enter show" button. No like control — engagement is
-/// implicit (see the boost signals on [_ShaaratFeedViewState]).
+/// title, and a small "Enter show" button.
 class _Footer extends StatelessWidget {
   final ShaaratItem item;
   final Map<String, String> t;

@@ -352,7 +352,6 @@ void main() {
     test('interleaves music through the show reels and drops nothing', () {
       final q = shaaratItemQueue(
         [show('1'), show('2'), show('3'), show('4'), show('5'), show('6')],
-        const {},
         [track(1), track(2)],
         (_) => null,
         musicEvery: 3,
@@ -365,9 +364,20 @@ void main() {
       expect(music.every((e) => !e.canEnter), isTrue);
     });
 
-    test('with no shows, the feed is just the music', () {
+    test('default interleave favours the music: one track every 2 shows', () {
       final q = shaaratItemQueue(
-          const [], const {}, [track(1), track(2)], (_) => null);
+        [show('1'), show('2'), show('3'), show('4'), show('5'), show('6')],
+        [track(1), track(2), track(3)],
+        (_) => null,
+      );
+      // shows at 0,1 then music at 2; shows at 3,4 then music at 5; ...
+      expect(q[2].isMusic, isTrue);
+      expect(q[5].isMusic, isTrue);
+      expect(q.where((e) => e.isMusic), hasLength(3));
+    });
+
+    test('with no shows, the feed is just the music', () {
+      final q = shaaratItemQueue(const [], [track(1), track(2)], (_) => null);
       expect(q, hasLength(2));
       expect(q.every((e) => e.isMusic), isTrue);
     });

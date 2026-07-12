@@ -33,6 +33,28 @@ class PlayerService {
   Player? _player;
   VideoController? _controller;
 
+  // Ownership generation for the shared player. Because every screen swaps
+  // media on the SAME player, an open() that was still in flight when its
+  // screen stopped/was covered (a شارات reel resolving as the user enters a
+  // show, a player screen backed out of mid-load) used to land LATE and hijack
+  // playback for whoever owned the player next — "it opened the previous
+  // show". Every [stop] bumps the generation and returns it; [open]/
+  // [openWithAudio] callers pass the generation their own stop() returned, and
+  // a call whose generation is stale becomes a no-op.
+  int _session = 0;
+
+  // The generation that most recently ISSUED an open on the player. A stale
+  // open's cleanup must not stop the player once the live generation has
+  // issued its own open: that open is queued behind the stale one and replaces
+  // its media anyway, so a stop here would execute after it and kill the
+  // rightful owner's playback instead of the stray media.
+  int _openIssued = -1;
+
+  // True only while the media on the player is one the CURRENT generation
+  // opened; false between a [stop] and the next landed open. Gates
+  // [positionLive]/[playingLive]/[completedLive].
+  bool _mediaLive = false;
+
   /// The shared player. Only valid after [ensureCreated] (called for you by
   /// [open]); screens call [ensureCreated] in `initState` before wiring streams.
   Player get player => _player!;
@@ -41,6 +63,22 @@ class PlayerService {
   VideoController get controller => _controller!;
 
   bool get isCreated => _player != null;
+
+  /// The raw player streams keep emitting the PREVIOUS media's state (its
+  /// position, a stray completed) between a [stop] and the next open landing —
+  /// acting on those queued phantom episodes and skipped resume seeks. These
+  /// views drop everything emitted while no current-generation media is live,
+  /// so screens can subscribe without re-discovering that guard.
+  ///
+  /// `duration` and `error` are deliberately NOT gated: load flows wait on the
+  /// first duration/error event to detect readiness/failure, and those can
+  /// fire before the open() call itself returns (i.e. before the gate opens).
+  Stream<Duration> get positionLive =>
+      player.stream.position.where((_) => _mediaLive);
+  Stream<bool> get playingLive =>
+      player.stream.playing.where((_) => _mediaLive);
+  Stream<bool> get completedLive =>
+      player.stream.completed.where((_) => _mediaLive);
 
   /// Lazily build the single player + controller. No-op after the first call.
   void ensureCreated() {
@@ -101,12 +139,20 @@ class PlayerService {
   /// was garbage: the wcostream embed serves a decoy stream to clients its
   /// anti-bot scoring flags. The real fix is in WcoflixHttp (plain-transport
   /// resolve for wcostream.com), not the decoder.
+  /// [session] must be the generation the caller's own [stop] returned. A stale
+  /// generation means another screen has since stopped or taken over the
+  /// player, so this open is silently dropped.
   Future<void> open(
     String url, {
     Map<String, String> headers = const {},
+    required int session,
   }) async {
     ensureCreated();
+    if (session != _session) return;
+    _openIssued = session;
     await _player!.open(Media(url, httpHeaders: headers));
+    if (await _dropIfStale(session)) return;
+    _mediaLive = true;
   }
 
   /// Open a video-only [videoUrl] and attach [audioUrl] as an external audio
@@ -116,24 +162,47 @@ class PlayerService {
     String videoUrl, {
     String? audioUrl,
     Map<String, String> headers = const {},
+    required int session,
   }) async {
     ensureCreated();
+    if (session != _session) return;
+    _openIssued = session;
     // Open WITHOUT auto-playing, attach the external audio, THEN play — so the
     // full graph exists before playback starts. Opening with play:true lets the
     // video run for ~1-2s and then attaching the audio track forces libmpv to
     // rebuild and re-seek the video to 0 (audio starts from its own 0), which
     // looked like the video "replaying from the start" while audio kept going.
     await _player!.open(Media(videoUrl, httpHeaders: headers), play: false);
+    if (await _dropIfStale(session)) return;
+    _mediaLive = true;
     if (audioUrl != null) {
       await _player!.setAudioTrack(AudioTrack.uri(audioUrl));
+      if (await _dropIfStale(session)) return;
     }
     await _player!.play();
+    await _dropIfStale(session);
+  }
+
+  /// True (after silencing any stray media) when [session] went stale — a stop()
+  /// raced in while this call's open was executing. The silencing stop is
+  /// skipped once the LIVE generation has issued its own open: that open is
+  /// queued behind ours and replaces the stray media anyway, and a stop here
+  /// would execute after it and kill the rightful owner's playback.
+  Future<bool> _dropIfStale(int session) async {
+    if (session == _session) return false;
+    if (_openIssued != _session) await _player!.stop();
+    return true;
   }
 
   /// Stop playback and unload the current media WITHOUT disposing the player, so
   /// the next [open] reuses the same warm decoder. Safe to call when nothing is
-  /// playing.
-  Future<void> stop() async {
+  /// playing. Bumps the ownership generation — killing any in-flight [open]
+  /// from before this stop — and returns it: capturing the return value IS how
+  /// a screen claims the player before opening on it.
+  Future<int> stop() async {
+    _mediaLive = false;
+    final s = ++_session;
     await _player?.stop();
+    return s;
   }
 }

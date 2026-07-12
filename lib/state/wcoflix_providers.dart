@@ -151,20 +151,34 @@ final wcoSearchProvider =
   return _cards(cat, await cat.searchLocal(q));
 });
 
+/// Query for [wcoflixOriginalProvider]: the English title to match plus
+/// whether the match must be a movie (else a series). The kind restriction is
+/// what keeps a movie from pairing with its franchise's series (and vice
+/// versa).
+typedef WcoOriginalQuery = ({String title, bool movie});
+
+/// The [wcoflixOriginalProvider] query for an Arabic-side [base]: its English
+/// (TMDB) title and media kind, derived in ONE place so the two detail screens
+/// can't drift on the title fallback or the kind mapping.
+WcoOriginalQuery wcoOriginalQueryFor(ContentItem base) =>
+    (title: base.tmdb?.enTitle ?? base.title, movie: base is Movie);
+
 /// The WCOFlix "original" (English) match for an Arabic title, found by
-/// searching the live catalog for [enTitle] and title-matching the results.
-/// Returns a card stub (episodes load lazily via [wcoSeriesProvider]) or null
-/// when there's no confident match. Powers the detail Audio: Arabic↔Original
-/// switch. Fails soft: any error just yields null (no switch shown).
-final wcoflixOriginalProvider =
-    FutureProvider.autoDispose.family<Show?, String>((ref, enTitle) async {
-  final q = enTitle.trim();
+/// searching the bundled catalog for the title and title-matching the results,
+/// restricted to the same media kind. Returns a card stub — a [Movie] for a
+/// movie match (directly playable), a [Show] whose episodes load lazily via
+/// [wcoSeriesProvider] otherwise — or null when there's no confident match.
+/// Powers the detail Audio: Arabic↔Original switch. Fails soft: any error just
+/// yields null (no switch shown).
+final wcoflixOriginalProvider = FutureProvider.autoDispose
+    .family<ContentItem?, WcoOriginalQuery>((ref, query) async {
+  final q = query.title.trim();
   if (q.length < 2) return null;
   try {
     final cat = ref.read(wcoflixCatalogProvider);
-    final links = await cat.searchLocal(q);
+    final links = await cat.searchLocal(q, movie: query.movie);
     final match = bestWcoflixMatch(q, links);
-    return match == null ? null : wcoflixShowStub(match, tmdb: cat.artFor(match.url));
+    return match == null ? null : wcoflixCardStub(match, tmdb: cat.artFor(match.url));
   } catch (_) {
     return null;
   }

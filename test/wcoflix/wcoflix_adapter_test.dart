@@ -39,7 +39,6 @@ void main() {
         'Some Movie');
     expect(show.episodes.single.episodeUrl,
         'https://www.wcoflix.tv/anime/some-movie');
-    expect(show is Show, isTrue);
   });
 
   test('wcoflixShowFromSeries: groups into seasons (data-season + title)', () {
