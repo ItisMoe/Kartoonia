@@ -1,9 +1,63 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:kartoonia/services/catalog_service.dart';
 import 'package:kartoonia/models/catalog_source.dart';
+import 'package:kartoonia/models/library_mode.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
+
+  test('carateen mode view is pure carateen items', () async {
+    final svc = await CatalogService.loadMerged();
+    svc.setMode(LibraryMode.carateen);
+    expect(svc.viewItems(), isNotEmpty);
+    expect(svc.viewItems().every((i) => i.source == CatalogSource.carateen),
+        isTrue);
+  });
+
+  test('dubbed mode excludes carateen-only titles', () async {
+    final svc = await CatalogService.loadMerged();
+    svc.setMode(LibraryMode.dubbed);
+    final view = svc.viewItems();
+    expect(view, isNotEmpty);
+    expect(
+        view.every((i) =>
+            svc.availableOn(i, CatalogSource.arabicToons) ||
+            svc.availableOn(i, CatalogSource.stardima)),
+        isTrue);
+    // A carateen-only title (no AT/ST twin) must not appear.
+    final carOnly = svc.viewItemsFor(LibraryMode.carateen).where((i) =>
+        !svc.availableOn(i, CatalogSource.arabicToons) &&
+        !svc.availableOn(i, CatalogSource.stardima));
+    expect(carOnly, isNotEmpty, reason: 'fixtures have carateen-only titles');
+    for (final c in carOnly.take(20)) {
+      expect(view.any((i) => i.id == c.id), isFalse);
+    }
+  });
+
+  test('wcoflix mode has an empty bundled view', () async {
+    final svc = await CatalogService.loadMerged();
+    svc.setMode(LibraryMode.wcoflix);
+    expect(svc.viewItems(), isEmpty);
+  });
+
+  test('setMode re-scopes the featured pool to the mode', () async {
+    final svc = await CatalogService.loadMerged();
+    svc.setMode(LibraryMode.carateen);
+    final carFeatured = svc.getFeaturedPool();
+    expect(carFeatured, isNotEmpty);
+    expect(
+        carFeatured.every((i) => svc.availableOn(i, CatalogSource.carateen)),
+        isTrue);
+    svc.setMode(LibraryMode.arabic);
+    final arabicFeatured = svc.getFeaturedPool();
+    // Arabic mode is a different scope: it surfaces AT/Stardima titles that the
+    // carateen-only pool cannot contain.
+    expect(
+        arabicFeatured.any((i) =>
+            i.source == CatalogSource.arabicToons ||
+            i.source == CatalogSource.stardima),
+        isTrue);
+  });
 
   test('loadMerged contains items from both sources', () async {
     final svc = await CatalogService.loadMerged();

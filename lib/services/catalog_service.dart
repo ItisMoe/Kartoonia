@@ -1,6 +1,7 @@
 import '../models/carateen_music.dart';
 import '../models/catalog_source.dart';
 import '../models/content_item.dart';
+import '../models/library_mode.dart';
 import 'catalog_loader.dart';
 import 'fame_ranking.dart';
 
@@ -14,6 +15,10 @@ import 'fame_ranking.dart';
 class CatalogService {
   /// The catalog currently loaded into memory.
   CatalogSource source;
+
+  /// Active Home/Browse mode. Does NOT affect [all]/[shows]/[movies]/[search]
+  /// — those stay global so My List, Search and Detail are mode-independent.
+  LibraryMode activeMode = LibraryMode.arabic;
 
   List<Show> shows = const [];
   List<Movie> movies = const [];
@@ -51,6 +56,10 @@ class CatalogService {
   List<MapEntry<String, List<ContentItem>>>? _genreRows;
   List<(ContentItem, String)>? _searchIndex;
 
+  /// Mode-scoped display pool for [activeMode] (memoized). Search stays on the
+  /// global index, so this is NOT reset when the search index is.
+  List<ContentItem>? _viewAll;
+
   void _invalidateDerived() {
     _popularPool = null;
     _popularShows = null;
@@ -59,6 +68,7 @@ class CatalogService {
     _genreRows = null;
     _searchIndex = null;
     _showByTitleKey = null;
+    _viewAll = null;
   }
 
   CatalogService._(this.source);
@@ -302,11 +312,11 @@ class CatalogService {
   // ---- Fame ranking (internal ordering only; vote_average is never shown) ----
   // All memoized (see [_invalidateDerived]) — these sort the whole catalog.
   /// Curated famous pool (denoised by vote_count), highest fame first.
-  List<ContentItem> popularPool() => _popularPool ??= famousPool(all);
+  List<ContentItem> popularPool() => _popularPool ??= famousPool(viewItems());
 
-  List<Show> popularShows() => _popularShows ??= famousPool(shows);
+  List<Show> popularShows() => _popularShows ??= famousPool(viewShows());
 
-  List<Movie> popularMovies() => _popularMovies ??= famousPool(movies);
+  List<Movie> popularMovies() => _popularMovies ??= famousPool(viewMovies());
 
   /// Highest-popularity titles for the curated "Most Popular" row.
   List<ContentItem> mostPopular({int count = 30}) =>
@@ -331,8 +341,10 @@ class CatalogService {
   /// Top-10 proxy (no ratings): most popular, in popularity order.
   List<ContentItem> getTop10() => getTop10Pool().take(10).toList();
 
-  List<Show> getRecentShows({int count = 20}) => shows.take(count).toList();
-  List<Movie> getRecentMovies({int count = 20}) => movies.take(count).toList();
+  List<Show> getRecentShows({int count = 20}) =>
+      viewShows().take(count).toList();
+  List<Movie> getRecentMovies({int count = 20}) =>
+      viewMovies().take(count).toList();
 
   // ---- Search: Arabic title + English/original title + description + overviews
   // The English ([TmdbData.enTitle]) and original ([TmdbData.originalTitle])
@@ -388,20 +400,53 @@ class CatalogService {
   List<MapEntry<String, List<ContentItem>>> _fameSortedGenreRows(
           {required int min, required int cap}) =>
       [
-        for (final e in genreRowsFor(all, min: min, cap: cap))
+        for (final e in genreRowsFor(viewItems(), min: min, cap: cap))
           MapEntry(e.key,
               e.value..sort((a, b) => b.fameScore.compareTo(a.fameScore))),
       ];
+
+  // ---- Library-mode views (Home + Browse only) --------------------------
+  /// Switch the Home/Browse mode and drop mode-scoped caches.
+  void setMode(LibraryMode mode) {
+    if (mode == activeMode) return;
+    activeMode = mode;
+    _invalidateDerived();
+  }
+
+  /// The display pool for a specific [mode], computed fresh (not memoized).
+  List<ContentItem> viewItemsFor(LibraryMode mode) {
+    final b = mode.bundled;
+    if (b.isEmpty) return const []; // WCOFlix-only: no bundled items
+    if (b.length == 1) {
+      final s = b.first;
+      // Pure single source — include twins that global merge collapsed away.
+      return [
+        for (final i in _byId.values) if (i.source == s) i
+      ];
+    }
+    // Multi-source: the merged library filtered to titles available on any
+    // allowed source (collapsed primaries; 'arabic' keeps everything).
+    return [
+      for (final i in all)
+        if (b.any((s) => availableOn(i, s))) i
+    ];
+  }
+
+  /// The mode-scoped display pool for [activeMode]. Memoized.
+  List<ContentItem> viewItems() => _viewAll ??= viewItemsFor(activeMode);
+
+  List<Show> viewShows() => viewItems().whereType<Show>().toList();
+  List<Movie> viewMovies() => viewItems().whereType<Movie>().toList();
 
   // ---- Browse filtering + sorting (no rating sort) ----
   List<ContentItem> browse(String kind) {
     switch (kind) {
       case 'movies':
-        return List.of(movies);
+        return viewMovies();
       case 'tv':
-        return List.of(shows);
+        return viewShows();
       default:
-        return List.of(all);
+        return List.of(viewItems());
     }
   }
 }
