@@ -138,6 +138,107 @@ def build_item(show, episodes):
     return "show", base
 
 
+# ------------------------------------------------------------- SpaceToon (sp)
+SP_BASE_WATCH = BASE + "/watch/sp"
+
+
+def _sp_int(v, default=0):
+    """sp episode fields (season/number) arrive as int OR numeric string; coerce
+    so the season grouping/sort never mixes int and str."""
+    try:
+        return int(v)
+    except (TypeError, ValueError):
+        return default
+
+
+def _sp_episode(show_id, e):
+    eid = e.get("id")
+    num = _sp_int(e.get("number"), 0)
+    return {
+        "number": num,
+        "title": e.get("title") or (f"الحلقة {num}" if num else ""),
+        # sp episodes resolve via POST /api/sp/episode/link {episodeId}; the app's
+        # carateen_resolver keys on the `/watch/sp/` marker in this URL.
+        "play_url": f"{SP_BASE_WATCH}/{show_id}/{eid}",
+        "video_id": str(e.get("video_id") or ""),
+        "thumbnail": e.get("cover_full_path") or "",
+        "season": _sp_int(e.get("season"), 1),
+        "hls": True,
+    }
+
+
+def build_sp_item(show, episodes):
+    """Normalize an sp show to the SAME schema build_item emits. Groups episodes
+    by their `season` field so multi-season titles (e.g. أبطال الكرة) render
+    their seasons. Returns (kind, dict)."""
+    sid = show["id"]
+    eps = sorted(episodes,
+                 key=lambda x: (_sp_int(x.get("season"), 1),
+                                _sp_int(x.get("number"), 0)))
+    base = {
+        "id": f"sp_{sid}",
+        "title": show.get("name") or "",
+        "poster_url": show.get("cover_full_path") or "",
+        "description": _clean(show.get("pref")),
+        "category": show.get("planet_name") or "",
+        "year": _year({"release_year": show.get("release_year")}),
+        "views": show.get("views"),
+        "rating": show.get("rating"),
+        "total_votes": show.get("total_votes"),
+        "quality": "",
+    }
+    is_movie = bool(show.get("is_movie")) or len(eps) <= 1
+    built = [_sp_episode(sid, e) for e in eps]
+    if is_movie and built:
+        base["play_url"] = built[0]["play_url"]
+        return "movie", base
+    seasons = {}
+    for ep in built:
+        seasons.setdefault(ep["season"], []).append(ep)
+    base["seasons"] = [
+        {"number": n, "title": "", "episodes": seasons[n]}
+        for n in sorted(seasons)
+    ]
+    return "show", base
+
+
+def scrape_sp(progress=lambda *_: None, log=lambda *_: None,
+              stop=lambda: False, workers=8):
+    """Fetch /api/sp/tvshows + /api/sp/episodes. Returns (tvshows, movies)."""
+    log("fetching sp show list  /api/sp/tvshows …")
+    shows = api("/api/sp/tvshows")
+    total = len(shows)
+    log(f"sp: {total} shows")
+    results = [None] * total
+    idx = {s["id"]: i for i, s in enumerate(shows)}
+    done = 0
+
+    def fetch(show):
+        if stop():
+            return show["id"], None
+        eps = api(f"/api/sp/episodes?id={show['id']}")
+        return show["id"], build_sp_item(
+            show, eps if isinstance(eps, list) else [])
+
+    with ThreadPoolExecutor(max_workers=workers) as ex:
+        futs = [ex.submit(fetch, s) for s in shows]
+        for fut in as_completed(futs):
+            if stop():
+                break
+            sid, built = fut.result()
+            if built is not None:
+                results[idx[sid]] = built
+            done += 1
+            if done % 10 == 0 or done == total:
+                progress(done, total, "sp")
+                log(f"sp [{done}/{total}]")
+
+    tv = [r[1] for r in results if r and r[0] == "show"]
+    mv = [r[1] for r in results if r and r[0] == "movie"]
+    log(f"sp catalog: {len(tv)} shows / {len(mv)} movies")
+    return tv, mv
+
+
 # -------------------------------------------------------------------- music
 def _extract_tracks(js):
     """Pull track object literals out of DEOBFUSCATED JS. Each is:
@@ -263,6 +364,11 @@ def run(progress=lambda done, total, msg="": None, log=lambda *_: None,
     movies = [r[1] for r in results if r and r[0] == "movie"]
     n_eps = sum(len(s["seasons"][0]["episodes"]) for s in tvshows)
     log(f"catalog: {len(tvshows)} shows / {n_eps} episodes / {len(movies)} movies")
+
+    sp_tv, sp_mv = scrape_sp(progress, log, stop, workers)
+    tvshows = tvshows + sp_tv
+    movies = movies + sp_mv
+    log(f"combined: {len(tvshows)} shows / {len(movies)} movies (tg + sp)")
 
     music = scrape_music(log)
 
