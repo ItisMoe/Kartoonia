@@ -1,12 +1,12 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import '../models/content_item.dart';
 import '../services/device_perf.dart';
 import '../theme/theme.dart';
 import '../theme/layout.dart';
 import '../utils/genre_translations.dart';
 import 'catalog_image.dart';
-import 'focusable.dart';
 import 'pill.dart';
 
 class HeroCarousel extends StatefulWidget {
@@ -80,6 +80,36 @@ class _HeroCarouselState extends State<HeroCarousel> {
     _controller.animateToPage(i,
         duration: const Duration(milliseconds: 450), curve: Curves.easeOutCubic);
     _start();
+  }
+
+  void _step(int delta) {
+    final n = widget.items.length;
+    if (n <= 1) return;
+    _goTo((_index + delta + n) % n);
+  }
+
+  /// D-pad Left/Right on the hero: first try to move focus between the action
+  /// buttons; at the row's edge (nothing focusable further that way) flip to the
+  /// prev/next featured card — so the user never has to hunt for tiny page dots.
+  KeyEventResult _onKey(FocusNode node, KeyEvent e) {
+    if (e is! KeyDownEvent && e is! KeyRepeatEvent) {
+      return KeyEventResult.ignored;
+    }
+    final k = e.logicalKey;
+    if (k != LogicalKeyboardKey.arrowLeft &&
+        k != LogicalKeyboardKey.arrowRight) {
+      return KeyEventResult.ignored;
+    }
+    final left = k == LogicalKeyboardKey.arrowLeft;
+    final dir = left ? TraversalDirection.left : TraversalDirection.right;
+    // Let the buttons consume the key while there's still a button that way.
+    if (FocusScope.of(context).focusInDirection(dir)) {
+      return KeyEventResult.handled;
+    }
+    // At the edge → change card. In RTL the "next" title sits to the LEFT.
+    final forward = left == widget.isRtl;
+    _step(forward ? 1 : -1);
+    return KeyEventResult.handled;
   }
 
   void _start() {
@@ -181,35 +211,6 @@ class _HeroCarouselState extends State<HeroCarousel> {
                 },
               ),
             ]),
-            const SizedBox(height: 18),
-            Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                for (int i = 0; i < widget.items.length; i++)
-                  Padding(
-                    padding: const EdgeInsetsDirectional.only(end: 12),
-                    child: Focusable(
-                      onPressed: () => _goTo(i),
-                      builder: (context, focused) => AnimatedContainer(
-                        duration: const Duration(milliseconds: 250),
-                        width: i == _index ? 50 : 30,
-                        height: 6,
-                        decoration: BoxDecoration(
-                          borderRadius: BorderRadius.circular(4),
-                          gradient: i == _index
-                              ? const LinearGradient(
-                                  colors: AppColors.primaryGradient)
-                              : null,
-                          color: i == _index
-                              ? null
-                              : Colors.white
-                                  .withValues(alpha: focused ? 1 : 0.32),
-                        ),
-                      ),
-                    ),
-                  ),
-              ],
-            ),
           ],
         ),
       ),
@@ -292,15 +293,20 @@ class _HeroCarouselState extends State<HeroCarousel> {
       canRequestFocus: false,
       skipTraversal: true,
       onFocusChange: (f) => _focusInside = f,
-      child: SizedBox(
-        height: Dims.heroH,
-        width: double.infinity,
-        child: PageView.builder(
-          controller: _controller,
-          itemCount: widget.items.length,
-          onPageChanged: _onPageChanged,
-          padEnds: true,
-          itemBuilder: (context, i) => _slide(i),
+      onKeyEvent: _onKey,
+      child: Padding(
+        // Nudge the billboard down off the very top of the screen.
+        padding: const EdgeInsets.only(top: 44),
+        child: SizedBox(
+          height: Dims.heroH,
+          width: double.infinity,
+          child: PageView.builder(
+            controller: _controller,
+            itemCount: widget.items.length,
+            onPageChanged: _onPageChanged,
+            padEnds: true,
+            itemBuilder: (context, i) => _slide(i),
+          ),
         ),
       ),
     );

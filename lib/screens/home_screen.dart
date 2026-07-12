@@ -161,7 +161,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     // Hero: a daily-rotated dozen out of the top backdrop-bearing titles, the
     // same rotation the Arabic hero gets.
     final heroDaily =
-        dailyShuffled(heroItems, salt: 'wco_hero').take(12).toList();
+        dailyShuffled(heroItems, salt: 'wco_hero').take(15).toList();
     final hero = heroDaily.isEmpty
         ? const SizedBox(height: 130)
         : HeroCarousel(
@@ -447,8 +447,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
 
     // Hero pool: most-popular titles with a backdrop, rotated daily.
     final featured =
-        dailyShuffled(catalog.getFeaturedPool().take(20).toList(), salt: 'hero')
-            .take(5)
+        dailyShuffled(catalog.getFeaturedPool().take(40).toList(), salt: 'hero')
+            .take(15)
             .toList();
 
     return ScreenShell(

@@ -18,7 +18,7 @@ Show _show(String id, String title) => Show(
     );
 
 void main() {
-  testWidgets('renders the current title, three action pills, and dots',
+  testWidgets('renders the current title and three action pills',
       (tester) async {
     // The spotlight card is sized for a wide TV panel; use a 1080p surface so
     // the card + side peeks lay out without overflow.
