@@ -111,6 +111,9 @@ def _episode(show_id, e):
         "play_url": f"{BASE}/watch/{show_id}/{eid}",
         "video_id": str(e.get("video_id") or ""),
         "thumbnail": f"{IMG}/thumbnails/{thumb}" if thumb else "",
+        # tg episodes ALSO carry a `season` label (e.g. multi-season shows like
+        # سلاحف النينجا); group on it so seasons aren't collapsed into one.
+        "season": _season_label(e),
         "hls": bool(e.get("hls_supported", True)),
     }
 
@@ -134,7 +137,7 @@ def build_item(show, episodes):
     if _is_movie(show, len(eps)) and eps:
         base["play_url"] = eps[0]["play_url"]
         return "movie", base
-    base["seasons"] = [{"number": 1, "title": "", "episodes": eps}]
+    base["seasons"] = _group_into_seasons(eps)
     return "show", base
 
 
@@ -168,6 +171,46 @@ def _season_rank(label):
     return None
 
 
+def _season_label(e):
+    """Normalized season label for an episode. The API returns it as an Arabic
+    string, an int, null, or 0 — treat null/empty/0 as "no season" so single-
+    season shows don't split on a stray 0-vs-null."""
+    s = e.get("season")
+    if s is None:
+        return ""
+    s = str(s).strip()
+    return "" if s in ("", "0") else s
+
+
+def _group_into_seasons(built):
+    """Group episode dicts by their `season` LABEL (an Arabic string like
+    "الجزء الأول") into real seasons, ordered by Arabic ordinal when every label
+    is one (else first-seen order), renumbering each season's episodes 1..N.
+    A single or empty label yields one season (title ""). Shared by the tg and
+    sp builders — BOTH catalogs expose a per-episode `season` label that must
+    not be collapsed. Episodes must arrive carrying a numeric `number` used as
+    the within-season sort key before renumbering."""
+    order, groups = [], {}
+    for ep in built:
+        key = ep.get("season") or ""
+        if key not in groups:
+            groups[key] = []
+            order.append(key)
+        groups[key].append(ep)
+
+    ranks = [_season_rank(k) for k in order]
+    if order and all(r is not None for r in ranks) and len(set(ranks)) == len(ranks):
+        order = [k for _, k in sorted(zip(ranks, order))]
+
+    seasons = []
+    for i, key in enumerate(order, 1):
+        eps = sorted(groups[key], key=lambda e: _sp_int(e.get("number"), 0))
+        for n, ep in enumerate(eps, 1):
+            ep["number"] = n  # local 1..N (source numbers can be global/gapped)
+        seasons.append({"number": i, "title": key, "episodes": eps})
+    return seasons
+
+
 def _sp_episode(show_id, e):
     eid = e.get("id")
     num = _sp_int(e.get("number"), 0)
@@ -180,7 +223,7 @@ def _sp_episode(show_id, e):
         "video_id": str(e.get("video_id") or ""),
         "thumbnail": e.get("cover_full_path") or "",
         # raw season label (Arabic string) or "" — used for grouping below.
-        "season": (e.get("season") or "").strip() if e.get("season") else "",
+        "season": _season_label(e),
         "hls": True,
     }
 
@@ -208,28 +251,7 @@ def build_sp_item(show, episodes):
     if is_movie and built:
         base["play_url"] = built[0]["play_url"]
         return "movie", base
-
-    # Group by season label, preserving first-seen order.
-    order, groups = [], {}
-    for ep in built:
-        key = ep["season"]
-        if key not in groups:
-            groups[key] = []
-            order.append(key)
-        groups[key].append(ep)
-
-    # If every label is a known Arabic ordinal, order by it; else keep first-seen.
-    ranks = [_season_rank(k) for k in order]
-    if order and all(r is not None for r in ranks) and len(set(ranks)) == len(ranks):
-        order = [k for _, k in sorted(zip(ranks, order))]
-
-    seasons = []
-    for i, key in enumerate(order, 1):
-        eps = sorted(groups[key], key=lambda e: _sp_int(e.get("number"), 0))
-        for n, ep in enumerate(eps, 1):
-            ep["number"] = n  # renumber 1..N within the season (global → local)
-        seasons.append({"number": i, "title": key, "episodes": eps})
-    base["seasons"] = seasons
+    base["seasons"] = _group_into_seasons(built)
     return "show", base
 
 
@@ -393,7 +415,7 @@ def run(progress=lambda done, total, msg="": None, log=lambda *_: None,
 
     tvshows = [r[1] for r in results if r and r[0] == "show"]
     movies = [r[1] for r in results if r and r[0] == "movie"]
-    n_eps = sum(len(s["seasons"][0]["episodes"]) for s in tvshows)
+    n_eps = sum(len(se["episodes"]) for s in tvshows for se in s["seasons"])
     log(f"catalog: {len(tvshows)} shows / {n_eps} episodes / {len(movies)} movies")
 
     sp_tv, sp_mv = scrape_sp(progress, log, stop, workers)
