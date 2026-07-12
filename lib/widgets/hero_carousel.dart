@@ -103,16 +103,84 @@ class _HeroCarouselState extends State<HeroCarousel> {
     return parts.join('  •  ');
   }
 
+  // Spotlight-card geometry (layout A). The card is sized to the backdrop
+  // (16:9); title/pills/dots sit BELOW it, with dimmed peeks of the prev/next
+  // titles on each side.
+  static const double _cardH = 392; // 16:9 → ~697 wide
+  static const double _peekW = 104;
+  static const double _gap = 20;
+
+  /// A dimmed, non-focusable sliver of a neighbouring title's backdrop.
+  Widget _peek(ContentItem? item) {
+    if (item == null) return const SizedBox(width: _peekW);
+    return Opacity(
+      opacity: 0.42,
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(16),
+        child: SizedBox(
+          width: _peekW,
+          height: _cardH * 0.84,
+          child: OverflowBox(
+            maxWidth: _cardH * 0.84 * 16 / 9,
+            child: CatalogImage(
+              url: item.backdropUrl,
+              fallbackUrl: item.thumbnailUrl,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     if (widget.items.isEmpty) return const SizedBox(height: Dims.heroH);
-    // The featured list can shrink across rebuilds (daily rotation / source
+    // The featured list can shrink across rebuilds (daily rotation / mode
     // switch); clamp so a stale _index can't range-error the whole Home screen.
     if (_index >= widget.items.length) _index = 0;
     final s = widget.items[_index];
     final t = widget.t;
-    final align =
-        widget.isRtl ? Alignment.centerRight : Alignment.centerLeft;
+    final n = widget.items.length;
+    final prev = n > 1 ? widget.items[(_index - 1 + n) % n] : null;
+    final next = n > 1 ? widget.items[(_index + 1) % n] : null;
+    // RTL reads right→left: the "next" title peeks on the left, "prev" on the
+    // right. LTR is the mirror.
+    final leadingPeek = widget.isRtl ? next : prev;
+    final trailingPeek = widget.isRtl ? prev : next;
+    final crossAlign =
+        widget.isRtl ? CrossAxisAlignment.end : CrossAxisAlignment.start;
+
+    // The backdrop card: rounded, overscanned a touch to hide baked-in pillar
+    // bars, sliding (or cross-fading on low-spec) between titles.
+    final card = ClipRRect(
+      borderRadius: BorderRadius.circular(20),
+      child: AspectRatio(
+        aspectRatio: 16 / 9,
+        child: AnimatedSwitcher(
+          duration: Duration(milliseconds: DevicePerf.lowSpec ? 300 : 550),
+          transitionBuilder: (child, anim) {
+            if (DevicePerf.lowSpec) {
+              return FadeTransition(opacity: anim, child: child);
+            }
+            final dir = widget.isRtl ? -1.0 : 1.0;
+            return FadeTransition(
+              opacity: anim,
+              child: SlideTransition(
+                position: Tween<Offset>(
+                        begin: Offset(0.12 * dir, 0), end: Offset.zero)
+                    .animate(anim),
+                child: child,
+              ),
+            );
+          },
+          child: Transform.scale(
+            key: ValueKey(s.id),
+            scale: 1.04,
+            child: CatalogImage(url: s.backdropUrl, fallbackUrl: s.thumbnailUrl),
+          ),
+        ),
+      ),
+    );
 
     return Focus(
       canRequestFocus: false,
@@ -121,125 +189,63 @@ class _HeroCarouselState extends State<HeroCarousel> {
       child: SizedBox(
         height: Dims.heroH,
         width: double.infinity,
-        child: Stack(children: [
-          // cross-fading backdrop. Overscanned a touch: many TMDB backdrops for
-          // animated titles have thin black pillarbars baked into the 16:9 art,
-          // and because the hero is wider than 16:9 `cover` fills the width
-          // exactly — leaving those bars visible at the left/right edges. A
-          // small scale pushes them off-screen (clipped by the hero box) so the
-          // art reads edge-to-edge.
-          Positioned.fill(
-            child: ClipRect(
-              child: AnimatedSwitcher(
-                // Shorter fade on low-spec boxes: the fade is the window where
-                // BOTH full-screen backdrops are alive and composited.
-                duration: Duration(milliseconds: DevicePerf.lowSpec ? 300 : 800),
-                child: Transform.scale(
-                  key: ValueKey(s.id),
-                  scale: 1.06,
-                  child: CatalogImage(
-                    url: s.backdropUrl,
-                    fallbackUrl: s.thumbnailUrl,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            // Card row: peek · spotlight card · peek. Wrapped in a scale-down
+            // FittedBox so it renders at natural (backdrop) size on a 1080p TV
+            // and shrinks gracefully on any narrower/scaled panel (no overflow).
+            SizedBox(
+              height: _cardH,
+              child: FittedBox(
+                fit: BoxFit.scaleDown,
+                child: SizedBox(
+                  height: _cardH,
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.center,
+                    children: [
+                      _peek(leadingPeek),
+                      const SizedBox(width: _gap),
+                      SizedBox(height: _cardH, child: card),
+                      const SizedBox(width: _gap),
+                      _peek(trailingPeek),
+                    ],
                   ),
                 ),
               ),
             ),
-          ),
-          // bottom + side scrims
-          const Positioned.fill(
-            child: DecoratedBox(
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  begin: Alignment.bottomCenter,
-                  end: Alignment.topCenter,
-                  colors: [AppColors.bg1, Color(0x1F0F1430), Color(0x59080A16)],
-                  stops: [0.01, 0.46, 1],
-                ),
-              ),
-            ),
-          ),
-          Positioned.fill(
-            child: DecoratedBox(
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  begin: widget.isRtl
-                      ? Alignment.centerRight
-                      : Alignment.centerLeft,
-                  end: widget.isRtl
-                      ? Alignment.centerLeft
-                      : Alignment.centerRight,
-                  colors: const [
-                    Color(0xF0070914),
-                    Color(0xB8070914),
-                    Color(0x2E070914),
-                    Colors.transparent,
-                  ],
-                  stops: const [0, 0.32, 0.62, 0.82],
-                ),
-              ),
-            ),
-          ),
-          // content
-          Positioned(
-            left: widget.isRtl ? null : Spacing.pad,
-            right: widget.isRtl ? Spacing.pad : null,
-            bottom: 120,
-            width: 760,
-            child: Align(
-              alignment: align,
+            const SizedBox(height: 22),
+            // Title + meta + actions + dots, below the card.
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: Spacing.pad),
               child: Column(
-                crossAxisAlignment: widget.isRtl
-                    ? CrossAxisAlignment.end
-                    : CrossAxisAlignment.start,
+                crossAxisAlignment: crossAlign,
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  Row(mainAxisSize: MainAxisSize.min, children: [
-                    Container(
-                      width: 8,
-                      height: 8,
-                      decoration: const BoxDecoration(
-                          color: AppColors.primary, shape: BoxShape.circle),
-                    ),
-                    const SizedBox(width: 10),
-                    Text(t['featured']!,
-                        style: const TextStyle(
-                            fontWeight: FontWeight.w900,
-                            letterSpacing: 3,
-                            fontSize: 17,
-                            color: AppColors.primary2)),
-                  ]),
-                  const SizedBox(height: 18),
                   Text(
                     s.title,
-                    maxLines: 2,
+                    maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     textAlign: widget.isRtl ? TextAlign.right : TextAlign.left,
                     style: const TextStyle(
                       fontFamily: Fonts.display,
                       fontFamilyFallback: Fonts.fallback,
                       fontWeight: FontWeight.w600,
-                      fontSize: 86,
-                      height: 0.98,
-                      letterSpacing: -1,
+                      fontSize: 52,
+                      height: 1.0,
+                      letterSpacing: -0.5,
                       color: AppColors.ink,
                     ),
                   ),
-                  const SizedBox(height: 20),
+                  const SizedBox(height: 12),
                   Text(_metaLine(s),
                       style: const TextStyle(
-                          fontSize: 21,
+                          fontSize: 20,
                           fontWeight: FontWeight.w800,
                           color: AppColors.inkSoft)),
-                  const SizedBox(height: 16),
-                  Text(
-                    s.descriptionAr,
-                    maxLines: 3,
-                    overflow: TextOverflow.ellipsis,
-                    textAlign: widget.isRtl ? TextAlign.right : TextAlign.left,
-                    style: const TextStyle(
-                        fontSize: 24, height: 1.5, color: AppColors.inkSoft),
-                  ),
-                  const SizedBox(height: 34),
+                  const SizedBox(height: 20),
                   Row(mainAxisSize: MainAxisSize.min, children: [
                     Pill(
                       label: t['watchNow']!,
@@ -264,48 +270,43 @@ class _HeroCarouselState extends State<HeroCarousel> {
                       },
                     ),
                   ]),
+                  const SizedBox(height: 20),
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      for (int i = 0; i < widget.items.length; i++)
+                        Padding(
+                          padding: const EdgeInsetsDirectional.only(end: 12),
+                          child: Focusable(
+                            onPressed: () {
+                              _setIndex(i);
+                              _start();
+                            },
+                            builder: (context, focused) => AnimatedContainer(
+                              duration: const Duration(milliseconds: 250),
+                              width: i == _index ? 50 : 30,
+                              height: 6,
+                              decoration: BoxDecoration(
+                                borderRadius: BorderRadius.circular(4),
+                                gradient: i == _index
+                                    ? const LinearGradient(
+                                        colors: AppColors.primaryGradient)
+                                    : null,
+                                color: i == _index
+                                    ? null
+                                    : Colors.white
+                                        .withValues(alpha: focused ? 1 : 0.32),
+                              ),
+                            ),
+                          ),
+                        ),
+                    ],
+                  ),
                 ],
               ),
             ),
-          ),
-          // dots
-          Positioned(
-            left: widget.isRtl ? null : Spacing.pad,
-            right: widget.isRtl ? Spacing.pad : null,
-            bottom: 52,
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                for (int i = 0; i < widget.items.length; i++)
-                  Padding(
-                    padding: const EdgeInsetsDirectional.only(end: 12),
-                    child: Focusable(
-                      onPressed: () {
-                        _setIndex(i);
-                        _start();
-                      },
-                      builder: (context, focused) => AnimatedContainer(
-                        duration: const Duration(milliseconds: 250),
-                        width: i == _index ? 50 : 30,
-                        height: 6,
-                        decoration: BoxDecoration(
-                          borderRadius: BorderRadius.circular(4),
-                          gradient: i == _index
-                              ? const LinearGradient(
-                                  colors: AppColors.primaryGradient)
-                              : null,
-                          color: i == _index
-                              ? null
-                              : Colors.white
-                                  .withValues(alpha: focused ? 1 : 0.32),
-                        ),
-                      ),
-                    ),
-                  ),
-              ],
-            ),
-          ),
-        ]),
+          ],
+        ),
       ),
     );
   }
