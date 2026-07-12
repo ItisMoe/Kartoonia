@@ -120,14 +120,21 @@ class StorageService {
 
   ProgressEntry? getProgress(String episodeUrl) => _readProgress()[episodeUrl];
 
-  /// All in-progress entries (<95% watched), most-recent first.
+  /// In-progress entries (<95% watched), most-recent first, **one per title**.
+  /// A show contributes a single Continue-Watching card carrying its most-
+  /// recently-watched episode — not a separate card per episode.
   List<ProgressEntry> getContinueWatching() {
-    final list = _readProgress()
+    final sorted = _readProgress()
         .values
         .where((e) => e.duration > 0 && e.fraction < 0.95)
         .toList()
       ..sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
-    return list;
+    final seen = <String>{};
+    final out = <ProgressEntry>[];
+    for (final e in sorted) {
+      if (seen.add(e.itemId)) out.add(e); // keep first (most recent) per title
+    }
+    return out;
   }
 
   /// Best progress fraction for an item across its episodes (for cards).
