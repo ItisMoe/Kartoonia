@@ -258,6 +258,48 @@ void main() {
       expect(movies.first.pageUrl, 'https://carateen.tv/watch/5/52');
       expect(movies.first.source, CatalogSource.carateen);
     });
+
+    test('parses an sp show with multiple seasons and sp play_urls', () {
+      final (shows, _) = CarateenAdapter.parse({
+        'tvshows': [
+          {
+            'id': 'sp_175',
+            'title': 'أبطال الكرة',
+            'poster_url': 'https://cdn.spacetoongo.com/x.jpg',
+            'category': 'رياضة',
+            'seasons': [
+              {
+                'number': 1,
+                'episodes': [
+                  {
+                    'number': 1,
+                    'title': 'ح1',
+                    'play_url': 'https://carateen.tv/watch/sp/175/12896',
+                  }
+                ]
+              },
+              {
+                'number': 2,
+                'episodes': [
+                  {
+                    'number': 1,
+                    'title': 'ح1',
+                    'play_url': 'https://carateen.tv/watch/sp/175/13001',
+                  }
+                ]
+              },
+            ],
+          }
+        ],
+        'movies': const [],
+      });
+      final s = shows.single;
+      expect(s.id, 'c_sp_175');
+      expect(s.source, CatalogSource.carateen);
+      expect(s.seasonCount, 2);
+      expect(s.episodes.first.episodeUrl,
+          'https://carateen.tv/watch/sp/175/12896');
+    });
   });
 
   group('parseCarateenMusic', () {
