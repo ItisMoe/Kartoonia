@@ -2,7 +2,7 @@ name: kartoonia
 description: "Kartoonia - Arabic cartoons for Android TV"
 publish_to: 'none'
 
-version: 3.5.0+32
+version: 3.6.0+33
 
 environment:
   sdk: ^3.12.1
